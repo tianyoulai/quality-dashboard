@@ -84,7 +84,7 @@ class TiDBConfig:
     database: str
     charset: str = "utf8mb4"
     pool_name: str = "tidb_pool"
-    pool_size: int = 5
+    pool_size: int = 3  # 降低连接数，适配 TiDB Serverless 免费版限制
 
     @classmethod
     def from_settings(cls) -> "TiDBConfig":

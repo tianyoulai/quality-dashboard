@@ -236,6 +236,18 @@ def load_alert_history(alert_id: str | None) -> pd.DataFrame:
     return service.load_alert_history(alert_id)
 
 
+@st.cache_data(show_spinner=False, ttl=300)
+def load_qa_label_distribution_cached(grain: str, selected_date: date, group_name: str | None = None, top_n: int = 10) -> pd.DataFrame:
+    """获取质检标签分布（缓存 5 分钟）"""
+    return service.load_qa_label_distribution(grain, selected_date, group_name, top_n)
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def load_qa_owner_distribution_cached(grain: str, selected_date: date, group_name: str | None = None, top_n: int = 10) -> pd.DataFrame:
+    """获取质检员工作量分布（缓存 5 分钟）"""
+    return service.load_qa_owner_distribution(grain, selected_date, group_name, top_n)
+
+
 @st.cache_data(show_spinner=False)
 def to_csv_bytes(df: pd.DataFrame) -> bytes:
     export_df = df.copy()
@@ -879,7 +891,7 @@ label_col, owner_col = st.columns([1, 1])
 
 with label_col:
     st.markdown("#### 🏷️ 质检标签分布")
-    label_df = service.load_qa_label_distribution(grain, selected_date, selected_group, top_n=10)
+    label_df = load_qa_label_distribution_cached(grain, selected_date, selected_group, top_n=10)
     if not label_df.empty:
         # 添加统计信息
         total_labels = label_df["cnt"].sum()
@@ -908,7 +920,7 @@ with label_col:
 
 with owner_col:
     st.markdown("#### 👨‍💼 质检员工作量")
-    owner_df = service.load_qa_owner_distribution(grain, selected_date, selected_group, top_n=10)
+    owner_df = load_qa_owner_distribution_cached(grain, selected_date, selected_group, top_n=10)
     if not owner_df.empty:
         # 添加统计信息
         st.caption(f"前10名质检员")

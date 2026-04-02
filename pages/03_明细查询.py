@@ -55,12 +55,16 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=600)
 def get_filter_options() -> dict:
-    groups = repo.fetch_df("SELECT DISTINCT group_name FROM vw_qa_base WHERE group_name IS NOT NULL ORDER BY 1")
-    queues = repo.fetch_df("SELECT DISTINCT group_name, queue_name FROM vw_qa_base WHERE queue_name IS NOT NULL ORDER BY 1, 2")
-    reviewers = repo.fetch_df("SELECT DISTINCT reviewer_name FROM vw_qa_base WHERE reviewer_name IS NOT NULL ORDER BY 1")
-    error_types = repo.fetch_df("SELECT DISTINCT error_type FROM vw_qa_base WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
+    """获取筛选选项（缓存 10 分钟）。
+    
+    优化：从 fact_qa_event 直表查询 DISTINCT，避免扫描 vw_qa_base 视图（122 万行）。
+    """
+    groups = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name FROM fact_qa_event WHERE sub_biz IS NOT NULL ORDER BY 1")
+    queues = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name, queue_name FROM fact_qa_event WHERE queue_name IS NOT NULL ORDER BY 1, 2")
+    reviewers = repo.fetch_df("SELECT DISTINCT reviewer_name FROM fact_qa_event WHERE reviewer_name IS NOT NULL ORDER BY 1")
+    error_types = repo.fetch_df("SELECT DISTINCT error_type FROM fact_qa_event WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
     dates = repo.fetch_df("SELECT DISTINCT biz_date FROM fact_qa_event ORDER BY 1")
     return {
         "groups": groups["group_name"].tolist() if not groups.empty else [],
