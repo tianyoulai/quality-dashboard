@@ -22,24 +22,42 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _get_secret(key: str, default: str | None = None) -> str | None:
-    """从 st.secrets / 环境变量 / settings.json 三级读取配置值。"""
-    # 优先级 1: Streamlit Cloud Secrets
+    """从 st.secrets / 环境变量 / settings.json 三级读取配置值。
+    
+    支持嵌套格式：key="tidb.host" → st.secrets["tidb"]["host"] 或 env["tidb.host"]
+    """
+    # 优先级 1: Streamlit Cloud Secrets（支持嵌套字典）
     try:
         import streamlit as st
-        if hasattr(st, "secrets") and key in st.secrets:
-            return str(st.secrets[key])
+        if hasattr(st, "secrets"):
+            # 尝试嵌套访问：st.secrets["tidb"]["host"]
+            if "." in key:
+                parts = key.split(".")
+                val = st.secrets
+                for p in parts:
+                    if isinstance(val, dict) and p in val:
+                        val = val[p]
+                    else:
+                        val = None
+                        break
+                if val is not None:
+                    return str(val)
+            # 尝试扁平访问：st.secrets["tidb.host"]
+            elif key in st.secrets:
+                return str(st.secrets[key])
     except Exception:
         pass
-    # 优先级 2: 环境变量
+    
+    # 优先级 2: 环境变量（扁平格式）
     env_val = os.environ.get(key)
     if env_val is not None:
         return env_val
-    # 优先级 3: 本地 settings.json
+    
+    # 优先级 3: 本地 settings.json（嵌套格式）
     settings_path = PROJECT_ROOT / "config" / "settings.json"
     if settings_path.exists():
         with open(settings_path, "r", encoding="utf-8") as f:
             settings = json.load(f)
-        # 支持 tidb.host 嵌套格式
         if "." in key:
             parts = key.split(".")
             val = settings
