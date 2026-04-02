@@ -1,0 +1,92 @@
+# 质检日报自动推送 - GitHub Action
+# 每天北京时间 9:00 执行，生成昨日质检日报并推送到企业微信群
+
+name: Daily QA Report
+
+on:
+  schedule:
+    # UTC 1:00 = 北京时间 9:00（每天）
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    # 允许手动触发（用于测试）
+    inputs:
+      report_date:
+        description: '报告日期 (YYYY-MM-DD)，默认昨天'
+        required: false
+        default: ''
+      dry_run:
+        description: '仅生成不推送'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  daily-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare config
+        env:
+          _TIDB_HOST: ${{ secrets.TIDB_HOST }}
+          _TIDB_PORT: ${{ secrets.TIDB_PORT }}
+          _TIDB_USER: ${{ secrets.TIDB_USER }}
+          _TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
+          _TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+          _WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK_URL }}
+        run: |
+          # 代码用 tidb.host 格式读环境变量，这里做一次映射
+          export "tidb.host=${_TIDB_HOST}"
+          export "tidb.port=${_TIDB_PORT}"
+          export "tidb.user=${_TIDB_USER}"
+          export "tidb.password=${_TIDB_PASSWORD}"
+          export "tidb.database=${_TIDB_DATABASE}"
+          # 生成 settings.json（供 load_settings() 读取 webhook_url）
+          mkdir -p config
+          cat > config/settings.json << EOF
+          {
+            "wecom_webhook_url": "${_WECOM_WEBHOOK}",
+            "dashboard_url": "https://quality-dashboard-2026.streamlit.app/%E9%A6%96%E9%A1%B5"
+          }
+          EOF
+          echo "Config prepared."
+
+      - name: Run daily report
+        run: |
+          ARGS=""
+          
+          # 计算日期参数
+          if [ -n "${{ github.event.inputs.report_date }}" ]; then
+            ARGS="--date ${{ github.event.inputs.report_date }}"
+          else
+            ARGS="--date $(date -d 'yesterday' '+%Y-%m-%d')"
+          fi
+          
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          
+          echo "Running: python jobs/daily_report.py $ARGS"
+          python jobs/daily_report.py $ARGS
+
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-report-${{ github.run_number }}
+          path: deliverables/
+          retention-days: 30
