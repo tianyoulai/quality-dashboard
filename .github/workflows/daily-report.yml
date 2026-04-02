@@ -42,28 +42,35 @@ jobs:
 
       - name: Prepare config
         env:
-          _TIDB_HOST: ${{ secrets.TIDB_HOST }}
-          _TIDB_PORT: ${{ secrets.TIDB_PORT }}
-          _TIDB_USER: ${{ secrets.TIDB_USER }}
-          _TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
-          _TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
-          _WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK_URL }}
+          TIDB_HOST: ${{ secrets.TIDB_HOST }}
+          TIDB_PORT: ${{ secrets.TIDB_PORT }}
+          TIDB_USER: ${{ secrets.TIDB_USER }}
+          TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
+          TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK_URL }}
         run: |
-          # 代码用 tidb.host 格式读环境变量，这里做一次映射
-          export "tidb.host=${_TIDB_HOST}"
-          export "tidb.port=${_TIDB_PORT}"
-          export "tidb.user=${_TIDB_USER}"
-          export "tidb.password=${_TIDB_PASSWORD}"
-          export "tidb.database=${_TIDB_DATABASE}"
-          # 生成 settings.json（供 load_settings() 读取 webhook_url）
+          # 直接生成完整的 settings.json，代码从该文件读取所有配置
           mkdir -p config
-          cat > config/settings.json << EOF
+          cat > config/settings.json << ENDJSON
           {
-            "wecom_webhook_url": "${_WECOM_WEBHOOK}",
-            "dashboard_url": "https://quality-dashboard-2026.streamlit.app/%E9%A6%96%E9%A1%B5"
+            "wecom_webhook_url": "${WECOM_WEBHOOK}",
+            "wecom_webhook_key": "",
+            "daily_report_hour": 18,
+            "daily_report_minute": 0,
+            "dashboard_url": "https://quality-dashboard-2026.streamlit.app/",
+            "db_path": "data/warehouse/qa.duckdb",
+            "tidb": {
+              "host": "${TIDB_HOST}",
+              "port": ${TIDB_PORT},
+              "user": "${TIDB_USER}",
+              "password": "${TIDB_PASSWORD}",
+              "database": "${TIDB_DATABASE}",
+              "charset": "utf8mb4"
+            }
           }
-          EOF
+          ENDJSON
           echo "Config prepared."
+          cat config/settings.json
 
       - name: Run daily report
         run: |
