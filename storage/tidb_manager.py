@@ -1,0 +1,222 @@
+"""TiDB 连接管理器：基于 mysql-connector-python 的连接池与基础操作。
+
+配置读取优先级：st.secrets → 环境变量 → 本地 settings.json
+  - Streamlit Cloud 部署时，凭据存储在 st.secrets 中
+  - 本地开发时，从 config/settings.json 读取（文件不提交 Git）
+"""
+from __future__ import annotations
+
+import json
+import os
+import ssl
+from contextlib import contextmanager
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Generator, Iterable
+
+import mysql.connector
+from mysql.connector import pooling
+import pandas as pd
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _get_secret(key: str, default: str | None = None) -> str | None:
+    """从 st.secrets / 环境变量 / settings.json 三级读取配置值。"""
+    # 优先级 1: Streamlit Cloud Secrets
+    try:
+        import streamlit as st
+        if hasattr(st, "secrets") and key in st.secrets:
+            return str(st.secrets[key])
+    except Exception:
+        pass
+    # 优先级 2: 环境变量
+    env_val = os.environ.get(key)
+    if env_val is not None:
+        return env_val
+    # 优先级 3: 本地 settings.json
+    settings_path = PROJECT_ROOT / "config" / "settings.json"
+    if settings_path.exists():
+        with open(settings_path, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+        # 支持 tidb.host 嵌套格式
+        if "." in key:
+            parts = key.split(".")
+            val = settings
+            for p in parts:
+                if isinstance(val, dict):
+                    val = val.get(p)
+                else:
+                    val = None
+                    break
+            if val is not None:
+                return str(val)
+        elif key in settings:
+            return str(settings[key])
+    return default
+
+
+@dataclass
+class TiDBConfig:
+    host: str
+    port: int
+    user: str
+    password: str
+    database: str
+    charset: str = "utf8mb4"
+    pool_name: str = "tidb_pool"
+    pool_size: int = 5
+
+    @classmethod
+    def from_settings(cls) -> "TiDBConfig":
+        """从 st.secrets / 环境变量 / settings.json 读取 TiDB 配置。"""
+        return cls(
+            host=_get_secret("tidb.host", ""),
+            port=int(_get_secret("tidb.port", "4000")),
+            user=_get_secret("tidb.user", ""),
+            password=_get_secret("tidb.password", ""),
+            database=_get_secret("tidb.database", "test"),
+            charset=_get_secret("tidb.charset", "utf8mb4"),
+        )
+
+
+def _create_pool(config: TiDBConfig) -> pooling.MySQLConnectionPool:
+    """创建 TiDB 连接池。TiDB Serverless 需要 SSL。"""
+    return pooling.MySQLConnectionPool(
+        pool_name=config.pool_name,
+        pool_size=config.pool_size,
+        autocommit=True,
+        host=config.host,
+        port=config.port,
+        user=config.user,
+        password=config.password,
+        database=config.database,
+        charset=config.charset,
+        ssl_ca=None,
+        ssl_verify_cert=False,
+        connect_timeout=10,
+        connection_timeout=30,
+        pool_reset_session=True,
+    )
+
+
+class TiDBManager:
+    """TiDB 数据库操作封装，提供连接池、查询、执行等基础方法。"""
+
+    def __init__(self, config: TiDBConfig | None = None):
+        self.config = config or TiDBConfig.from_settings()
+        self._pool = _create_pool(self.config)
+
+    @contextmanager
+    def get_connection(self) -> Generator[mysql.connector.MySQLConnection, None, None]:
+        """从连接池获取一个连接，使用后自动归还。"""
+        conn = self._pool.get_connection()
+        try:
+            yield conn
+        finally:
+            conn.close()
+
+    def fetch_df(self, sql: str, params: Iterable[Any] | None = None) -> pd.DataFrame:
+        """执行 SQL 并返回 DataFrame。自动防全表扫描（无 LIMIT 时追加上限）。"""
+        # 安全防护：如果 SQL 没有 LIMIT/OFFSET 且是 SELECT，追加 LIMIT 50000
+        safe_sql = sql.strip().rstrip(";")
+        upper = safe_sql.upper()
+        if (upper.startswith("SELECT") and " LIMIT " not in upper
+                and "OFFSET" not in upper):
+            safe_sql += " LIMIT 50000"
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(safe_sql, tuple(params) if params else ())
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                rows = cursor.fetchall()
+                return pd.DataFrame(rows, columns=columns) if columns else pd.DataFrame()
+            finally:
+                cursor.close()
+
+    def fetch_one(self, sql: str, params: Iterable[Any] | None = None) -> dict[str, Any] | None:
+        """执行 SQL 并返回第一行。"""
+        df = self.fetch_df(sql, params)
+        if df.empty:
+            return None
+        return df.iloc[0].to_dict()
+
+    def execute(self, sql: str, params: Iterable[Any] | None = None) -> None:
+        """执行 SQL（INSERT/UPDATE/DELETE 等）。"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(sql, tuple(params) if params else ())
+            finally:
+                cursor.close()
+
+    def execute_many(self, sql: str, params_list: list[Iterable[Any]]) -> int:
+        """批量执行同一条 SQL（executemany）。返回影响的行数。"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.executemany(sql, [tuple(p) for p in params_list])
+                return cursor.rowcount
+            finally:
+                cursor.close()
+
+    def execute_in_transaction(self, sql_list: list[tuple[str, Iterable[Any] | None]]) -> None:
+        """在事务中批量执行 SQL，失败时自动回滚。"""
+        with self.get_connection() as conn:
+            conn.autocommit = False
+            cursor = conn.cursor()
+            try:
+                for sql, params in sql_list:
+                    cursor.execute(sql, tuple(params) if params else ())
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.autocommit = True
+                cursor.close()
+
+    def insert_dataframe(self, table_name: str, df: pd.DataFrame,
+                         batch_size: int = 3000) -> int:
+        """将 DataFrame 分批插入到指定表。返回插入行数。"""
+        if df.empty:
+            return 0
+        columns = list(df.columns)
+        placeholders = ", ".join(["%s"] * len(columns))
+        col_sql = ", ".join(f"`{c}`" for c in columns)
+        sql = f"INSERT INTO `{table_name}` ({col_sql}) VALUES ({placeholders})"
+
+        # 将 DataFrame 转换为元组列表，处理 NaN/NaT
+        all_rows = []
+        for _, row in df.iterrows():
+            converted = []
+            for val in row:
+                if pd.isna(val):
+                    converted.append(None)
+                elif hasattr(val, "to_pydatetime"):
+                    converted.append(val.to_pydatetime())
+                else:
+                    converted.append(val)
+            all_rows.append(tuple(converted))
+
+        # 分批提交，避免 TiDB Serverless 大事务超时
+        total_inserted = 0
+        for i in range(0, len(all_rows), batch_size):
+            batch = all_rows[i:i + batch_size]
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                try:
+                    cursor.executemany(sql, batch)
+                    total_inserted += cursor.rowcount
+                finally:
+                    cursor.close()
+        return total_inserted
+
+    def table_exists(self, table_name: str) -> bool:
+        """检查表是否存在。"""
+        sql = """
+        SELECT COUNT(*) FROM information_schema.TABLES
+        WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s
+        """
+        result = self.fetch_one(sql, [self.config.database, table_name])
+        return bool(result and result.get("COUNT(*)", 0) > 0)

@@ -1,0 +1,11 @@
+# 质培运营看板 - Python 依赖
+# Streamlit Cloud 部署用，本地开发使用 .venv
+
+streamlit>=1.40.0
+pandas>=2.0.0
+numpy>=1.24.0
+plotly>=5.18.0
+mysql-connector-python>=9.0.0
+requests>=2.31.0
+google-auth>=2.20.0
+openpyxl>=3.1.0
