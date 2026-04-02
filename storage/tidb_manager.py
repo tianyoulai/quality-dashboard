@@ -73,20 +73,6 @@ def _get_secret(key: str, default: str | None = None) -> str | None:
         elif key in settings:
             return str(settings[key])
     return default
-        if "." in key:
-            parts = key.split(".")
-            val = settings
-            for p in parts:
-                if isinstance(val, dict):
-                    val = val.get(p)
-                else:
-                    val = None
-                    break
-            if val is not None:
-                return str(val)
-        elif key in settings:
-            return str(settings[key])
-    return default
 
 
 @dataclass
