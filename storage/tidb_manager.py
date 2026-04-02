@@ -93,7 +93,7 @@ class TiDBConfig:
             port=int(_get_secret("tidb.port", "4000")),
             user=_get_secret("tidb.user", ""),
             password=_get_secret("tidb.password", ""),
-            database=_get_secret("tidb.database", "test"),
+            database=_get_secret("tidb.database") or _get_secret("tidb.db", "test"),
             charset=_get_secret("tidb.charset", "utf8mb4"),
         )
 
