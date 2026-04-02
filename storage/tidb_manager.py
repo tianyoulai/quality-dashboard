@@ -132,6 +132,14 @@ class TiDBManager:
         """延迟初始化连接池。"""
         if self._pool is None:
             config = self.config or TiDBConfig.from_settings()
+            # 调试：打印读取到的配置（隐藏密码）
+            import sys
+            print(f"[DEBUG] TiDBConfig: host={config.host}, port={config.port}, "
+                  f"user={config.user}, database={config.database}, "
+                  f"password={'***' if config.password else 'EMPTY'}", file=sys.stderr)
+            if not config.host or not config.user or not config.password:
+                raise ValueError(f"TiDB 配置不完整: host={config.host}, user={config.user}, "
+                                 f"password={'已设置' if config.password else '未设置'}")
             self._pool = _create_pool(config)
         return self._pool
 
