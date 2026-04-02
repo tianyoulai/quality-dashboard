@@ -35,9 +35,10 @@ def _get_secret(key: str, default: str | None = None) -> str | None:
                 parts = key.split(".")
                 val = st.secrets
                 for p in parts:
-                    if isinstance(val, dict) and p in val:
+                    # Secrets 对象不支持 isinstance(val, dict)，用 try-except 更安全
+                    try:
                         val = val[p]
-                    else:
+                    except (KeyError, TypeError):
                         val = None
                         break
                 if val is not None:
@@ -58,6 +59,20 @@ def _get_secret(key: str, default: str | None = None) -> str | None:
     if settings_path.exists():
         with open(settings_path, "r", encoding="utf-8") as f:
             settings = json.load(f)
+        if "." in key:
+            parts = key.split(".")
+            val = settings
+            for p in parts:
+                if isinstance(val, dict):
+                    val = val.get(p)
+                else:
+                    val = None
+                    break
+            if val is not None:
+                return str(val)
+        elif key in settings:
+            return str(settings[key])
+    return default
         if "." in key:
             parts = key.split(".")
             val = settings
