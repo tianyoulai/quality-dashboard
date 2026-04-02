@@ -133,14 +133,10 @@ class TiDBManager:
         """延迟初始化连接池。"""
         if self._pool is None:
             config = self.config or TiDBConfig.from_settings()
-            # 调试：打印读取到的配置（隐藏密码）
-            import sys
-            print(f"[DEBUG] TiDBConfig: host={config.host}, port={config.port}, "
-                  f"user={config.user}, database={config.database}, "
-                  f"password={'***' if config.password else 'EMPTY'}", file=sys.stderr)
             if not config.host or not config.user or not config.password:
                 raise ValueError(f"TiDB 配置不完整: host={config.host}, user={config.user}, "
                                  f"password={'已设置' if config.password else '未设置'}")
+            self.config = config  # 回写，确保 table_exists 等方法能读取
             self._pool = _create_pool(config)
         return self._pool
 
@@ -155,12 +151,22 @@ class TiDBManager:
             conn.close()
 
     def fetch_df(self, sql: str, params: Iterable[Any] | None = None) -> pd.DataFrame:
-        """执行 SQL 并返回 DataFrame。自动防全表扫描（无 LIMIT 时追加上限）。"""
-        # 安全防护：如果 SQL 没有 LIMIT/OFFSET 且是 SELECT，追加 LIMIT 50000
+        """执行 SQL 并返回 DataFrame。
+        
+        安全防护：对无 LIMIT 的纯 SELECT（非聚合/非 GROUP BY）自动追加上限，
+        防止全表扫描 122 万行数据。
+        """
         safe_sql = sql.strip().rstrip(";")
         upper = safe_sql.upper()
+        # 只对无 LIMIT 的纯行查询追加限制，排除聚合/GROUP BY/子查询 COUNT
         if (upper.startswith("SELECT") and " LIMIT " not in upper
-                and "OFFSET" not in upper):
+                and "OFFSET" not in upper
+                and "GROUP BY" not in upper
+                and "COUNT(" not in upper
+                and "SUM(" not in upper
+                and "AVG(" not in upper
+                and "MAX(" not in upper
+                and "MIN(" not in upper):
             safe_sql += " LIMIT 50000"
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -173,11 +179,18 @@ class TiDBManager:
                 cursor.close()
 
     def fetch_one(self, sql: str, params: Iterable[Any] | None = None) -> dict[str, Any] | None:
-        """执行 SQL 并返回第一行。"""
-        df = self.fetch_df(sql, params)
-        if df.empty:
-            return None
-        return df.iloc[0].to_dict()
+        """执行 SQL 并返回第一行。直接使用 fetchone，不加 LIMIT。"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(sql, tuple(params) if params else ())
+                row = cursor.fetchone()
+                if row is None:
+                    return None
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                return dict(zip(columns, row)) if columns else None
+            finally:
+                cursor.close()
 
     def execute(self, sql: str, params: Iterable[Any] | None = None) -> None:
         """执行 SQL（INSERT/UPDATE/DELETE 等）。"""
