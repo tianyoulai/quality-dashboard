@@ -119,16 +119,27 @@ def _create_pool(config: TiDBConfig) -> pooling.MySQLConnectionPool:
 
 
 class TiDBManager:
-    """TiDB 数据库操作封装，提供连接池、查询、执行等基础方法。"""
+    """TiDB 数据库操作封装，提供连接池、查询、执行等基础方法。
+    
+    连接池延迟初始化：只有在首次使用时才创建，确保 st.secrets 已就绪。
+    """
 
     def __init__(self, config: TiDBConfig | None = None):
-        self.config = config or TiDBConfig.from_settings()
-        self._pool = _create_pool(self.config)
+        self.config = config
+        self._pool: pooling.MySQLConnectionPool | None = None
+
+    def _ensure_pool(self) -> pooling.MySQLConnectionPool:
+        """延迟初始化连接池。"""
+        if self._pool is None:
+            config = self.config or TiDBConfig.from_settings()
+            self._pool = _create_pool(config)
+        return self._pool
 
     @contextmanager
     def get_connection(self) -> Generator[mysql.connector.MySQLConnection, None, None]:
         """从连接池获取一个连接，使用后自动归还。"""
-        conn = self._pool.get_connection()
+        pool = self._ensure_pool()
+        conn = pool.get_connection()
         try:
             yield conn
         finally:
