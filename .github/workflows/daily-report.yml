@@ -73,6 +73,9 @@ jobs:
           cat config/settings.json
 
       - name: Run daily report
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL }}
         run: |
           ARGS=""
           
@@ -89,6 +92,15 @@ jobs:
           
           echo "Running: python jobs/daily_report.py $ARGS"
           python jobs/daily_report.py $ARGS
+
+      - name: Commit daily_data.json
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add daily_data.json || true
+          git diff --quiet && git diff --staged --quiet || git commit -m "Update daily_data.json [skip ci]"
+          git push
 
       - name: Upload report artifact
         if: always()

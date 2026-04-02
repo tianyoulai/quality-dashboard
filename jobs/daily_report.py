@@ -111,10 +111,20 @@ def _si(val) -> int:
 
 
 def _sf(val, decimals: int = 2) -> float:
+    """安全转 float（兼容 decimal.Decimal / int / str 等类型）。"""
     if val is None:
         return 0.0
     try:
+        # decimal.Decimal 和 int 都能被 float() 转换
         return round(float(val), decimals)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _safe_mul(a, b):
+    """安全乘法（兼容 decimal.Decimal * float）。"""
+    try:
+        return float(a) * float(b)
     except (ValueError, TypeError):
         return 0.0
 
@@ -197,7 +207,7 @@ def _query_sub_biz(conn, d: str) -> list[dict]:
     result = []
     for _, r in df.iterrows():
         cnt = _si(r["qa_cnt"])
-        raw_acc = _sf(r["raw_correct"] * 100.0 / cnt) if cnt > 0 else 0.0
+        raw_acc = _sf(_safe_mul(r["raw_correct"], 100.0) / cnt) if cnt > 0 else 0.0
         result.append({
             "mother_biz": r["mother_biz"],
             "sub_biz": r["sub_biz"],
@@ -232,7 +242,7 @@ def _aggregate_mother(sub_list: list[dict]) -> list[dict]:
     result = []
     for m in mothers.values():
         cnt = m["qa_cnt"]
-        m["raw_acc"] = _sf(m["raw_correct"] * 100.0 / cnt) if cnt > 0 else 0.0
+        m["raw_acc"] = _sf(_safe_mul(m["raw_correct"], 100.0) / cnt) if cnt > 0 else 0.0
         result.append(m)
     return result
 
@@ -382,8 +392,8 @@ def build_daily_report(conn, report_date: date) -> dict:
     total_loupan = sum(s["loupan"] for s in sub_list)
     total_appeal = sum(s["appealed"] for s in sub_list)
     total_appeal_rev = sum(s["appeal_reversed"] for s in sub_list)
-    raw_acc = _sf(total_correct * 100.0 / total_qa) if total_qa > 0 else 0.0
-    appeal_rev_rate = _sf(total_appeal_rev * 100.0 / total_appeal) if total_appeal > 0 else 0.0
+    raw_acc = _sf(_safe_mul(total_correct, 100.0) / total_qa) if total_qa > 0 else 0.0
+    appeal_rev_rate = _sf(_safe_mul(total_appeal_rev, 100.0) / total_appeal) if total_appeal > 0 else 0.0
 
     # 质检量环比
     volume_change_pct = None
@@ -802,58 +812,113 @@ def _build_supplement(report: dict, grouped: dict) -> list[str]:
 # ═══════════════════════════════════════════════════════════════
 
 def report_to_wecom_md(report: dict) -> str:
-    """企微 Markdown 格式（五段式，精简）。"""
+    """企微 Markdown 格式（表格化 + AI 洞察）。"""
     if not report["has_data"]:
         return f"📊 质检日报 ({report['report_date']})\n\n{report['message']}"
 
     d = report["report_date"]
     grouped = _group_by_mother(report)
     actions = _build_actions(report, grouped)
+    o = report["overview"]
 
     lines: list[str] = []
 
     # 标题
-    lines.append(f"📊 评论业务质检日报｜{d}")
-    lines.append(f"正确率目标：{ACC_TARGET:.2f}%")
+    lines.append(f"📊 **评论业务质检日报** | {d}")
+    lines.append(f"")
+    lines.append(f"**目标**：{ACC_TARGET:.2f}%")
+    lines.append(f"")
+    lines.append("---")
 
     # 一、今日结论
     lines.append("")
-    lines.append("一、今日结论")
+    lines.append("## 一、今日结论")
+    overall_flag = _acc_flag(o["raw_acc"])
+    overall_label = _acc_label(o["raw_acc"])
+    pp_change = ""
+    if report.get("yesterday_overall"):
+        pp = o["raw_acc"] - report["yesterday_overall"]["raw_acc"]
+        if abs(pp) >= 0.1:
+            pp_change = f"，较昨日{'+' if pp > 0 else ''}{pp:.2f}pp"
+    lines.append(f"{overall_flag} {overall_label} | 正确率 **{o['raw_acc']:.2f}%**（目标 {ACC_TARGET:.2f}%）{pp_change}")
+    lines.append("")
     lines.append(_build_conclusion(report, grouped))
 
-    # 二、分组表现
+    # 二、分组表现（表格化）
     lines.append("")
-    lines.append("二、分组表现")
-    group_lines = _build_group_performance(grouped)
-    # 去掉末尾空行
-    while group_lines and group_lines[-1] == "":
-        group_lines.pop()
-    lines.extend(group_lines)
+    lines.append("## 二、分组表现")
+    lines.append("")
+    lines.append("| 业务组 | 正确率 | 质检量 | 出错数 | 状态 |")
+    lines.append("|:------:|:------:|:------:|:------:|:----:|")
 
-    # 三、重点风险
+    # 按 A组、B组 顺序展示
+    for mb_name in ["A组", "B组"]:
+        if mb_name not in grouped:
+            continue
+        g = grouped[mb_name]
+        flag = g["flag"]
+        acc = g["raw_acc"]
+        # 母业务行
+        lines.append(f"| {mb_name} | {acc:.2f}% | {g['total_qa']:,} | {g['total_err']} | {flag} |")
+        # 子业务行（只展示 B组的拆分）
+        if mb_name == "B组" and len(g["subs"]) > 1:
+            for s in sorted(g["subs"], key=lambda x: x["sub_biz"]):
+                s_flag = _acc_flag(s["raw_acc"])
+                sub_name = s["sub_biz"].replace("B组-", "")  # 简化显示
+                lines.append(f"| B组-{sub_name} | {s['raw_acc']:.2f}% | {s['qa_cnt']:,} | {s['error_total']} | {s_flag} |")
+
+    # 结论行
     lines.append("")
-    lines.append("三、重点风险")
+    worst_group = None
+    worst_acc = 100.0
+    for mb_name, g in grouped.items():
+        if g["raw_acc"] < worst_acc:
+            worst_acc = g["raw_acc"]
+            worst_group = mb_name
+    if worst_group and worst_acc < ACC_TARGET:
+        gap = ACC_TARGET - worst_acc
+        lines.append(f"**结论**：{worst_group}正确率 {worst_acc:.2f}%，低于目标 {gap:.2f}pp，为当日拖后腿业务组。")
+    else:
+        lines.append(f"**结论**：各业务组均达标，整体质量稳定。")
+
+    # 三、AI 洞察（如果有）
+    ai_insight = call_deepseek(report)
+    if ai_insight:
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append("## 三、AI 洞察")
+        lines.append("")
+        lines.append(f"> {ai_insight}")
+
+    # 四、重点风险
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append("## 四、重点风险")
     risk_lines = _build_risks(report, grouped)
-    lines.extend(risk_lines)
+    for r in risk_lines:
+        lines.append(f"- {r}")
 
-    # 四、处理动作
+    # 五、处理动作
     lines.append("")
-    lines.append("四、处理动作")
-    lines.append(f"交付侧：{actions['交付侧'][0]}")
+    lines.append("## 五、处理动作")
+    lines.append(f"- **交付侧**：{actions['交付侧'][0]}")
     for a in actions["交付侧"][1:]:
-        lines.append(f"        {a}")
-    lines.append(f"质培侧：{actions['质培侧'][0]}")
+        lines.append(f"  - {a}")
+    lines.append(f"- **质培侧**：{actions['质培侧'][0]}")
     for a in actions["质培侧"][1:]:
-        lines.append(f"        {a}")
-    lines.append(f"次日关注：{actions['次日关注'][0]}")
+        lines.append(f"  - {a}")
+    lines.append(f"- **次日关注**：{actions['次日关注'][0]}")
     for a in actions["次日关注"][1:]:
-        lines.append(f"        {a}")
+        lines.append(f"  - {a}")
 
-    # 五、补充风险
+    # 六、补充风险
     lines.append("")
-    lines.append("五、补充风险")
+    lines.append("## 六、补充风险")
     supplement_lines = _build_supplement(report, grouped)
-    lines.extend(supplement_lines)
+    for s in supplement_lines:
+        lines.append(f"- {s}")
 
     return "\n".join(lines)
 
@@ -918,6 +983,78 @@ def report_to_markdown(report: dict, dashboard_url: str = "") -> str:
         lines.append(f"🔗 [点击此处查看详细看板]({dashboard_url})")
 
     return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  DeepSeek AI 洞察分析
+# ═══════════════════════════════════════════════════════════════
+
+def call_deepseek(report: dict) -> str:
+    """调用 DeepSeek API，基于质检数据生成 AI 洞察分析。"""
+    import os
+    import requests
+
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    api_url = os.environ.get("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
+    if not api_key:
+        return ""
+
+    # 构造给 AI 的数据摘要（精简，控制 token 消耗）
+    data_summary = json.dumps({
+        "report_date": report["report_date"],
+        "target": report.get("target", 99.0),
+        "overview": report.get("overview", {}),
+        "mother_list": report.get("mother_list", []),
+        "sub_list": report.get("sub_list", []),
+        "top_error_queues": report.get("top_error_queues", []),
+        "top_error_types": report.get("top_error_types", []),
+        "alerts": report.get("alerts", {}),
+        "yesterday_overall": report.get("yesterday_overall"),
+    }, ensure_ascii=False, indent=2)
+
+    system_prompt = """你是评论业务质检数据分析师（质培 owner 视角）。根据给定的质检数据 JSON，生成一段简短的 AI 洞察分析。
+
+要求：
+1. **结论先行**：第一句话给出整体判断（达标/未达标/承压）
+2. **归因分析**：分析错误集中在哪个业务组、哪个队列，错判还是漏判为主，可能的原因是什么
+3. **趋势判断**：如果有昨日数据，对比环比变化，判断是改善还是恶化
+4. **风险预警**：指出最需要关注的 1-2 个风险点
+5. **行动建议**：给出 2-3 条具体可执行的建议
+
+格式要求：
+- 使用企微 Markdown 格式
+- 总长度控制在 300 字以内
+- 关键数据用 **加粗**
+- 用 emoji 标识状态：✅ 达标 🟡 承压 🔴 风险
+- 不要重复罗列数据，重点在分析和洞察
+- 语气专业简洁，不说废话"""
+
+    try:
+        resp = requests.post(
+            api_url,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"以下是今日质检数据：\n{data_summary}\n\n请生成 AI 洞察分析。"},
+                ],
+                "max_tokens": 500,
+                "temperature": 0.3,
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        content = resp.json()["choices"][0]["message"]["content"]
+        # 清理可能的 markdown 代码块包裹
+        content = content.strip()
+        if content.startswith("```"):
+            lines = content.split("\n")
+            content = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+        return content
+    except Exception as e:
+        print(f"⚠️ DeepSeek API 调用失败: {e}")
+        return ""
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -992,6 +1129,26 @@ def main() -> None:
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(full_md)
     print(f"\n📄 日报已保存到: {output_path}")
+
+    # 生成 daily_data.json（供 Knot 智能体读取）
+    json_path = PROJECT_ROOT / "daily_data.json"
+    json_data = {
+        "report_date": report["report_date"],
+        "has_data": report["has_data"],
+        "target": report.get("target", 99.0),
+        "overview": report.get("overview", {}),
+        "mother_list": report.get("mother_list", []),
+        "sub_list": report.get("sub_list", []),
+        "top_error_queues": report.get("top_error_queues", []),
+        "top_error_types": report.get("top_error_types", []),
+        "alerts": report.get("alerts", {}),
+        "watch_queues": report.get("watch_queues", []),
+        "yesterday_overall": report.get("yesterday_overall"),
+        "yesterday_alerts": report.get("yesterday_alerts", {}),
+    }
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(json_data, f, ensure_ascii=False, indent=2)
+    print(f"📊 数据已保存到: {json_path}")
 
     if not args.dry_run:
         # 去重检查：同一报告日期只推送一次
