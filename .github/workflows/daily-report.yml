@@ -1,12 +1,12 @@
 # 质检日报自动推送 - GitHub Action
-# 每天北京时间 17:00 执行，生成昨日质检日报并推送到企业微信群
+# 每天北京时间 15:00 执行，生成昨日质检日报并推送到企业微信群
 
 name: Daily QA Report
 
 on:
   schedule:
-    # UTC 9:00 = 北京时间 17:00（每天）
-    - cron: '0 9 * * *'
+    # UTC 7:00 = 北京时间 15:00（每天）
+    - cron: '0 7 * * *'
   workflow_dispatch:
     # 允许手动触发（用于测试）
     inputs:
