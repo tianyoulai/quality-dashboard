@@ -812,7 +812,10 @@ def _build_supplement(report: dict, grouped: dict) -> list[str]:
 # ═══════════════════════════════════════════════════════════════
 
 def report_to_wecom_md(report: dict) -> str:
-    """企微 Markdown 格式（表格化 + AI 洞察）。"""
+    """企微 Markdown 格式（精简版，控制在 4096 字符以内）。
+
+    策略：保留核心结论+表格+风险，AI 洞察截断，处理动作只展示首条。
+    """
     if not report["has_data"]:
         return f"📊 质检日报 ({report['report_date']})\n\n{report['message']}"
 
@@ -825,9 +828,7 @@ def report_to_wecom_md(report: dict) -> str:
 
     # 标题
     lines.append(f"📊 **评论业务质检日报** | {d}")
-    lines.append(f"")
     lines.append(f"**目标**：{ACC_TARGET:.2f}%")
-    lines.append(f"")
     lines.append("---")
 
     # 一、今日结论
@@ -842,33 +843,32 @@ def report_to_wecom_md(report: dict) -> str:
             pp_change = f"，较昨日{'+' if pp > 0 else ''}{pp:.2f}pp"
     lines.append(f"{overall_flag} {overall_label} | 正确率 **{o['raw_acc']:.2f}%**（目标 {ACC_TARGET:.2f}%）{pp_change}")
     lines.append("")
-    lines.append(_build_conclusion(report, grouped))
+    conclusion_text = _build_conclusion(report, grouped)
+    # 结论也截断，防止过长
+    if len(conclusion_text) > 300:
+        conclusion_text = conclusion_text[:297] + "..."
+    lines.append(conclusion_text)
 
     # 二、分组表现（表格化）
     lines.append("")
     lines.append("## 二、分组表现")
-    lines.append("")
     lines.append("| 业务组 | 正确率 | 质检量 | 出错数 | 状态 |")
     lines.append("|:------:|:------:|:------:|:------:|:----:|")
 
-    # 按 A组、B组 顺序展示
     for mb_name in ["A组", "B组"]:
         if mb_name not in grouped:
             continue
         g = grouped[mb_name]
         flag = g["flag"]
         acc = g["raw_acc"]
-        # 母业务行
         lines.append(f"| {mb_name} | {acc:.2f}% | {g['total_qa']:,} | {g['total_err']} | {flag} |")
-        # 子业务行（只展示 B组的拆分）
         if mb_name == "B组" and len(g["subs"]) > 1:
             for s in sorted(g["subs"], key=lambda x: x["sub_biz"]):
                 s_flag = _acc_flag(s["raw_acc"])
-                sub_name = s["sub_biz"].replace("B组-", "")  # 简化显示
+                sub_name = s["sub_biz"].replace("B组-", "")
                 lines.append(f"| B组-{sub_name} | {s['raw_acc']:.2f}% | {s['qa_cnt']:,} | {s['error_total']} | {s_flag} |")
 
     # 结论行
-    lines.append("")
     worst_group = None
     worst_acc = 100.0
     for mb_name, g in grouped.items():
@@ -877,41 +877,38 @@ def report_to_wecom_md(report: dict) -> str:
             worst_group = mb_name
     if worst_group and worst_acc < ACC_TARGET:
         gap = ACC_TARGET - worst_acc
-        lines.append(f"**结论**：{worst_group}正确率 {worst_acc:.2f}%，低于目标 {gap:.2f}pp，为当日拖后腿业务组。")
+        lines.append(f"\n**结论**：{worst_group}正确率 {worst_acc:.2f}%，低于目标 {gap:.2f}pp，为当日拖后腿业务组。")
     else:
-        lines.append(f"**结论**：各业务组均达标，整体质量稳定。")
+        lines.append(f"\n**结论**：各业务组均达标，整体质量稳定。")
 
-    # 三、AI 洞察（如果有）
+    # 三、AI 洞察（严格限制长度）
     ai_insight = call_deepseek(report)
     if ai_insight:
+        # AI 洞察严格控制在 400 字以内
+        if len(ai_insight) > 400:
+            ai_insight = ai_insight[:397] + "..."
         lines.append("")
         lines.append("---")
-        lines.append("")
         lines.append("## 三、AI 洞察")
-        lines.append("")
-        lines.append(f"> {ai_insight}")
+        lines.append(f"> 🟡 **{ai_insight}")
 
     # 四、重点风险
     lines.append("")
     lines.append("---")
-    lines.append("")
     lines.append("## 四、重点风险")
     risk_lines = _build_risks(report, grouped)
-    for r in risk_lines:
+    # 风险条数也控制
+    for r in risk_lines[:12]:  # 最多 12 条
         lines.append(f"- {r}")
+    if len(risk_lines) > 12:
+        lines.append(f"- ...（共 {len(risk_lines)} 条风险项，查看完整日报）")
 
-    # 五、处理动作
+    # 五、处理动作（每个分类只取首条）
     lines.append("")
     lines.append("## 五、处理动作")
     lines.append(f"- **交付侧**：{actions['交付侧'][0]}")
-    for a in actions["交付侧"][1:]:
-        lines.append(f"  - {a}")
     lines.append(f"- **质培侧**：{actions['质培侧'][0]}")
-    for a in actions["质培侧"][1:]:
-        lines.append(f"  - {a}")
     lines.append(f"- **次日关注**：{actions['次日关注'][0]}")
-    for a in actions["次日关注"][1:]:
-        lines.append(f"  - {a}")
 
     # 六、补充风险
     lines.append("")
@@ -1077,6 +1074,70 @@ def send_wecom_webhook(content: str, mentioned_list: list[str] | None = None) ->
     return resp.json()
 
 
+# ── 企微 Markdown 长度限制 ──
+WECOM_MAX_LEN = 4096  # 企微 webhook 硬限制
+
+
+def _split_for_wecom(content: str, max_len: int = WECOM_MAX_LEN) -> list[str]:
+    """将超长内容拆分为多条消息，每条不超过 max_len 字符。
+
+    策略：
+    1. 内容 <= max_len → 原样返回单条
+    2. 超长时按「标题+核心数据」优先，逐段截断
+    """
+    if len(content) <= max_len:
+        return [content]
+
+    lines = content.split("\n")
+    parts: list[str] = []
+    current: list[str] = []
+
+    for line in lines:
+        # 单行过长（如 AI 洞察段落），强制截断
+        if len(line) > max_len - 50:
+            line = line[:max_len - 80] + "...（内容过长已截断，查看完整日报）"
+
+        if sum(len(l) + 1 for l in current) + len(line) + 1 > max_len and current:
+            parts.append("\n".join(current))
+            current = [line]
+        else:
+            current.append(line)
+
+    if current:
+        parts.append("\n".join(current))
+
+    return parts
+
+
+def send_wecom_webhook_with_split(content: str, mentioned_list: list[str] | None = None) -> tuple[bool, str]:
+    """发送企微消息，自动处理超长内容的分片。
+
+    Returns:
+        (success: bool, message: str)
+    """
+    parts = _split_for_wecom(content)
+    errors: list[str] = []
+
+    for idx, part in enumerate(parts):
+        # 最后一条追加提示
+        if idx == len(parts) - 1 and len(parts) > 1:
+            part += "\n\n> 📄 以上为日报摘要，[完整版](点击此处查看详情)请查看归档文件。"
+        elif len(parts) > 1:
+            header = f"📊 **评论业务质检日报** ({idx+1}/{len(parts)})\n---\n"
+            part = header + part
+
+        try:
+            result = send_wecom_webhook(part, mentioned_list=mentioned_list)
+            if result.get("errcode") != 0:
+                errors.append(f"第{idx+1}段推送失败: {result}")
+        except Exception as e:
+            errors.append(f"第{idx+1}段异常: {e}")
+
+    if errors:
+        return False, "; ".join(errors)
+    return True, f"共 {len(parts)} 条消息已推送"
+
+
 # ═══════════════════════════════════════════════════════════════
 #  入口
 # ═══════════════════════════════════════════════════════════════
@@ -1178,12 +1239,13 @@ def main() -> None:
                 print(f"⚠️ 无数据，推送告警失败: {result}")
             return
         mentioned = args.mention if args.mention else None
-        result = send_wecom_webhook(wecom_md, mentioned_list=mentioned)
-        if result.get("errcode") == 0:
-            print("✅ 已推送到企业微信群")
+        # 使用支持自动分片的推送（解决企微 4096 字符限制）
+        success, msg = send_wecom_webhook_with_split(wecom_md, mentioned_list=mentioned)
+        if success:
+            print(f"✅ {msg}")
             _mark_date_sent(report_date)
         else:
-            print(f"❌ 推送失败: {result}")
+            print(f"❌ 推送失败: {msg}")
             sys.exit(1)
     else:
         print("\n⏭️ dry-run 模式，未推送。")

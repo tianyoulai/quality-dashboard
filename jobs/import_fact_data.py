@@ -474,11 +474,12 @@ def prepare_qa_frame(raw_df: pd.DataFrame, source_file_name: str, batch_id: str,
     if sub_biz_from_file != "未识别":
         mother_biz = pd.Series(mother_biz_from_file, index=index)
         sub_biz = pd.Series(sub_biz_from_file, index=index)
+        # 如果文件名识别成功，group_name 使用映射后的 sub_biz
+        group_name = pd.Series(sub_biz_from_file, index=index)
     else:
         mother_biz = coalesce_series(clean_text(mapped["mother_biz"]), pd.Series("未识别", index=index))
         sub_biz = coalesce_series(clean_text(mapped["sub_biz"]), pd.Series("未识别", index=index))
-
-    group_name = coalesce_series(clean_text(mapped["group_name"]), clean_text(mapped["mother_biz"]), clean_text(mapped["sub_biz"]))
+        group_name = coalesce_series(clean_text(mapped["group_name"]), clean_text(mapped["mother_biz"]), clean_text(mapped["sub_biz"]))
     queue_name = coalesce_series(clean_text(mapped["queue_name"]), clean_text(mapped["sub_biz"]))
     reviewer_name = clean_text(mapped["reviewer_name"])
     qa_owner_name = clean_text(mapped["qa_owner_name"])
@@ -712,7 +713,7 @@ def insert_new_rows(
         return 0, 0
 
     # 使用 TiDB insert_dataframe 批量插入
-    inserted_rows = conn.insert_dataframe(table_name, df_to_insert)
+    inserted_rows = conn.insert_dataframe(table_name, stage_df)
     dedup_rows = 0
     return inserted_rows, dedup_rows
 

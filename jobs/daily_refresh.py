@@ -11,7 +11,9 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
+# 自动检测 Python 解释器：优先 .venv，否则用 sys.executable
+_VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python"
+VENV_PYTHON = str(_VENV_PYTHON) if _VENV_PYTHON.exists() else sys.executable
 DEFAULT_DB = ""
 
 # 企微缓存目录路径（macOS）

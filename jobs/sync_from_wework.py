@@ -245,6 +245,7 @@ def run_import(file_paths: list[Path]) -> tuple[int, int, list[str]]:
                 str(PROJECT_ROOT / ".venv/bin/python"),
                 str(PROJECT_ROOT / "jobs/import_fact_data.py"),
                 "--qa-file", str(file_path),
+                "--skip-refresh",  # 由 run_refresh 统一刷新 mart
             ]
             result = subprocess.run(
                 cmd,
@@ -373,6 +374,7 @@ def main():
     refresh_success = run_refresh()
     
     # 5. 推送企微消息（只在有新文件导入时推送）
+    config = load_config()
     webhook_key = config.get("wecom_webhook_key")
     if webhook_key and success_count > 0:
         today = date.today().strftime("%Y-%m-%d")

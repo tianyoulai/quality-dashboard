@@ -109,7 +109,7 @@ COLOR_BAD = "#EF4444"
 COLOR_WARN = "#F59E0B"
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def get_data_date_range() -> tuple[date, date]:
     """获取数据库中的日期范围，用于设置默认日期"""
     row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
@@ -124,12 +124,12 @@ def get_data_date_range() -> tuple[date, date]:
     return min_val, max_val
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_group_overview(grain: str, selected_date: date) -> dict:
     return service.load_dashboard_payload(grain, selected_date)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_group_detail(
     grain: str,
     selected_date: date,
@@ -150,7 +150,7 @@ def load_group_detail(
     )
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_queue_overview_data(
     grain: str,
     start_date: date,
@@ -229,7 +229,7 @@ def load_queue_overview_data(
     return {"queue_df": queue_df, "trend_df": trend_df}
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_alert_history(alert_id: str | None) -> pd.DataFrame:
     if not alert_id:
         return pd.DataFrame()
@@ -533,7 +533,10 @@ if not alerts_df.empty:
             alert_show = pd.DataFrame()
             alert_show["级别"] = display_alerts["severity"]
             alert_show["规则"] = display_alerts.apply(lambda r: r.get("rule_name") or r.get("rule_code", ""), axis=1)
-            alert_show["对象"] = display_alerts.apply(lambda r: r.get("group_name", "") + " / " + r.get("queue_name", ""), axis=1)
+            alert_show["对象"] = display_alerts["target_key"]
+            alert_show["当前值"] = display_alerts.apply(lambda r: f"{r.get('metric_value', 0):.2f}%" if r.get('metric_value') else "—", axis=1)
+            alert_show["阈值"] = display_alerts.apply(lambda r: f"{r.get('threshold_value', 0):.2f}%" if r.get('threshold_value') else "—", axis=1)
+            alert_show["责任人"] = display_alerts["owner_name"]
             alert_show["状态"] = display_alerts["alert_status"].apply(service.get_alert_status_label)
             alert_show["时间"] = display_alerts["alert_date"]
             st.dataframe(alert_show, use_container_width=True, hide_index=True)
@@ -829,27 +832,30 @@ with rank_col:
     st.markdown("#### 🏆 队列正确率排名")
     if not detail_queue_df.empty:
         # 添加提示信息
-        st.caption(f"共 {len(detail_queue_df)} 个队列，按质检量降序排列")
+        st.caption(f"共 {len(detail_queue_df)} 个队列，按最终正确率升序排列（问题队列优先展示）")
         
         queue_show = pd.DataFrame()
         queue_show["队列"] = detail_queue_df["queue_name"]
-        queue_show["质检量"] = detail_queue_df["qa_cnt"].apply(lambda x: f"{int(x):,}")
-        queue_show["原始正确率"] = detail_queue_df["raw_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        queue_show["最终正确率"] = detail_queue_df["final_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        queue_show["错判率"] = detail_queue_df["misjudge_rate"].apply(lambda x: f"{x:.2f}%")
-        queue_show["漏判率"] = detail_queue_df["missjudge_rate"].apply(lambda x: f"{x:.2f}%")
-        
-        # 设置表格样式
+        queue_show["质检量"] = detail_queue_df["qa_cnt"]
+        queue_show["出错量"] = detail_queue_df["final_error_cnt"]
+        queue_show["原始正确率"] = detail_queue_df["raw_accuracy_rate"]
+        queue_show["最终正确率"] = detail_queue_df["final_accuracy_rate"]
+        queue_show["错判率"] = detail_queue_df["misjudge_rate"]
+        queue_show["漏判率"] = detail_queue_df["missjudge_rate"]
+
         st.dataframe(
-            queue_show, 
-            use_container_width=True, 
-            hide_index=True, 
+            queue_show,
+            use_container_width=True,
+            hide_index=True,
             height=320,
             column_config={
                 "队列": st.column_config.TextColumn("队列", width="medium"),
-                "质检量": st.column_config.TextColumn("质检量", width="small"),
-                "原始正确率": st.column_config.TextColumn("原始正确率", width="small"),
-                "最终正确率": st.column_config.TextColumn("最终正确率", width="small"),
+                "质检量": st.column_config.NumberColumn("质检量", width="small", format="d"),
+                "出错量": st.column_config.NumberColumn("出错量", width="small", format="d"),
+                "原始正确率": st.column_config.NumberColumn("原始正确率", width="small", format="%.2f%%"),
+                "最终正确率": st.column_config.NumberColumn("最终正确率", width="small", format="%.2f%%"),
+                "错判率": st.column_config.NumberColumn("错判率", width="small", format="%.2f%%"),
+                "漏判率": st.column_config.NumberColumn("漏判率", width="small", format="%.2f%%"),
             }
         )
     else:
@@ -859,24 +865,28 @@ with auditor_col:
     st.markdown("#### 👥 审核人视图")
     if not final_auditor_df.empty:
         # 添加提示信息
-        st.caption(f"共 {len(final_auditor_df)} 位审核人")
+        st.caption(f"共 {len(final_auditor_df)} 位审核人，按最终正确率升序排列（需关注的审核人优先展示）")
         
         auditor_show = pd.DataFrame()
         auditor_show["审核人"] = final_auditor_df["reviewer_name"]
-        auditor_show["质检量"] = final_auditor_df["qa_cnt"].apply(lambda x: f"{int(x):,}")
-        auditor_show["原始正确率"] = final_auditor_df["raw_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        auditor_show["最终正确率"] = final_auditor_df["final_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        auditor_show["错判量"] = final_auditor_df["misjudge_cnt"].apply(lambda x: f"{int(x):,}")
-        auditor_show["漏判量"] = final_auditor_df["missjudge_cnt"].apply(lambda x: f"{int(x):,}")
-        
+        auditor_show["质检量"] = final_auditor_df["qa_cnt"]
+        auditor_show["原始正确率"] = final_auditor_df["raw_accuracy_rate"]
+        auditor_show["最终正确率"] = final_auditor_df["final_accuracy_rate"]
+        auditor_show["错判量"] = final_auditor_df["misjudge_cnt"]
+        auditor_show["漏判量"] = final_auditor_df["missjudge_cnt"]
+
         st.dataframe(
-            auditor_show, 
-            use_container_width=True, 
-            hide_index=True, 
+            auditor_show,
+            use_container_width=True,
+            hide_index=True,
             height=320,
             column_config={
                 "审核人": st.column_config.TextColumn("审核人", width="medium"),
-                "质检量": st.column_config.TextColumn("质检量", width="small"),
+                "质检量": st.column_config.NumberColumn("质检量", width="small", format="d"),
+                "原始正确率": st.column_config.NumberColumn("原始正确率", width="small", format="%.2f%%"),
+                "最终正确率": st.column_config.NumberColumn("最终正确率", width="small", format="%.2f%%"),
+                "错判量": st.column_config.NumberColumn("错判量", width="small", format="d"),
+                "漏判量": st.column_config.NumberColumn("漏判量", width="small", format="d"),
             }
         )
     else:
@@ -895,7 +905,7 @@ with label_col:
     if not label_df.empty:
         # 添加统计信息
         total_labels = label_df["cnt"].sum()
-        st.caption(f"前10个标签，共 {total_labels:,} 条质检记录")
+        st.caption(f"前10个标签（按质检量降序），共 {total_labels:,} 条质检记录")
         
         # 使用水平条形图展示
         fig_label = px.bar(
@@ -923,7 +933,7 @@ with owner_col:
     owner_df = load_qa_owner_distribution_cached(grain, selected_date, selected_group, top_n=10)
     if not owner_df.empty:
         # 添加统计信息
-        st.caption(f"前10名质检员")
+        st.caption(f"前10名质检员（按质检量降序）")
         
         # 表格展示
         owner_show = pd.DataFrame()

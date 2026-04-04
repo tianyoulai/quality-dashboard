@@ -49,7 +49,7 @@ def main() -> None:
     args = parse_args()
     repo = DashboardRepository(args.db_path)
 
-    repo.initialize_schema()
+    # repo.initialize_schema()  # 视图已由 refresh_warehouse.py 初始化，避免重复创建导致的问题
 
     overall = repo.fetch_one(
         """

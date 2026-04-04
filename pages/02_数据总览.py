@@ -34,7 +34,7 @@ st.markdown("""
 repo = DashboardRepository()
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def get_date_range() -> tuple[date, date]:
     row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
     if not row or row.get("min_d") is None:
@@ -48,17 +48,17 @@ def get_date_range() -> tuple[date, date]:
     return min_val, max_val
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_all_group_daily() -> pd.DataFrame:
     return repo.fetch_df("SELECT * FROM mart_day_group ORDER BY biz_date, group_name")
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_all_group_weekly() -> pd.DataFrame:
     return repo.fetch_df("SELECT * FROM mart_week_group ORDER BY week_begin_date, group_name")
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, ttl=300)
 def load_all_group_monthly() -> pd.DataFrame:
     return repo.fetch_df("SELECT * FROM mart_month_group ORDER BY month_begin_date, group_name")
 

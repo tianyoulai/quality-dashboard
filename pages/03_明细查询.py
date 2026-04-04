@@ -1,7 +1,7 @@
 """明细查询页：灵活筛选 + 下钻 + CSV 导出。"""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -120,7 +120,7 @@ def query_detail(
     sql = f"""
     SELECT
         biz_date AS 业务日期,
-        COALESCE(group_name, '—') AS 组别,
+        COALESCE(sub_biz, '—') AS 组别,
         COALESCE(queue_name, '—') AS 队列,
         COALESCE(reviewer_name, '—') AS 审核人,
         COALESCE(content_type, '—') AS 内容类型,
@@ -128,18 +128,18 @@ def query_detail(
         final_review_result AS 最终结果,
         appeal_status AS 申诉状态,
         appeal_result AS 申诉结果,
-        CASE WHEN is_raw_correct THEN '正确' ELSE '错误' END AS 原始判断,
-        CASE WHEN is_final_correct THEN '正确' ELSE '错误' END AS 最终判断,
-        CASE WHEN is_misjudge THEN '是' ELSE '否' END AS 错判,
-        CASE WHEN is_missjudge THEN '是' ELSE '否' END AS 漏判,
-        CASE WHEN is_appeal_reversed THEN '是' ELSE '否' END AS 申诉改判,
+        CASE WHEN is_raw_correct = 1 THEN '正确' ELSE '错误' END AS 原始判断,
+        CASE WHEN is_final_correct = 1 THEN '正确' ELSE '错误' END AS 最终判断,
+        CASE WHEN is_misjudge = 1 THEN '是' ELSE '否' END AS 错判,
+        CASE WHEN is_missjudge = 1 THEN '是' ELSE '否' END AS 漏判,
+        CASE WHEN is_appeal_reversed = 1 THEN '是' ELSE '否' END AS 申诉改判,
         COALESCE(error_type, '—') AS 错误类型,
         COALESCE(error_reason, '—') AS 错误归因,
         comment_text AS 评论文本,
         COALESCE(qa_note, '—') AS 备注,
         join_key AS 关联主键,
         qa_time AS 质检时间
-    FROM vw_qa_base
+    FROM fact_qa_event
     WHERE {where}
     ORDER BY qa_time IS NULL, qa_time DESC, biz_date DESC
     LIMIT {int(limit)}
@@ -165,7 +165,9 @@ with st.container(border=True):
     
     c1, c2, c3 = st.columns(3)
     with c1:
-        date_start = st.date_input("起始日期", value=opts["min_date"], key="detail_start")
+        # 默认查最近7天，减少首次加载时间
+        default_start = max(opts["min_date"], opts["max_date"] - timedelta(days=6))
+        date_start = st.date_input("起始日期", value=default_start, key="detail_start")
     with c2:
         date_end = st.date_input("截止日期", value=opts["max_date"], key="detail_end")
     with c3:

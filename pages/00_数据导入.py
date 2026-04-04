@@ -375,26 +375,70 @@ with tab_import[3]:
     with col_run:
         if st.button("执行一键刷新", key="run_refresh"):
             with st.spinner("正在刷新全链路..."):
-                import subprocess
-                args = [".venv/bin/python", "jobs/daily_refresh.py"]
-                if skip_gsheet:
-                    args.append("--skip-gsheet")
+                # 使用直接函数调用（兼容 Streamlit Cloud 和本地环境）
+                try:
+                    from jobs.daily_refresh import main as _refresh_main
+                    import sys as _sys
+                    from io import StringIO
 
-                result = subprocess.run(
-                    args,
-                    capture_output=True,
-                    text=True,
-                    cwd=Path(__file__).parent.parent,
-                )
-                if result.returncode == 0:
-                    st.success("一键刷新完成！")
-                    with st.expander("查看刷新日志", expanded=False):
-                        st.code(result.stdout, language="text")
-                else:
-                    st.error(f"刷新失败：\n{result.stderr}")
+                    # 捕获 daily_refresh 的输出
+                    old_stdout = _sys.stdout
+                    old_stderr = _sys.stderr
+                    captured_out = StringIO()
+                    captured_err = StringIO()
+                    try:
+                        _sys.stdout = captured_out
+                        _sys.stderr = captured_err
+                        # 传入 --skip-gsheet 参数（通过 sys.argv）
+                        old_argv = _sys.argv
+                        _sys.argv = ["daily_refresh.py"]
+                        if skip_gsheet:
+                            _sys.argv.append("--skip-gsheet")
+                        _refresh_main()
+                        _sys.argv = old_argv
+                        exit_code = 0
+                    except SystemExit as e:
+                        exit_code = e.code if e.code is not None else 0
+                    finally:
+                        _sys.stdout = old_stdout
+                        _sys.stderr = old_stderr
+
+                    stdout_val = captured_out.getvalue()
+                    stderr_val = captured_err.getvalue()
+
+                    if exit_code == 0:
+                        st.success("一键刷新完成！")
+                        with st.expander("查看刷新日志", expanded=False):
+                            st.code(stdout_val, language="text")
+                            if stderr_val.strip():
+                                st.warning(stderr_val)
+                    else:
+                        st.error(f"刷新失败 (exit code {exit_code})：\n{stderr_val or stdout_val}")
+                except Exception as e:
+                    # fallback：如果 import 失败，尝试 subprocess（用于本地开发）
+                    import subprocess, shutil, sys
+                    python_exe = (
+                        Path(sys.executable)  # 当前 Python 解释器
+                    )
+                    args = [str(python_exe), "jobs/daily_refresh.py"]
+                    if skip_gsheet:
+                        args.append("--skip-gsheet")
+
+                    result = subprocess.run(
+                        args,
+                        capture_output=True,
+                        text=True,
+                        cwd=Path(__file__).parent.parent,
+                    )
+                    if result.returncode == 0:
+                        st.success("一键刷新完成！")
+                        with st.expander("查看刷新日志", expanded=False):
+                            st.code(result.stdout, language="text")
+                    else:
+                        st.error(f"刷新失败：\n{result.stderr}")
 
     st.markdown("---")
-    st.caption("💡 提示：定时任务每天 18:00 会自动执行一键刷新，通常不需要手动触发。")
+    st.caption("💡 提示：定时任务每天 13:00 会自动同步数据，15:00 推送日报，通常不需要手动触发。")
 
 # ==================== 上传记录 ====================
 with tab_import[4]:

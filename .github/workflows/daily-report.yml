@@ -51,26 +51,36 @@ jobs:
         run: |
           # 直接生成完整的 settings.json，代码从该文件读取所有配置
           mkdir -p config
-          cat > config/settings.json << ENDJSON
-          {
-            "wecom_webhook_url": "${WECOM_WEBHOOK}",
-            "wecom_webhook_key": "",
-            "daily_report_hour": 18,
-            "daily_report_minute": 0,
-            "dashboard_url": "https://quality-dashboard-2026.streamlit.app/",
-            "db_path": "data/warehouse/qa.duckdb",
-            "tidb": {
-              "host": "${TIDB_HOST}",
-              "port": ${TIDB_PORT},
-              "user": "${TIDB_USER}",
-              "password": "${TIDB_PASSWORD}",
-              "database": "${TIDB_DATABASE}",
-              "charset": "utf8mb4"
-            }
+
+          # 生成 settings.json
+          python3 << 'PYEOF'
+          import json
+          import os
+
+          config = {
+              "wecom_webhook_url": os.environ.get("WECOM_WEBHOOK", ""),
+              "wecom_webhook_key": "",
+              "daily_report_hour": 18,
+              "daily_report_minute": 0,
+              "dashboard_url": "https://quality-dashboard-2026.streamlit.app/",
+              "db_path": "data/warehouse/qa.duckdb",
+              "tidb": {
+                  "host": os.environ.get("TIDB_HOST", ""),
+                  "port": int(os.environ.get("TIDB_PORT", "4000")),
+                  "user": os.environ.get("TIDB_USER", ""),
+                  "password": os.environ.get("TIDB_PASSWORD", ""),
+                  "database": os.environ.get("TIDB_DATABASE", ""),
+                  "charset": "utf8mb4"
+              }
           }
-          ENDJSON
-          echo "Config prepared."
-          cat config/settings.json
+
+          with open("config/settings.json", "w") as f:
+              json.dump(config, f, indent=2)
+
+          print("Config prepared:")
+          with open("config/settings.json", "r") as f:
+              print(f.read())
+          PYEOF
 
       - name: Run daily report
         env:
