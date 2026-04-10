@@ -185,94 +185,93 @@ with tab_import[0]:
                         st.markdown("**数据预览（前5行）：**")
                         st.dataframe(preview["preview_df"].head(), use_container_width=True)
 
-    if do_import:
-        success_count = 0
-        fail_count = 0
-        skip_count = 0
-        logs = []
+        if do_import:
+            success_count = 0
+            fail_count = 0
+            skip_count = 0
+            logs = []
 
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+            progress_bar = st.progress(0)
+            status_text = st.empty()
 
-        for idx, qa_file in enumerate(qa_files):
-            status_text.text(f"正在导入 {qa_file.name}...")
-            progress_bar.progress((idx + 1) / len(qa_files) / 2)  # 前半段：导入
+            for idx, qa_file in enumerate(qa_files):
+                status_text.text(f"正在导入 {qa_file.name}...")
+                progress_bar.progress((idx + 1) / len(qa_files) / 2)
 
-            with tempfile.NamedTemporaryFile(suffix=Path(qa_file.name).suffix, delete=False) as tmp:
-                tmp.write(qa_file.getvalue())
-                tmp_path = tmp.name
+                with tempfile.NamedTemporaryFile(suffix=Path(qa_file.name).suffix, delete=False) as tmp:
+                    tmp.write(qa_file.getvalue())
+                    tmp_path = tmp.name
 
-            try:
-                result = subprocess.run(
-                    [sys.executable, str(PROJECT_ROOT / "jobs/import_fact_data.py"), "--qa-file", tmp_path, "--source-name", qa_file.name],
-                    capture_output=True,
-                    text=True,
-                    cwd=str(PROJECT_ROOT),
-                )
-                if result.returncode == 0:
-                    # 解析结果判断是否跳过
-                    import json
-                    try:
-                        output = json.loads(result.stdout)
-                        inserted = output.get("qa_files", [{}])[0].get("inserted_rows", 0)
-                        if inserted == 0:
-                            skip_count += 1
-                            logs.append(f"⏭️ {qa_file.name} 已跳过（文件内容已存在）")
-                        else:
+                try:
+                    result = subprocess.run(
+                        [sys.executable, str(PROJECT_ROOT / "jobs/import_fact_data.py"), "--qa-file", tmp_path, "--source-name", qa_file.name],
+                        capture_output=True,
+                        text=True,
+                        cwd=str(PROJECT_ROOT),
+                    )
+                    if result.returncode == 0:
+                        import json
+                        try:
+                            output = json.loads(result.stdout)
+                            inserted = output.get("qa_files", [{}])[0].get("inserted_rows", 0)
+                            if inserted == 0:
+                                skip_count += 1
+                                logs.append(f"⏭️ {qa_file.name} 已跳过（文件内容已存在）")
+                            else:
+                                success_count += 1
+                                logs.append(f"✅ {qa_file.name} 导入成功（{inserted} 行）")
+                        except Exception:
                             success_count += 1
-                            logs.append(f"✅ {qa_file.name} 导入成功（{inserted} 行）")
-                    except Exception:
-                        success_count += 1
-                        logs.append(f"✅ {qa_file.name} 导入成功")
-                else:
-                    fail_count += 1
-                    logs.append(f"❌ {qa_file.name} 导入失败：{result.stderr[:200]}")
-            finally:
-                Path(tmp_path).unlink(missing_ok=True)
+                            logs.append(f"✅ {qa_file.name} 导入成功")
+                    else:
+                        fail_count += 1
+                        logs.append(f"❌ {qa_file.name} 导入失败：{result.stderr[:200]}")
+                finally:
+                    Path(tmp_path).unlink(missing_ok=True)
 
-        # 导入完成后自动刷新数仓+告警
-        if success_count > 0:
-            status_text.text("正在刷新数仓和告警...")
-            progress_bar.progress(0.75)
-            try:
-                refresh_result = subprocess.run(
-                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_warehouse.py")],
-                    capture_output=True, text=True,
-                    cwd=str(PROJECT_ROOT),
-                )
-                if refresh_result.returncode == 0:
-                    logs.append("🔄 数仓刷新成功")
-                else:
-                    logs.append(f"⚠️ 数仓刷新失败：{refresh_result.stderr[:200]}")
-            except Exception as e:
-                logs.append(f"⚠️ 数仓刷新异常：{e}")
+            # 导入完成后自动刷新数仓+告警
+            if success_count > 0:
+                status_text.text("正在刷新数仓和告警...")
+                progress_bar.progress(0.75)
+                try:
+                    refresh_result = subprocess.run(
+                        [sys.executable, str(PROJECT_ROOT / "jobs/refresh_warehouse.py")],
+                        capture_output=True, text=True,
+                        cwd=str(PROJECT_ROOT),
+                    )
+                    if refresh_result.returncode == 0:
+                        logs.append("🔄 数仓刷新成功")
+                    else:
+                        logs.append(f"⚠️ 数仓刷新失败：{refresh_result.stderr[:200]}")
+                except Exception as e:
+                    logs.append(f"⚠️ 数仓刷新异常：{e}")
 
-            try:
-                alert_result = subprocess.run(
-                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_alerts.py")],
-                    capture_output=True, text=True,
-                    cwd=str(PROJECT_ROOT),
-                )
-                if alert_result.returncode == 0:
-                    logs.append("🔔 告警刷新成功")
-                else:
-                    logs.append(f"⚠️ 告警刷新失败：{alert_result.stderr[:200]}")
-            except Exception as e:
-                logs.append(f"⚠️ 告警刷新异常：{e}")
+                try:
+                    alert_result = subprocess.run(
+                        [sys.executable, str(PROJECT_ROOT / "jobs/refresh_alerts.py")],
+                        capture_output=True, text=True,
+                        cwd=str(PROJECT_ROOT),
+                    )
+                    if alert_result.returncode == 0:
+                        logs.append("🔔 告警刷新成功")
+                    else:
+                        logs.append(f"⚠️ 告警刷新失败：{alert_result.stderr[:200]}")
+                except Exception as e:
+                    logs.append(f"⚠️ 告警刷新异常：{e}")
 
-        progress_bar.progress(1.0)
-        progress_bar.empty()
-        status_text.empty()
+            progress_bar.progress(1.0)
+            progress_bar.empty()
+            status_text.empty()
 
-        if success_count > 0:
-            st.success(f"成功导入 {success_count} 个文件，已自动刷新数仓和告警" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
-        elif skip_count > 0:
-            st.warning(f"所有文件均已上传过，跳过 {skip_count} 个文件")
-        else:
-            st.error("所有文件导入失败")
+            if success_count > 0:
+                st.success(f"成功导入 {success_count} 个文件，已自动刷新数仓和告警" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
+            elif skip_count > 0:
+                st.warning(f"所有文件均已上传过，跳过 {skip_count} 个文件")
+            else:
+                st.error("所有文件导入失败")
 
-        with st.expander("查看导入日志", expanded=(fail_count > 0)):
-            st.code("\n".join(logs), language="text")
+            with st.expander("查看导入日志", expanded=(fail_count > 0)):
+                st.code("\n".join(logs), language="text")
 
     st.markdown("---")
     st.caption("💡 提示：导入后自动刷新数仓和告警，无需手动操作。定时任务每天 13:00 也会自动同步企微文件。")
