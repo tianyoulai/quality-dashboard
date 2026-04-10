@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
+import sys
 import tempfile
 from datetime import date, timedelta
 from pathlib import Path
@@ -12,6 +14,9 @@ import streamlit as st
 from storage.repository import DashboardRepository
 
 st.set_page_config(page_title="质培运营看板-数据导入", page_icon="📤", layout="wide")
+
+# 项目根目录（所有 subprocess 调用都用绝对路径）
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 repo = DashboardRepository()
 
@@ -152,6 +157,9 @@ with tab_import[0]:
     if qa_files:
         st.info(f"📋 已选择 {len(qa_files)} 个文件：")
         
+        # 导入按钮放在文件列表正下方，显眼位置（type="primary" 让按钮更醒目）
+        do_import = st.button("批量导入质检数据", key="import_qa", type="primary")
+        
         # 预览每个文件
         for f in qa_files:
             with st.expander(f"📄 {f.name} ({f.size / 1024:.1f} KB)", expanded=False):
@@ -177,7 +185,7 @@ with tab_import[0]:
                         st.markdown("**数据预览（前5行）：**")
                         st.dataframe(preview["preview_df"].head(), use_container_width=True)
 
-    if st.button("批量导入质检数据", key="import_qa", disabled=(not qa_files)):
+    if do_import:
         success_count = 0
         fail_count = 0
         skip_count = 0
@@ -188,19 +196,18 @@ with tab_import[0]:
 
         for idx, qa_file in enumerate(qa_files):
             status_text.text(f"正在导入 {qa_file.name}...")
-            progress_bar.progress((idx + 1) / len(qa_files))
+            progress_bar.progress((idx + 1) / len(qa_files) / 2)  # 前半段：导入
 
             with tempfile.NamedTemporaryFile(suffix=Path(qa_file.name).suffix, delete=False) as tmp:
                 tmp.write(qa_file.getvalue())
                 tmp_path = tmp.name
 
             try:
-                import subprocess
                 result = subprocess.run(
-                    [".venv/bin/python", "jobs/import_fact_data.py", "--qa-file", tmp_path, "--source-name", qa_file.name],
+                    [sys.executable, str(PROJECT_ROOT / "jobs/import_fact_data.py"), "--qa-file", tmp_path, "--source-name", qa_file.name],
                     capture_output=True,
                     text=True,
-                    cwd=Path(__file__).parent.parent,
+                    cwd=str(PROJECT_ROOT),
                 )
                 if result.returncode == 0:
                     # 解析结果判断是否跳过
@@ -223,11 +230,42 @@ with tab_import[0]:
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
 
+        # 导入完成后自动刷新数仓+告警
+        if success_count > 0:
+            status_text.text("正在刷新数仓和告警...")
+            progress_bar.progress(0.75)
+            try:
+                refresh_result = subprocess.run(
+                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_warehouse.py")],
+                    capture_output=True, text=True,
+                    cwd=str(PROJECT_ROOT),
+                )
+                if refresh_result.returncode == 0:
+                    logs.append("🔄 数仓刷新成功")
+                else:
+                    logs.append(f"⚠️ 数仓刷新失败：{refresh_result.stderr[:200]}")
+            except Exception as e:
+                logs.append(f"⚠️ 数仓刷新异常：{e}")
+
+            try:
+                alert_result = subprocess.run(
+                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_alerts.py")],
+                    capture_output=True, text=True,
+                    cwd=str(PROJECT_ROOT),
+                )
+                if alert_result.returncode == 0:
+                    logs.append("🔔 告警刷新成功")
+                else:
+                    logs.append(f"⚠️ 告警刷新失败：{alert_result.stderr[:200]}")
+            except Exception as e:
+                logs.append(f"⚠️ 告警刷新异常：{e}")
+
+        progress_bar.progress(1.0)
         progress_bar.empty()
         status_text.empty()
 
         if success_count > 0:
-            st.success(f"成功导入 {success_count} 个文件" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
+            st.success(f"成功导入 {success_count} 个文件，已自动刷新数仓和告警" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
         elif skip_count > 0:
             st.warning(f"所有文件均已上传过，跳过 {skip_count} 个文件")
         else:
@@ -237,7 +275,7 @@ with tab_import[0]:
             st.code("\n".join(logs), language="text")
 
     st.markdown("---")
-    st.caption("💡 提示：导入后需要点击「一键刷新」来更新数仓和告警。")
+    st.caption("💡 提示：导入后自动刷新数仓和告警，无需手动操作。定时任务每天 13:00 也会自动同步企微文件。")
 
 # ==================== 申诉数据 ====================
 with tab_import[1]:
@@ -289,19 +327,18 @@ with tab_import[1]:
 
         for idx, appeal_file in enumerate(appeal_files):
             status_text.text(f"正在导入 {appeal_file.name}...")
-            progress_bar.progress((idx + 1) / len(appeal_files))
+            progress_bar.progress((idx + 1) / len(appeal_files) / 2)
 
             with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
                 tmp.write(appeal_file.getvalue())
                 tmp_path = tmp.name
 
             try:
-                import subprocess
                 result = subprocess.run(
-                    [".venv/bin/python", "jobs/import_fact_data.py", "--appeal-file", tmp_path, "--source-name", appeal_file.name],
+                    [sys.executable, str(PROJECT_ROOT / "jobs/import_fact_data.py"), "--appeal-file", tmp_path, "--source-name", appeal_file.name],
                     capture_output=True,
                     text=True,
-                    cwd=Path(__file__).parent.parent,
+                    cwd=str(PROJECT_ROOT),
                 )
                 if result.returncode == 0:
                     import json
@@ -323,11 +360,42 @@ with tab_import[1]:
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
 
+        # 导入完成后自动刷新数仓+告警
+        if success_count > 0:
+            status_text.text("正在刷新数仓和告警...")
+            progress_bar.progress(0.75)
+            try:
+                refresh_result = subprocess.run(
+                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_warehouse.py")],
+                    capture_output=True, text=True,
+                    cwd=str(PROJECT_ROOT),
+                )
+                if refresh_result.returncode == 0:
+                    logs.append("🔄 数仓刷新成功")
+                else:
+                    logs.append(f"⚠️ 数仓刷新失败：{refresh_result.stderr[:200]}")
+            except Exception as e:
+                logs.append(f"⚠️ 数仓刷新异常：{e}")
+
+            try:
+                alert_result = subprocess.run(
+                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_alerts.py")],
+                    capture_output=True, text=True,
+                    cwd=str(PROJECT_ROOT),
+                )
+                if alert_result.returncode == 0:
+                    logs.append("🔔 告警刷新成功")
+                else:
+                    logs.append(f"⚠️ 告警刷新失败：{alert_result.stderr[:200]}")
+            except Exception as e:
+                logs.append(f"⚠️ 告警刷新异常：{e}")
+
+        progress_bar.progress(1.0)
         progress_bar.empty()
         status_text.empty()
 
         if success_count > 0:
-            st.success(f"成功导入 {success_count} 个文件" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
+            st.success(f"成功导入 {success_count} 个文件，已自动刷新数仓和告警" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
         elif skip_count > 0:
             st.warning(f"所有文件均已上传过，跳过 {skip_count} 个文件")
         else:
@@ -337,7 +405,7 @@ with tab_import[1]:
             st.code("\n".join(logs), language="text")
 
     st.markdown("---")
-    st.caption("💡 提示：申诉数据也可以通过「Google Sheet」标签页直接拉取，无需手动上传。")
+    st.caption("💡 提示：申诉数据也可以通过「Google Sheet」标签页直接拉取，无需手动上传。导入后自动刷新数仓和告警。")
 
 # ==================== Google Sheet ====================
 with tab_import[2]:
@@ -346,12 +414,11 @@ with tab_import[2]:
 
     if st.button("拉取 Google Sheet", key="pull_gsheet"):
         with st.spinner("正在拉取 Google Sheet..."):
-            import subprocess
             result = subprocess.run(
-                [".venv/bin/python", "jobs/pull_google_sheet.py"],
-                capture_output=True,
-                text=True,
-                cwd=Path(__file__).parent.parent,
+                    [sys.executable, str(PROJECT_ROOT / "jobs/pull_google_sheet.py")],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(PROJECT_ROOT),
             )
             if result.returncode == 0:
                 st.success("Google Sheet 拉取成功！")
@@ -366,79 +433,57 @@ with tab_import[2]:
 # ==================== 一键刷新 ====================
 with tab_import[3]:
     st.markdown("### 一键刷新数仓和告警")
-    st.caption("执行 `jobs/daily_refresh.py`，依次：拉取 Google Sheet → 刷新数仓 → 刷新告警 → 联表校验。")
+    st.caption("重新聚合 mart 表并刷新告警规则。通常在数据异常或手动修改数据后使用。")
 
-    col_skip, col_run = st.columns([1, 2])
-    with col_skip:
-        skip_gsheet = st.checkbox("跳过 Google Sheet 拉取", value=False)
+    if st.button("执行一键刷新", key="run_refresh"):
+        with st.spinner("正在刷新数仓和告警..."):
+            logs = []
+            all_ok = True
 
-    with col_run:
-        if st.button("执行一键刷新", key="run_refresh"):
-            with st.spinner("正在刷新全链路..."):
-                # 使用直接函数调用（兼容 Streamlit Cloud 和本地环境）
-                try:
-                    from jobs.daily_refresh import main as _refresh_main
-                    import sys as _sys
-                    from io import StringIO
+            # 1. 刷新数仓
+            try:
+                refresh_result = subprocess.run(
+                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_warehouse.py")],
+                    capture_output=True, text=True,
+                    cwd=str(PROJECT_ROOT),
+                    timeout=300,
+                )
+                if refresh_result.returncode == 0:
+                    logs.append("✅ 数仓刷新成功")
+                else:
+                    logs.append(f"❌ 数仓刷新失败：{refresh_result.stderr[:200]}")
+                    all_ok = False
+            except Exception as e:
+                logs.append(f"❌ 数仓刷新异常：{e}")
+                all_ok = False
 
-                    # 捕获 daily_refresh 的输出
-                    old_stdout = _sys.stdout
-                    old_stderr = _sys.stderr
-                    captured_out = StringIO()
-                    captured_err = StringIO()
-                    try:
-                        _sys.stdout = captured_out
-                        _sys.stderr = captured_err
-                        # 传入 --skip-gsheet 参数（通过 sys.argv）
-                        old_argv = _sys.argv
-                        _sys.argv = ["daily_refresh.py"]
-                        if skip_gsheet:
-                            _sys.argv.append("--skip-gsheet")
-                        _refresh_main()
-                        _sys.argv = old_argv
-                        exit_code = 0
-                    except SystemExit as e:
-                        exit_code = e.code if e.code is not None else 0
-                    finally:
-                        _sys.stdout = old_stdout
-                        _sys.stderr = old_stderr
+            # 2. 刷新告警
+            try:
+                alert_result = subprocess.run(
+                    [sys.executable, str(PROJECT_ROOT / "jobs/refresh_alerts.py")],
+                    capture_output=True, text=True,
+                    cwd=str(PROJECT_ROOT),
+                    timeout=120,
+                )
+                if alert_result.returncode == 0:
+                    logs.append("✅ 告警刷新成功")
+                else:
+                    logs.append(f"❌ 告警刷新失败：{alert_result.stderr[:200]}")
+                    all_ok = False
+            except Exception as e:
+                logs.append(f"❌ 告警刷新异常：{e}")
+                all_ok = False
 
-                    stdout_val = captured_out.getvalue()
-                    stderr_val = captured_err.getvalue()
+            if all_ok:
+                st.success("一键刷新完成！")
+            else:
+                st.warning("刷新完成，但部分步骤失败")
 
-                    if exit_code == 0:
-                        st.success("一键刷新完成！")
-                        with st.expander("查看刷新日志", expanded=False):
-                            st.code(stdout_val, language="text")
-                            if stderr_val.strip():
-                                st.warning(stderr_val)
-                    else:
-                        st.error(f"刷新失败 (exit code {exit_code})：\n{stderr_val or stdout_val}")
-                except Exception as e:
-                    # fallback：如果 import 失败，尝试 subprocess（用于本地开发）
-                    import subprocess, shutil, sys
-                    python_exe = (
-                        Path(sys.executable)  # 当前 Python 解释器
-                    )
-                    args = [str(python_exe), "jobs/daily_refresh.py"]
-                    if skip_gsheet:
-                        args.append("--skip-gsheet")
-
-                    result = subprocess.run(
-                        args,
-                        capture_output=True,
-                        text=True,
-                        cwd=Path(__file__).parent.parent,
-                    )
-                    if result.returncode == 0:
-                        st.success("一键刷新完成！")
-                        with st.expander("查看刷新日志", expanded=False):
-                            st.code(result.stdout, language="text")
-                    else:
-                        st.error(f"刷新失败：\n{result.stderr}")
+            with st.expander("查看刷新日志", expanded=(not all_ok)):
+                st.code("\n".join(logs), language="text")
 
     st.markdown("---")
-    st.caption("💡 提示：定时任务每天 13:00 会自动同步数据，15:00 推送日报，通常不需要手动触发。")
+    st.caption("💡 提示：定时任务每天 13:00 自动同步企微文件并刷新，通常不需要手动操作。")
 
 # ==================== 上传记录 ====================
 with tab_import[4]:
@@ -546,6 +591,7 @@ with tab_import[6]:
                     # 清除日维度 mart 表
                     repo.execute("DELETE FROM mart_day_group WHERE biz_date >= %s AND biz_date <= %s", [date_start, date_end])
                     repo.execute("DELETE FROM mart_day_queue WHERE biz_date >= %s AND biz_date <= %s", [date_start, date_end])
+                    repo.execute("DELETE FROM mart_day_auditor WHERE biz_date >= %s AND biz_date <= %s", [date_start, date_end])
                     repo.execute("DELETE FROM mart_day_error_topic WHERE biz_date >= %s AND biz_date <= %s", [date_start, date_end])
                     
                     # 清除周维度 mart 表（week_begin_date 对应周一，需扩展范围）
@@ -566,7 +612,7 @@ with tab_import[6]:
                     # 清空告警，等待刷新
                     repo.execute("DELETE FROM fact_alert_event WHERE 1=1")
                     
-                    # 清空文件去重记录和上传日志，允许重新上传
+                    # 清空文件去重记录和上传日志（按日期范围清除时也全部清空，允许重新上传）
                     repo.execute("DELETE FROM fact_file_dedup")
                     repo.execute("DELETE FROM fact_upload_log")
 
@@ -585,10 +631,11 @@ with tab_import[6]:
                     "fact_qa_event",
                     "fact_appeal_event",
                     "mart_day_group",
-                    "mart_week_group",
-                    "mart_month_group",
                     "mart_day_queue",
+                    "mart_day_auditor",
+                    "mart_week_group",
                     "mart_week_queue",
+                    "mart_month_group",
                     "mart_month_queue",
                     "mart_day_error_topic",
                     "mart_week_error_topic",
