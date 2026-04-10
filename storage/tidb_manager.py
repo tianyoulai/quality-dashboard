@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import ssl
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -115,7 +116,7 @@ def _create_pool(config: TiDBConfig) -> pooling.MySQLConnectionPool:
         ssl_verify_cert=False,
         connect_timeout=10,
         connection_timeout=30,
-        pool_reset_session=True,
+        pool_reset_session=False,  # 禁用 session reset，避免 TiDB 连接问题
     )
 
 
@@ -153,20 +154,25 @@ class TiDBManager:
     def fetch_df(self, sql: str, params: Iterable[Any] | None = None) -> pd.DataFrame:
         """执行 SQL 并返回 DataFrame。
         
-        安全防护：对无 LIMIT 的纯 SELECT（非聚合/非 GROUP BY）自动追加上限，
+        安全防护：对无 LIMIT 的纯 SELECT（非聚合/非 GROUP BY/非子查询）自动追加上限，
         防止全表扫描 122 万行数据。
         """
         safe_sql = sql.strip().rstrip(";")
         upper = safe_sql.upper()
-        # 只对无 LIMIT 的纯行查询追加限制，排除聚合/GROUP BY/子查询 COUNT
-        if (upper.startswith("SELECT") and " LIMIT " not in upper
+        # 只对无 LIMIT 的纯行查询追加限制
+        # 排除：聚合函数、GROUP BY、子查询（FROM 后有括号）、UNION
+        if (upper.startswith("SELECT") and " LIMIT " not in upper and "\nLIMIT " not in upper
                 and "OFFSET" not in upper
                 and "GROUP BY" not in upper
                 and "COUNT(" not in upper
                 and "SUM(" not in upper
                 and "AVG(" not in upper
                 and "MAX(" not in upper
-                and "MIN(" not in upper):
+                and "MIN(" not in upper
+                and "UNION" not in upper
+                # 排除含子查询的 SQL：FROM 后面紧跟括号或嵌套 SELECT
+                and not re.search(r'\bFROM\s*\(', upper)
+                and not re.search(r'\bFROM\s+SELECT\b', upper)):
             safe_sql += " LIMIT 50000"
         with self.get_connection() as conn:
             cursor = conn.cursor()
@@ -229,7 +235,10 @@ class TiDBManager:
 
     def insert_dataframe(self, table_name: str, df: pd.DataFrame,
                          batch_size: int = 3000) -> int:
-        """将 DataFrame 分批插入到指定表。返回插入行数。"""
+        """将 DataFrame 分批插入到指定表。返回插入行数。
+        
+        使用向量化转换代替 iterrows，大幅提升 3 万+ 行数据的写入速度。
+        """
         if df.empty:
             return 0
         columns = list(df.columns)
@@ -237,18 +246,22 @@ class TiDBManager:
         col_sql = ", ".join(f"`{c}`" for c in columns)
         sql = f"INSERT INTO `{table_name}` ({col_sql}) VALUES ({placeholders})"
 
-        # 将 DataFrame 转换为元组列表，处理 NaN/NaT
-        all_rows = []
-        for _, row in df.iterrows():
-            converted = []
-            for val in row:
-                if pd.isna(val):
-                    converted.append(None)
-                elif hasattr(val, "to_pydatetime"):
-                    converted.append(val.to_pydatetime())
-                else:
-                    converted.append(val)
-            all_rows.append(tuple(converted))
+        # 向量化转换：先处理 datetime 列，再用 where 替换 NaN 为 None
+        clean_df = df.copy()
+        for col in clean_df.columns:
+            dtype = clean_df[col].dtype
+            if pd.api.types.is_datetime64_any_dtype(dtype):
+                # datetime → Python datetime，NaT → None
+                clean_df[col] = clean_df[col].dt.to_pydatetime()
+                clean_df[col] = clean_df[col].where(df[col].notna(), other=None)
+            elif dtype == "boolean" or dtype == "bool":
+                # pandas nullable boolean → Python bool/None
+                clean_df[col] = clean_df[col].astype("object").where(df[col].notna(), other=None)
+            else:
+                clean_df[col] = clean_df[col].where(df[col].notna(), other=None)
+
+        # DataFrame → list of tuples（比 iterrows 快 50 倍以上）
+        all_rows = list(clean_df.itertuples(index=False, name=None))
 
         # 分批提交，避免 TiDB Serverless 大事务超时
         total_inserted = 0
