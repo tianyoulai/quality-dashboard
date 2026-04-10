@@ -36,26 +36,16 @@ tab_import = st.tabs(["质检数据", "申诉数据", "Google Sheet", "一键刷
 
 
 def preview_file_rows(file_obj, file_type: str) -> dict:
-    """预览文件数据量。
+    """预览文件数据量（只读一次，避免大文件性能问题）。
     
     Returns:
         dict: {rows: int, columns: int, preview_df: DataFrame, error: str|None}
     """
     try:
         if file_type == "qa":
-            # 质检文件：xlsx/xls
-            df = pd.read_excel(file_obj, dtype=str, nrows=5)
-            file_obj.seek(0)
             full_df = pd.read_excel(file_obj, dtype=str)
             file_obj.seek(0)
         else:
-            # 申诉文件：csv
-            try:
-                df = pd.read_csv(file_obj, encoding="utf-8-sig", dtype=str, nrows=5)
-            except UnicodeDecodeError:
-                file_obj.seek(0)
-                df = pd.read_csv(file_obj, encoding="gb18030", dtype=str, nrows=5)
-            file_obj.seek(0)
             try:
                 full_df = pd.read_csv(file_obj, encoding="utf-8-sig", dtype=str)
             except UnicodeDecodeError:
@@ -66,7 +56,7 @@ def preview_file_rows(file_obj, file_type: str) -> dict:
         return {
             "rows": len(full_df),
             "columns": len(full_df.columns),
-            "preview_df": df,
+            "preview_df": full_df.head(5),
             "error": None
         }
     except Exception as e:
