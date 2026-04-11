@@ -234,10 +234,11 @@ class TiDBManager:
                 cursor.close()
 
     def insert_dataframe(self, table_name: str, df: pd.DataFrame,
-                         batch_size: int = 3000) -> int:
+                         batch_size: int = 10000) -> int:
         """将 DataFrame 分批插入到指定表。返回插入行数。
         
         使用向量化转换代替 iterrows，大幅提升 3 万+ 行数据的写入速度。
+        batch_size=10000: TiDB Serverless 延迟高(~500ms/次)，大批次减少 roundtrip。
         """
         if df.empty:
             return 0
@@ -246,19 +247,18 @@ class TiDBManager:
         col_sql = ", ".join(f"`{c}`" for c in columns)
         sql = f"INSERT INTO `{table_name}` ({col_sql}) VALUES ({placeholders})"
 
-        # 向量化转换：先处理 datetime 列，再用 where 替换 NaN 为 None
+        # 向量化转换：统一转 object 类型，确保 pd.NA/NaT 全部变 None
         clean_df = df.copy()
         for col in clean_df.columns:
             dtype = clean_df[col].dtype
             if pd.api.types.is_datetime64_any_dtype(dtype):
                 # datetime → Python datetime，NaT → None
                 clean_df[col] = clean_df[col].dt.to_pydatetime()
-                clean_df[col] = clean_df[col].where(df[col].notna(), other=None)
-            elif dtype == "boolean" or dtype == "bool":
-                # pandas nullable boolean → Python bool/None
-                clean_df[col] = clean_df[col].astype("object").where(df[col].notna(), other=None)
-            else:
-                clean_df[col] = clean_df[col].where(df[col].notna(), other=None)
+            # 统一转 object，消除 pandas nullable 类型残留的 pd.NA
+            clean_df[col] = clean_df[col].astype("object")
+
+        # 一次性把所有 NaN/NA/NaT 替换为 None
+        clean_df = clean_df.where(clean_df.notna(), other=None)
 
         # DataFrame → list of tuples（比 iterrows 快 50 倍以上）
         all_rows = list(clean_df.itertuples(index=False, name=None))

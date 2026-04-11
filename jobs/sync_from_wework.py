@@ -57,7 +57,7 @@ TARGET_KEYWORDS = ["长沙云雀", "迁移人力ilabel", "迁移人力账号"]
 # 排除的文件名模式
 EXCLUDE_PATTERNS = [
     "模板", "~$",  # 排除模板文件和 Excel 临时文件
-    "新人培训", "图片质检",  # 排除非目标业务类型
+    "新人培训", "图片",  # 排除非目标业务类型（含图片质检、图片15210等）
     "10816",  # 排除特定队列编号(新人培训队列)
 ]
 
@@ -85,11 +85,14 @@ def compute_file_hash(file_path: Path) -> str:
     return hasher.hexdigest()
 
 
-def is_file_already_imported(conn: TiDBManager, file_hash: str) -> bool:
-    """检查文件是否已导入（通过 fact_file_dedup 表）。"""
+def is_file_already_imported(conn: TiDBManager, file_info: dict[str, Any]) -> bool:
+    """检查文件是否已成功导入（通过 fact_upload_log 表）。
+    只看是否有 success 记录，避免 dedup 表脏记录导致误判。
+    支持延迟计算 hash。"""
+    file_name = file_info["file_name"]
     result = conn.fetch_one(
-        "SELECT 1 AS c FROM fact_file_dedup WHERE file_hash = %s LIMIT 1",
-        [file_hash]
+        "SELECT 1 AS c FROM fact_upload_log WHERE file_name = %s AND upload_status = 'success' LIMIT 1",
+        [file_name]
     )
     return result is not None
 
@@ -168,10 +171,11 @@ def scan_wework_cache(days: int | None = None, latest_only: bool = False) -> lis
                     # 提取业务日期
                     biz_date = extract_date_from_filename(file_name)
                     
+                    # 延迟计算 hash：只在需要导入时才读文件算哈希，避免扫描阶段 IO 开销
                     matched_files.append({
                         "file_path": file_path,
                         "file_name": file_name,
-                        "file_hash": compute_file_hash(file_path),
+                        "file_hash": None,  # 延迟计算
                         "mtime": datetime.fromtimestamp(file_path.stat().st_mtime),
                         "matched_keyword": matched_keyword,
                         "biz_date": biz_date,
@@ -228,21 +232,23 @@ def send_wecom_message(webhook_key: str, message: str) -> bool:
         return False
 
 
-def run_import(file_paths: list[Path]) -> tuple[int, int, list[str]]:
+def _run_single_import(file_path: Path, max_retries: int = 2) -> tuple[bool, str]:
     """
-    执行导入命令。
-    
+    执行单次文件导入，失败时自动重试。
+
+    Args:
+        file_path: Excel 文件路径
+        max_retries: 最大重试次数（含首次）
+
     Returns:
-        (成功数量, 失败数量, 错误信息列表)
+        (是否成功, 错误信息)
     """
-    success_count = 0
-    error_count = 0
-    errors = []
-    
-    for file_path in file_paths:
+    last_error = ""
+
+    for attempt in range(1, max_retries + 1):
         try:
             cmd = [
-                str(PROJECT_ROOT / ".venv/bin/python"),
+                sys.executable,
                 str(PROJECT_ROOT / "jobs/import_fact_data.py"),
                 "--qa-file", str(file_path),
                 "--skip-refresh",  # 由 run_refresh 统一刷新 mart
@@ -254,21 +260,58 @@ def run_import(file_paths: list[Path]) -> tuple[int, int, list[str]]:
                 cwd=str(PROJECT_ROOT),
                 timeout=300,  # 5 分钟超时
             )
-            
+
             if result.returncode == 0:
-                success_count += 1
-                print(f"✅ 导入成功：{file_path.name}")
+                # 检查输出中是否有 partial 状态（行数不一致）
+                if '"upload_status": "partial"' in result.stdout:
+                    last_error = "行数不一致：部分写入"
+                    print(f"  ⚠️ 第 {attempt} 次部分写入，将重试")
+                    # dedup 已自动回滚，可以直接重试
+                    if attempt < max_retries:
+                        import time
+                        time.sleep(5)
+                    continue
+                return True, ""
             else:
-                error_count += 1
-                error_msg = f"{file_path.name}: {result.stderr[:200]}"
-                errors.append(error_msg)
-                print(f"❌ 导入失败：{error_msg}")
+                last_error = result.stderr[:200] if result.stderr else result.stdout[:200]
+                print(f"  ⚠️ 第 {attempt} 次导入失败：{last_error[:100]}")
+        except subprocess.TimeoutExpired:
+            last_error = f"导入超时（{300}s）"
+            print(f"  ⚠️ 第 {attempt} 次超时")
         except Exception as e:
+            last_error = str(e)[:200]
+            print(f"  ⚠️ 第 {attempt} 次异常：{last_error[:100]}")
+
+        if attempt < max_retries:
+            print(f"  🔄 等待 5 秒后重试...")
+            import time
+            time.sleep(5)
+
+    return False, last_error
+
+
+def run_import(file_paths: list[Path]) -> tuple[int, int, list[str]]:
+    """
+    执行导入命令，失败自动重试。
+
+    Returns:
+        (成功数量, 失败数量, 错误信息列表)
+    """
+    success_count = 0
+    error_count = 0
+    errors = []
+
+    for file_path in file_paths:
+        ok, err_msg = _run_single_import(file_path, max_retries=2)
+        if ok:
+            success_count += 1
+            print(f"✅ 导入成功：{file_path.name}")
+        else:
             error_count += 1
-            error_msg = f"{file_path.name}: {str(e)}"
+            error_msg = f"{file_path.name}: {err_msg}"
             errors.append(error_msg)
-            print(f"❌ 导入异常：{error_msg}")
-    
+            print(f"❌ 导入最终失败：{error_msg}")
+
     return success_count, error_count, errors
 
 
@@ -276,7 +319,7 @@ def run_refresh() -> bool:
     """执行数仓刷新。"""
     try:
         cmd = [
-            str(PROJECT_ROOT / ".venv/bin/python"),
+            sys.executable,
             str(PROJECT_ROOT / "jobs/refresh_warehouse.py"),
         ]
         result = subprocess.run(
@@ -345,7 +388,7 @@ def main():
     skipped_files = []
     
     for file_info in matched_files:
-        if is_file_already_imported(conn, file_info["file_hash"]):
+        if is_file_already_imported(conn, file_info):
             skipped_files.append(file_info)
         else:
             new_files.append(file_info)
@@ -373,35 +416,43 @@ def main():
     print("\n🔄 刷新数仓...")
     refresh_success = run_refresh()
     
-    # 5. 推送企微消息（只在有新文件导入时推送）
+    # 5. 推送企微消息（只在有新文件需要导入时推送）
     config = load_config()
     webhook_key = config.get("wecom_webhook_key")
-    if webhook_key and success_count > 0:
+    if webhook_key and (success_count > 0 or error_count > 0):
         today = date.today().strftime("%Y-%m-%d")
-        
+        total = success_count + error_count
+
         if error_count == 0 and refresh_success:
             message = f"""✅ **质检数据同步成功** | {today}
 
-📁 同步文件：{success_count} 个
-✅ 导入成功：{success_count} 个
-❌ 导入失败：{error_count} 个
-🔄 数仓刷新：{'成功' if refresh_success else '失败'}
+📁 新文件：{total} 个
+✅ 全部导入成功：{success_count} 个
+🔄 数仓刷新：成功
 
 <font color="comment">详情请查看看板日志</font>"""
+        elif error_count == 0 and not refresh_success:
+            message = f"""⚠️ **质检数据同步部分异常** | {today}
+
+📁 新文件：{total} 个
+✅ 导入成功：{success_count} 个
+🔄 数仓刷新：**失败**
+
+<font color="comment">数据已入库，但 mart 未刷新，请手动执行 refresh_warehouse</font>"""
         else:
             error_list = "\n".join([f"- {e}" for e in errors[:5]])
             message = f"""⚠️ **质检数据同步异常** | {today}
 
-📁 同步文件：{success_count} 个
+📁 新文件：{total} 个
 ✅ 导入成功：{success_count} 个
 ❌ 导入失败：{error_count} 个
 🔄 数仓刷新：{'成功' if refresh_success else '失败'}
 
-**错误详情：**
+**失败详情：**
 {error_list}
 
-<font color="comment">请检查日志并手动处理</font>"""
-        
+<font color="comment">已自动重试 2 次，请检查日志并手动处理</font>"""
+
         send_wecom_message(webhook_key, message)
     
     print("\n" + "=" * 60)
