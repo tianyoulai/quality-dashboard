@@ -677,12 +677,6 @@ RECOVERY_SCAN_BASELINE = {
     "internal_candidates": 9,
 }
 
-RECOVERY_NEXT_ACTIONS = [
-    ("方案 A：继续补历史样例", "优先补 0402、0401、0331、0330 外检，把关键时间线补齐。"),
-    ("方案 B：固定批次归属口径", "dim_newcomer_batch 统一维护 effective_start_date / effective_end_date，批次统计按业务日期落在生效区间内计算。"),
-    ("方案 C：按当前结构回推真实页", "把执行进度、回补时间线、待补映射固定成长期模块。"),
-]
-
 # ==================== Hero 区 ====================
 
 batch_df = load_batch_list()
@@ -1334,24 +1328,6 @@ if active_view == "overview":
             st.caption(f"当前待补映射：{pending_mapping_names}")
         else:
             st.success("当前没有待补映射人员。")
-
-    st.markdown("##### 🧭 下一步执行面板")
-    action_cols = st.columns(len(RECOVERY_NEXT_ACTIONS) + 1)
-    for idx, (title, desc) in enumerate(RECOVERY_NEXT_ACTIONS):
-        with action_cols[idx]:
-            st.markdown(f"""
-            <div style="height: 100%; padding: 0.95rem 1rem; border-radius: 0.8rem; background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%); border: 1px solid #E5E7EB;">
-                <div style="font-size: 0.88rem; color: #0F172A; font-weight: 700; margin-bottom: 0.45rem;">{title}</div>
-                <div style="font-size: 0.82rem; color: #475569; line-height: 1.55;">{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
-    with action_cols[-1]:
-        st.markdown("""
-        <div style="height: 100%; padding: 0.95rem 1rem; border-radius: 0.8rem; background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%); border: 1px solid #818CF8;">
-            <div style="font-size: 0.88rem; color: #312E81; font-weight: 700; margin-bottom: 0.45rem;">我当前更推荐的顺序</div>
-            <div style="font-size: 0.82rem; color: #4338CA; line-height: 1.55;">先补 0402 ~ 0330 外检，再把批次生效时间口径彻底落到 dim_newcomer_batch 与查询链路，最后把执行进度、回补时间线和待补映射这套结构固定到真实页。</div>
-        </div>
-        """, unsafe_allow_html=True)
 
     if overview_batch_df.empty:
         st.info("当前筛选条件下暂无新人成员。")
