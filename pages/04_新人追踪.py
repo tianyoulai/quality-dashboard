@@ -507,8 +507,8 @@ def load_formal_qa_daily(
 
 
 @st.cache_data(show_spinner=False, ttl=300)
-def load_newcomer_qa_detail(reviewer_alias: str, limit: int = 100) -> pd.DataFrame:
-    """加载某个新人的质检明细（内检+外检）。"""
+def load_newcomer_error_detail(reviewer_alias: str, limit: int = 100) -> pd.DataFrame:
+    """加载某个新人的最近错误明细（内检+外检）。"""
     return repo.fetch_df("""
         SELECT biz_date, stage, queue_name, content_type,
                training_topic, risk_level, comment_text,
@@ -516,6 +516,7 @@ def load_newcomer_qa_detail(reviewer_alias: str, limit: int = 100) -> pd.DataFra
                is_correct, is_misjudge, is_missjudge
         FROM fact_newcomer_qa
         WHERE reviewer_name = %s
+          AND is_correct = 0
         ORDER BY biz_date DESC, qa_time DESC
         LIMIT %s
     """, [reviewer_alias, limit])
@@ -1800,20 +1801,16 @@ if active_view == "person":
                         render_plot(fig_person_stage, f"person_stage_{alias}")
 
             st.markdown("##### 📋 近期错误明细")
-            detail_df = load_newcomer_qa_detail(alias, 80)
-            if detail_df is not None and not detail_df.empty:
-                errors = detail_df[detail_df["is_correct"] == 0].copy()
-                if not errors.empty:
-                    display_errors = errors[["biz_date", "stage", "queue_name", "content_type", "training_topic", "risk_level", "comment_text", "raw_judgement", "final_judgement", "error_type", "qa_note"]].copy()
-                    display_errors.columns = ["日期", "阶段", "队列", "内容类型", "培训专题", "风险等级", "评论文本", "一审结果", "质检结果", "错误类型", "质检备注"]
-                    display_errors["阶段"] = display_errors["阶段"].map({"internal": "🏫 内检", "external": "🔍 外检", "formal": "✅ 正式上线"}).fillna("—")
-                    st.dataframe(display_errors, use_container_width=True, hide_index=True, height=320)
-                    csv = display_errors.to_csv(index=False).encode("utf-8-sig")
-                    st.download_button("📥 导出错误明细", csv, file_name=f"errors_{alias}.csv", mime="text/csv")
-                else:
-                    st.success("🎉 该新人暂无错误记录。")
+            error_detail_df = load_newcomer_error_detail(alias, 80)
+            if error_detail_df is not None and not error_detail_df.empty:
+                display_errors = error_detail_df[["biz_date", "stage", "queue_name", "content_type", "training_topic", "risk_level", "comment_text", "raw_judgement", "final_judgement", "error_type", "qa_note"]].copy()
+                display_errors.columns = ["日期", "阶段", "队列", "内容类型", "培训专题", "风险等级", "评论文本", "一审结果", "质检结果", "错误类型", "质检备注"]
+                display_errors["阶段"] = display_errors["阶段"].map({"internal": "🏫 内检", "external": "🔍 外检", "formal": "✅ 正式上线"}).fillna("—")
+                st.dataframe(display_errors, use_container_width=True, hide_index=True, height=320)
+                csv = display_errors.to_csv(index=False).encode("utf-8-sig")
+                st.download_button("📥 导出错误明细", csv, file_name=f"errors_{alias}.csv", mime="text/csv")
             else:
-                st.info("暂无个人明细数据。")
+                st.success("🎉 该新人暂无错误记录。")
 
 # ==================== 模块 5: 维度分析 ====================
 if active_view == "dimension":
