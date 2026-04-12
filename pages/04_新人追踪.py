@@ -707,7 +707,31 @@ if not unmatched_df.empty:
         unmatched_names = "、".join(true_unmatched_df["reviewer_name"].tolist())
         st.warning(f"当前仍有 {unmatched_count} 条新人质检记录未关联到批次：{unmatched_names}。建议补齐名单后再看批次汇总。")
 
-# ==================== 侧边栏筛选 ====================
+# ==================== 页面模块切换 + 侧边栏筛选 ====================
+
+view_options = {
+    "📊 批次概览": "overview",
+    "📈 成长曲线": "growth",
+    "🔄 阶段对比": "compare",
+    "👤 个人追踪": "person",
+    "📊 维度分析": "dimension",
+    "⚠️ 异常告警": "alert",
+}
+
+with st.container(border=True):
+    st.markdown("#### 查看模块")
+    st.caption("模块切换放在新人追踪页内，侧边栏只保留筛选条件。")
+    active_view_label = st.radio(
+        "查看模块",
+        options=list(view_options.keys()),
+        key="nc_view_filter",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+active_view = view_options[active_view_label]
+need_dimension_detail = active_view == "dimension"
+need_alert_detail = active_view == "alert"
 
 st.sidebar.markdown("### 🎯 新人追踪筛选")
 selected_batches = st.sidebar.multiselect(
@@ -728,19 +752,6 @@ stage_filter = st.sidebar.selectbox(
 
 team_options = ["全部"] + sorted(all_teams)
 team_filter = st.sidebar.selectbox("基地/团队筛选", options=team_options, key="nc_team_filter")
-
-view_options = {
-    "📊 批次概览": "overview",
-    "📈 成长曲线": "growth",
-    "🔄 阶段对比": "compare",
-    "👤 个人追踪": "person",
-    "📊 维度分析": "dimension",
-    "⚠️ 异常告警": "alert",
-}
-active_view_label = st.sidebar.radio("查看模块", options=list(view_options.keys()), key="nc_view_filter")
-active_view = view_options[active_view_label]
-need_dimension_detail = active_view == "dimension"
-need_alert_detail = active_view == "alert"
 
 # ==================== 加载筛选后的数据 ====================
 
