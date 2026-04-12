@@ -236,6 +236,14 @@ def display_text(value, default: str = "未填写") -> str:
     return text if text else default
 
 
+def format_heatmap_text(matrix_df: pd.DataFrame) -> pd.DataFrame:
+    if matrix_df is None or matrix_df.empty:
+        return matrix_df if matrix_df is not None else pd.DataFrame()
+    return matrix_df.apply(
+        lambda column: column.map(lambda value: f"{value:.1f}%" if pd.notna(value) and value > 0 else "—")
+    )
+
+
 def split_multi_values(value: str | None) -> list[str]:
     if value is None or pd.isna(value):
         return []
@@ -1526,7 +1534,7 @@ with tab_overview:
                 heatmap_df = team_accuracy_df.pivot(index="team_name", columns="batch_name", values="accuracy").sort_index()
                 if not heatmap_df.empty:
                     heatmap_values = heatmap_df.fillna(0)
-                    heatmap_text = heatmap_df.applymap(lambda v: f"{v:.1f}%" if pd.notna(v) and v > 0 else "—")
+                    heatmap_text = format_heatmap_text(heatmap_df)
                     fig_heatmap = go.Figure(
                         data=go.Heatmap(
                             z=heatmap_values.values,
@@ -1933,7 +1941,7 @@ with tab_dimension:
 
             if not heatmap_source.empty:
                 heatmap_matrix = heatmap_source.pivot(index="team_name", columns="batch_name", values="sample_accuracy").sort_index()
-                heatmap_text = heatmap_matrix.applymap(lambda v: f"{v:.1f}%" if pd.notna(v) and v > 0 else "—")
+                heatmap_text = format_heatmap_text(heatmap_matrix)
                 fig_base = go.Figure(
                     data=go.Heatmap(
                         z=heatmap_matrix.fillna(0).values,
