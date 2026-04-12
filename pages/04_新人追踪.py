@@ -656,7 +656,6 @@ def load_unmatched_newcomer_rows() -> pd.DataFrame:
 # ==================== Hero 区 ====================
 
 batch_df = load_batch_list()
-unmatched_df = load_unmatched_newcomer_rows()
 
 if batch_df is None or batch_df.empty:
     st.markdown("""
@@ -692,22 +691,6 @@ st.markdown(f"""
 practice_df = pd.DataFrame(columns=["reviewer_name", "stage", "is_practice_sample", "row_cnt", "start_date", "end_date"])
 true_unmatched_df = pd.DataFrame(columns=["reviewer_name", "stage", "is_practice_sample", "row_cnt", "start_date", "end_date"])
 
-if not unmatched_df.empty:
-    practice_mask = unmatched_df.get("is_practice_sample", pd.Series(0, index=unmatched_df.index)).fillna(0).astype(int).eq(1)
-    practice_mask = practice_mask | unmatched_df["reviewer_name"].apply(is_non_newcomer_practice_reviewer)
-    practice_df = unmatched_df[practice_mask].copy()
-    true_unmatched_df = unmatched_df[~practice_mask].copy()
-
-    if not practice_df.empty:
-        practice_count = int(practice_df["row_cnt"].sum())
-        practice_names = "、".join(practice_df["reviewer_name"].tolist())
-        st.info(f"检测到 {practice_count} 条正式人力下线学习记录：{practice_names}。此类样例会写入 is_practice_sample=1，不计入新人批次统计，仅用于练习样例排查。")
-
-    if not true_unmatched_df.empty:
-        unmatched_count = int(true_unmatched_df["row_cnt"].sum())
-        unmatched_names = "、".join(true_unmatched_df["reviewer_name"].tolist())
-        st.warning(f"当前仍有 {unmatched_count} 条新人质检记录未关联到批次：{unmatched_names}。建议补齐名单后再看批次汇总。")
-
 # ==================== 页面模块切换 + 侧边栏筛选 ====================
 
 view_options = {
@@ -721,7 +704,6 @@ view_options = {
 
 with st.container(border=True):
     st.markdown("#### 查看模块")
-    st.caption("模块切换放在新人追踪页内，侧边栏只保留筛选条件。")
     active_view_label = st.radio(
         "查看模块",
         options=list(view_options.keys()),
@@ -730,9 +712,30 @@ with st.container(border=True):
         label_visibility="collapsed",
     )
 
+with st.expander("📘 指标口径说明", expanded=False):
+    st.markdown(
+        """
+- **样本正确率** = 正确量 / 质检量。
+- **人均正确率** = 先算每位审核人的样本正确率，再在聚合层取平均。
+- **口径差值** = 样本正确率 - 人均正确率。
+- **错判率** = 错判量 / 质检量；**漏判率** = 漏判量 / 质检量；**总问题率** = 错判率 + 漏判率。
+- **个人追踪** 只展示单人样本正确率，不展示聚合层人均正确率。
+- **异常告警** 使用近 7 天滚动口径。
+- **近期错误明细** 当前表示最近 80 条错误记录，不是固定天数窗口。
+        """
+    )
+
 active_view = view_options[active_view_label]
 need_dimension_detail = active_view == "dimension"
 need_alert_detail = active_view == "alert"
+
+if need_alert_detail:
+    unmatched_df = load_unmatched_newcomer_rows()
+    if not unmatched_df.empty:
+        practice_mask = unmatched_df.get("is_practice_sample", pd.Series(0, index=unmatched_df.index)).fillna(0).astype(int).eq(1)
+        practice_mask = practice_mask | unmatched_df["reviewer_name"].apply(is_non_newcomer_practice_reviewer)
+        practice_df = unmatched_df[practice_mask].copy()
+        true_unmatched_df = unmatched_df[~practice_mask].copy()
 
 st.sidebar.markdown("### 🎯 新人追踪筛选")
 selected_batches = st.sidebar.multiselect(
@@ -780,8 +783,23 @@ load_newcomer_stage = stage_code in (None, "internal", "external")
 load_formal_stage = stage_code in (None, "formal")
 newcomer_stage = stage_code if stage_code in {"internal", "external"} else None
 
+aggregate_payload = load_newcomer_aggregate_payload(
+    selected_batches if selected_batches else None,
+    owner=owner_value,
+    team_name=team_value,
+) if not members_df.empty else {}
+need_overview_fallback = active_view == "overview" and not all(
+    aggregate_payload.get(key)
+    for key in ["stage_summary", "batch_stage_summary", "team_accuracy", "batch_compare", "batch_gap", "batch_watch", "management_summary"]
+)
+need_dimension_fallback = active_view == "dimension" and not all(
+    aggregate_payload.get(key)
+    for key in ["stage_team_accuracy", "team_accuracy", "batch_compare", "batch_gap", "management_summary"]
+)
+need_combined_qa = active_view in {"growth", "compare", "person", "alert"} or need_overview_fallback or need_dimension_fallback
+
 # 加载新人质检数据（尽量把筛选下推到 SQL）
-if reviewer_aliases and load_newcomer_stage:
+if reviewer_aliases and load_newcomer_stage and need_combined_qa:
     newcomer_qa_df = load_newcomer_qa_daily(
         selected_batches if selected_batches else None,
         reviewer_aliases=reviewer_aliases,
@@ -793,7 +811,7 @@ else:
 formal_qa_df = load_formal_qa_daily(
     selected_batches if selected_batches else None,
     reviewer_aliases=reviewer_aliases,
-) if reviewer_aliases and load_formal_stage else pd.DataFrame()
+) if reviewer_aliases and load_formal_stage and need_combined_qa else pd.DataFrame()
 
 newcomer_qa_df = ensure_accuracy_columns(newcomer_qa_df)
 formal_qa_df = ensure_accuracy_columns(formal_qa_df)
@@ -816,63 +834,6 @@ newcomer_dimension_df = load_newcomer_dimension_detail(
     reviewer_aliases=reviewer_aliases,
 ) if reviewer_aliases and need_dimension_detail else pd.DataFrame()
 
-if need_dimension_detail:
-    fact_newcomer_columns = get_table_columns("fact_newcomer_qa")
-    fact_event_columns = get_table_columns("fact_qa_event")
-    newcomer_dimension_ready = {"training_topic", "risk_level", "content_type"}.issubset(fact_newcomer_columns)
-    formal_dimension_ready = {"training_topic", "risk_level", "content_type"}.issubset(fact_event_columns)
-    if not newcomer_dimension_df.empty and not formal_dimension_df.empty:
-        dimension_current_status = "新人内/外检 + 正式阶段已接"
-    elif not newcomer_dimension_df.empty:
-        dimension_current_status = "已接新人内/外检"
-    elif newcomer_dimension_ready:
-        dimension_current_status = "字段已就绪，待新导入/回填"
-    elif not formal_dimension_df.empty:
-        dimension_current_status = "已接正式阶段，待补新人字段"
-    else:
-        dimension_current_status = "待补新人内/外检字段"
-
-    dimension_status_df = pd.DataFrame([
-        {
-            "维度": "培训专题达标率",
-            "新人内/外检": "可用" if "training_topic" in fact_newcomer_columns else "缺失",
-            "正式阶段": "可用" if "training_topic" in fact_event_columns else "缺失",
-            "当前处理": dimension_current_status,
-            "说明": "用于识别专项培训短板",
-        },
-        {
-            "维度": "风险等级分布",
-            "新人内/外检": "可用" if "risk_level" in fact_newcomer_columns else "缺失",
-            "正式阶段": "可用" if "risk_level" in fact_event_columns else "缺失",
-            "当前处理": dimension_current_status,
-            "说明": "用于拆分高风险漏判和一般错判",
-        },
-        {
-            "维度": "内容类型分布",
-            "新人内/外检": "可用" if "content_type" in fact_newcomer_columns else "缺失",
-            "正式阶段": "可用" if "content_type" in fact_event_columns else "缺失",
-            "当前处理": dimension_current_status,
-            "说明": "用于识别特定内容类型薄弱基地",
-        },
-        {
-            "维度": "审核时效 / 人效",
-            "新人内/外检": "可用" if "qa_time" in fact_newcomer_columns else "部分可用",
-            "正式阶段": "缺失（当前汇总表无时效字段）",
-            "当前处理": "待补稳定产能或耗时口径",
-            "说明": "适合和正确率联动看赶量影响",
-        },
-    ])
-else:
-    fact_newcomer_columns = set()
-    fact_event_columns = set()
-    newcomer_dimension_ready = False
-    formal_dimension_ready = False
-    dimension_status_df = pd.DataFrame(columns=["维度", "新人内/外检", "正式阶段", "当前处理", "说明"])
-aggregate_payload = load_newcomer_aggregate_payload(
-    selected_batches if selected_batches else None,
-    owner=owner_value,
-    team_name=team_value,
-) if not members_df.empty else {}
 aggregate_batch_scope_df = pd.DataFrame(aggregate_payload.get("batch_scope") or [])
 if not aggregate_batch_scope_df.empty and "join_date" in aggregate_batch_scope_df.columns:
     aggregate_batch_scope_df = aggregate_batch_scope_df.copy()
@@ -1160,9 +1121,17 @@ if not combined_qa_df.empty:
         team_alert_df["建议动作"] = team_alert_df.apply(suggest_team_action, axis=1)
         team_alert_df = team_alert_df.sort_values(["关注分", "sample_accuracy", "issue_rate"], ascending=[False, True, False])
 
-# ==================== 模块切换 ====================
-
-st.caption(f"当前查看：{active_view_label}。页面已改成按模块渲染，避免一次刷新把 6 个重模块一起跑完。")
+team_summary_df = members_df.groupby(["batch_name", "team_name", "team_leader", "delivery_pm", "owner"], as_index=False).agg(
+    人数=("reviewer_name", "count"),
+    培训中=("status", lambda x: (x == "training").sum()),
+    已转正=("status", lambda x: (x == "graduated").sum()),
+) if not members_df.empty else pd.DataFrame()
+if not team_summary_df.empty and not team_accuracy_df.empty:
+    team_summary_df = team_summary_df.merge(
+        team_accuracy_df[["batch_name", "team_name", "qa_cnt", "sample_accuracy", "per_capita_accuracy", "accuracy_gap", "misjudge_rate", "missjudge_rate", "issue_rate"]],
+        on=["batch_name", "team_name"],
+        how="left",
+    )
 
 # ==================== 模块 1: 批次概览 ====================
 if active_view == "overview":
@@ -1203,12 +1172,6 @@ if active_view == "overview":
         st.metric("📅 平均培训天数", f"{avg_training_days}天")
     with mc6:
         st.metric("📏 最大基地样本差值", f"{max_gap_value:.1f}%", delta=f"人均差值 {max_per_capita_gap:.1f}% · {weak_batch_name} {weak_batch_acc:.1f}%")
-
-    st.markdown("""
-    <div style="margin:-0.25rem 0 1rem; padding:0.85rem 1rem; border-radius:0.75rem; background:#eff6ff; border-left:4px solid #2563eb; font-size:0.82rem; color:#1d4ed8; line-height:1.7;">
-        <strong>口径说明</strong>：聚合层统一同时看“样本正确率 + 人均正确率”。样本口径更适合看整体质量，人均口径更适合看队伍稳定性和带教公平性；个人追踪页仍只看单人样本正确率。
-    </div>
-    """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -1816,13 +1779,9 @@ if active_view == "person":
 if active_view == "dimension":
     st.markdown("#### 📊 维度分析")
 
-    if combined_qa_df.empty:
+    if batch_compare_df.empty and team_accuracy_df.empty and stage_team_accuracy_df.empty and newcomer_dimension_df.empty and formal_dimension_df.empty:
         st.info("暂无质检数据，暂时无法生成维度分析。")
     else:
-        st.info("对照 local demo，这一页已经补齐批次/基地差异、管理链路、错误类型、问题率。下面这张表会直接告诉你哪些维度当前已经可做，哪些还卡在数据层。")
-        st.markdown("##### 🔧 对照 demo 的维度可用性")
-        st.dataframe(dimension_status_df, use_container_width=True, hide_index=True)
-
         row1_col1, row1_col2 = st.columns([1.15, 1])
         with row1_col1:
             st.markdown("##### 🏢 批次 × 基地差异热力图")
@@ -1970,10 +1929,8 @@ if active_view == "dimension":
             newcomer_topic_view["正确率"] = newcomer_topic_view.apply(lambda r: safe_pct(r["正确量"], r["质检量"]), axis=1)
             newcomer_topic_view = newcomer_topic_view.rename(columns={"batch_name": "批次", "team_name": "基地/团队", "stage_label": "阶段", "training_topic": "培训专题"})
             st.dataframe(newcomer_topic_view[["批次", "基地/团队", "阶段", "培训专题", "质检量", "正确率"]].head(20), use_container_width=True, hide_index=True, height=220)
-        elif newcomer_dimension_ready:
-            st.caption("新人内/外检字段已经补齐，但当前筛选范围内还没有带专题/风险/内容类型的新导入数据；继续导新文件或回填历史数据后，这块会直接亮起来。")
         else:
-            st.caption("当前新人内/外检还没有可用的专题/风险/内容类型字段，暂时先由正式阶段补位展示。")
+            st.info("当前筛选范围内暂无新人内 / 外检专题、风险或内容类型明细。")
 
         st.markdown("###### ✅ 正式阶段专题维度")
         if not formal_dimension_df.empty:
@@ -2031,7 +1988,7 @@ if active_view == "dimension":
             topic_view = topic_view.rename(columns={"batch_name": "批次", "team_name": "基地/团队", "training_topic": "培训专题"})
             st.dataframe(topic_view[["批次", "基地/团队", "培训专题", "质检量", "正确率"]].head(20), use_container_width=True, hide_index=True, height=220)
         else:
-            st.caption("当前筛选范围下，正式阶段还没有可用的专题/风险/内容类型明细，或底层表未补这些字段。")
+            st.info("当前筛选范围内暂无正式阶段专题、风险或内容类型明细。")
 
         row2_col1, row2_col2 = st.columns(2)
         with row2_col1:
