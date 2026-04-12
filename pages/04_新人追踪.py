@@ -652,36 +652,10 @@ def load_unmatched_newcomer_rows() -> pd.DataFrame:
     """)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def load_newcomer_recovery_files() -> pd.DataFrame:
-    """汇总新人历史文件回补/导入状态，用于展示执行进度。"""
-    return repo.fetch_df("""
-        SELECT
-            source_file_name,
-            MIN(biz_date) AS biz_date,
-            MIN(stage) AS stage,
-            COUNT(*) AS row_cnt,
-            SUM(CASE WHEN COALESCE(NULLIF(TRIM(content_type), ''), '') <> '' THEN 1 ELSE 0 END) AS content_type_ready_cnt,
-            SUM(CASE WHEN COALESCE(NULLIF(TRIM(risk_level), ''), '') <> '' THEN 1 ELSE 0 END) AS risk_level_ready_cnt,
-            SUM(CASE WHEN COALESCE(NULLIF(TRIM(training_topic), ''), '') <> '' THEN 1 ELSE 0 END) AS training_topic_ready_cnt
-        FROM fact_newcomer_qa
-        WHERE COALESCE(NULLIF(TRIM(source_file_name), ''), '') <> ''
-        GROUP BY source_file_name
-        ORDER BY MIN(biz_date) DESC, source_file_name DESC
-    """)
-
-
-RECOVERY_SCAN_BASELINE = {
-    "all_candidates": 32,
-    "external_candidates": 23,
-    "internal_candidates": 9,
-}
-
 # ==================== Hero 区 ====================
 
 batch_df = load_batch_list()
 unmatched_df = load_unmatched_newcomer_rows()
-recovery_file_df = load_newcomer_recovery_files()
 
 if batch_df is None or batch_df.empty:
     st.markdown("""
@@ -903,35 +877,6 @@ filtered_batch_df = aggregate_batch_scope_df if not aggregate_batch_scope_df.emp
     graduated_cnt=("status", lambda x: int((x == "graduated").sum())),
     training_cnt=("status", lambda x: int((x == "training").sum())),
 ) if not members_df.empty else pd.DataFrame(columns=batch_df.columns)
-
-recovery_file_df = normalize_numeric_columns(
-    recovery_file_df,
-    ["row_cnt", "content_type_ready_cnt", "risk_level_ready_cnt", "training_topic_ready_cnt"],
-) if recovery_file_df is not None else pd.DataFrame()
-if recovery_file_df is None:
-    recovery_file_df = pd.DataFrame()
-if not recovery_file_df.empty:
-    recovery_file_df = recovery_file_df.copy()
-    recovery_file_df["biz_date"] = pd.to_datetime(recovery_file_df["biz_date"], errors="coerce").dt.date
-    recovery_file_df["all_dimension_ready"] = (
-        (recovery_file_df["content_type_ready_cnt"] >= recovery_file_df["row_cnt"]) &
-        (recovery_file_df["risk_level_ready_cnt"] >= recovery_file_df["row_cnt"]) &
-        (recovery_file_df["training_topic_ready_cnt"] >= recovery_file_df["row_cnt"])
-    )
-else:
-    recovery_file_df = pd.DataFrame(columns=["source_file_name", "biz_date", "stage", "row_cnt", "content_type_ready_cnt", "risk_level_ready_cnt", "training_topic_ready_cnt", "all_dimension_ready"])
-
-recovery_ready_df = recovery_file_df[recovery_file_df["all_dimension_ready"]].copy() if not recovery_file_df.empty else recovery_file_df.copy()
-recovered_file_cnt = int(len(recovery_ready_df))
-recovered_external_cnt = int((recovery_ready_df["stage"] == "external").sum()) if not recovery_ready_df.empty else 0
-recovered_internal_cnt = int((recovery_ready_df["stage"] == "internal").sum()) if not recovery_ready_df.empty else 0
-recovered_row_cnt = int(recovery_ready_df["row_cnt"].sum()) if not recovery_ready_df.empty else 0
-recovery_coverage_pct = safe_pct(recovered_file_cnt, RECOVERY_SCAN_BASELINE["all_candidates"])
-recovery_external_pct = safe_pct(recovered_external_cnt, RECOVERY_SCAN_BASELINE["external_candidates"])
-recovery_internal_pct = safe_pct(recovered_internal_cnt, RECOVERY_SCAN_BASELINE["internal_candidates"])
-pending_mapping_people = len(true_unmatched_df) if not true_unmatched_df.empty else 0
-pending_mapping_rows = int(true_unmatched_df["row_cnt"].sum()) if not true_unmatched_df.empty else 0
-pending_mapping_names = format_name_list(true_unmatched_df["reviewer_name"].tolist(), limit=3, default="暂无") if not true_unmatched_df.empty else "暂无"
 
 # ==================== 复用衍生数据 ====================
 if not members_df.empty:
@@ -1254,80 +1199,6 @@ if active_view == "overview":
     """, unsafe_allow_html=True)
 
     st.markdown("---")
-
-    st.markdown("#### 🚦 执行进度与缺口")
-    sum_col1, sum_col2, sum_col3 = st.columns(3)
-    with sum_col1:
-        st.metric("📦 已回补历史文件", recovered_file_cnt, delta=f"已恢复 {recovered_row_cnt:,} 行")
-    with sum_col2:
-        st.metric("📊 当前覆盖率", f"{recovery_coverage_pct:.1f}%", delta=f"{recovered_file_cnt}/{RECOVERY_SCAN_BASELINE['all_candidates']} 份候选")
-    with sum_col3:
-        st.metric("🧩 待补映射人数", pending_mapping_people, delta=f"涉及 {pending_mapping_rows:,} 行记录")
-
-    progress_col, gap_col = st.columns([1.15, 1])
-    with progress_col:
-        st.markdown("##### 📈 回补进度")
-        st.markdown(f"**全部候选文件**：{recovered_file_cnt} / {RECOVERY_SCAN_BASELINE['all_candidates']}")
-        st.progress(min(recovery_coverage_pct / 100, 1.0))
-        st.caption("当前建议继续补 0402、0401、0331、0330 四份外检，把 3 月底到 4 月上旬的关键时间线补齐。")
-
-        st.markdown(f"**外检时间线**：{recovered_external_cnt} / {RECOVERY_SCAN_BASELINE['external_candidates']}")
-        st.progress(min(recovery_external_pct / 100, 1.0))
-        st.markdown(f"**内检时间线**：{recovered_internal_cnt} / {RECOVERY_SCAN_BASELINE['internal_candidates']}")
-        st.progress(min(recovery_internal_pct / 100, 1.0))
-
-    with gap_col:
-        st.markdown("##### 🧭 当前判断")
-        status_cards = [
-            ("结构状态", "已能验收", "批次差异 / 回补时间线 / 风险驾驶舱 / 待补映射已经成型", "#ecfdf5", "#059669"),
-            ("当前最大缺口", f"覆盖率 {recovery_coverage_pct:.1f}%", "链路已打通，当前主要差在历史样例还没补满", "#eff6ff", "#2563eb"),
-            ("最该优先处理", "0402 ~ 0330", "这段关键时间线补齐后，批次差异、阶段趋势和基地表现会更稳", "#fef2f2", "#dc2626"),
-        ]
-        for title, key_text, desc, bg, border in status_cards:
-            st.markdown(f"""
-            <div style="padding: 0.9rem 1rem; border-radius: 0.8rem; background: {bg}; border-left: 4px solid {border}; margin-bottom: 0.75rem;">
-                <div style="font-size: 0.78rem; color: {border}; font-weight: 700; margin-bottom: 0.2rem;">{title}</div>
-                <div style="font-size: 1rem; color: #111827; font-weight: 700; margin-bottom: 0.25rem;">{key_text}</div>
-                <div style="font-size: 0.82rem; color: #475569; line-height: 1.5;">{desc}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    timeline_col, mapping_col = st.columns([1.15, 1])
-    with timeline_col:
-        st.markdown("##### 🗂️ 历史回补时间线")
-        if not recovery_ready_df.empty:
-            recovery_view = recovery_ready_df.sort_values(["biz_date", "stage"], ascending=[False, True]).copy()
-            recovery_view["维度就绪"] = recovery_view["all_dimension_ready"].map(lambda x: "✅ 三类维度齐全" if x else "⚠️ 仍有缺口")
-            recovery_view["stage"] = recovery_view["stage"].map({"internal": "🏫 内部质检", "external": "🔍 外部质检"}).fillna(recovery_view["stage"])
-            recovery_view = recovery_view.rename(columns={
-                "biz_date": "日期",
-                "stage": "阶段",
-                "source_file_name": "文件名",
-                "row_cnt": "恢复记录数",
-            })[["日期", "阶段", "文件名", "恢复记录数", "维度就绪"]]
-            st.dataframe(recovery_view.head(12), use_container_width=True, hide_index=True, height=320)
-        else:
-            st.info("当前还没有可用于展示的历史回补文件。")
-
-    with mapping_col:
-        st.markdown("##### 🧩 当前待补映射")
-        if not true_unmatched_df.empty:
-            mapping_view = true_unmatched_df.copy()
-            mapping_view["stage"] = mapping_view["stage"].map({"internal": "🏫 内部质检", "external": "🔍 外部质检"}).fillna(mapping_view["stage"])
-            mapping_view["建议动作"] = mapping_view["reviewer_name"].apply(
-                lambda name: "补 reviewer_alias 归一化" if "评论-" in str(name) else "补进新人映射名单"
-            )
-            mapping_view = mapping_view.rename(columns={
-                "reviewer_name": "审核人",
-                "stage": "阶段",
-                "row_cnt": "未归属记录数",
-                "start_date": "开始日期",
-                "end_date": "结束日期",
-            })[["审核人", "阶段", "未归属记录数", "开始日期", "结束日期", "建议动作"]]
-            st.dataframe(mapping_view, use_container_width=True, hide_index=True, height=240)
-            st.caption(f"当前待补映射：{pending_mapping_names}")
-        else:
-            st.success("当前没有待补映射人员。")
 
     if overview_batch_df.empty:
         st.info("当前筛选条件下暂无新人成员。")
