@@ -39,7 +39,7 @@ st.markdown("""
 repo = DashboardRepository()
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=900)
 def load_newcomer_aggregate_payload(
     batch_names: list[str] | None = None,
     owner: str | None = None,
@@ -359,7 +359,7 @@ def is_non_newcomer_practice_reviewer(name: object) -> bool:
 
 # ==================== 数据加载 ====================
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=900)
 def load_batch_list() -> pd.DataFrame:
     """加载所有批次摘要信息。"""
     return repo.fetch_df(f"""
@@ -382,7 +382,7 @@ def load_batch_list() -> pd.DataFrame:
     """)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=900)
 def load_newcomer_members(
     batch_names: list[str] | None = None,
     owner: str | None = None,
@@ -414,7 +414,7 @@ def load_newcomer_members(
     return repo.fetch_df(sql, params)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=900)
 def load_newcomer_qa_daily(
     batch_names: list[str] | None = None,
     reviewer_aliases: list[str] | None = None,
@@ -463,7 +463,7 @@ def load_newcomer_qa_daily(
     return repo.fetch_df(sql, params)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=900)
 def load_formal_qa_daily(
     batch_names: list[str] | None = None,
     reviewer_aliases: list[str] | None = None,
@@ -522,7 +522,7 @@ def load_newcomer_error_detail(reviewer_alias: str, limit: int = 100) -> pd.Data
     """, [reviewer_alias, limit])
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=900)
 def load_newcomer_error_summary(
     batch_names: list[str] | None = None,
     reviewer_aliases: list[str] | None = None,
@@ -726,6 +726,9 @@ with st.expander("📘 指标口径说明", expanded=False):
     )
 
 active_view = view_options[active_view_label]
+need_growth_detail = active_view == "growth"
+need_compare_detail = active_view == "compare"
+need_person_detail = active_view == "person"
 need_dimension_detail = active_view == "dimension"
 need_alert_detail = active_view == "alert"
 
@@ -796,7 +799,7 @@ need_dimension_fallback = active_view == "dimension" and not all(
     aggregate_payload.get(key)
     for key in ["stage_team_accuracy", "team_accuracy", "batch_compare", "batch_gap", "management_summary"]
 )
-need_combined_qa = active_view in {"growth", "compare", "person", "alert"} or need_overview_fallback or need_dimension_fallback
+need_combined_qa = need_growth_detail or need_compare_detail or need_alert_detail or need_overview_fallback or need_dimension_fallback
 
 # 加载新人质检数据（尽量把筛选下推到 SQL）
 if reviewer_aliases and load_newcomer_stage and need_combined_qa:
@@ -909,217 +912,210 @@ if not aggregate_management_perf_df.empty:
     management_perf_df = aggregate_management_perf_df.copy()
 
 if not combined_qa_df.empty:
-    if overall_stage_df.empty:
-        overall_stage_df = build_dual_accuracy_group(combined_qa_df, ["stage"])
-    if stage_summary_df.empty:
-        stage_summary_df = build_dual_accuracy_group(combined_qa_df, ["batch_name", "stage"])
+    if need_overview_fallback or need_dimension_fallback:
+        if overall_stage_df.empty:
+            overall_stage_df = build_dual_accuracy_group(combined_qa_df, ["stage"])
+        if stage_summary_df.empty:
+            stage_summary_df = build_dual_accuracy_group(combined_qa_df, ["batch_name", "stage"])
 
-    person_stage_df = combined_qa_df.groupby(["batch_name", "reviewer_name", "short_name", "team_name", "stage"], as_index=False).agg(
-        qa_cnt=("qa_cnt", "sum"),
-        correct_cnt=("correct_cnt", "sum"),
-        misjudge_cnt=("misjudge_cnt", "sum"),
-        missjudge_cnt=("missjudge_cnt", "sum"),
-    )
-    person_stage_df["sample_accuracy"] = person_stage_df.apply(lambda r: safe_pct(r["correct_cnt"], r["qa_cnt"]), axis=1)
-    person_stage_df["accuracy"] = person_stage_df["sample_accuracy"]
-    person_stage_df["accuracy_rate"] = person_stage_df["sample_accuracy"]
-    person_stage_df["misjudge_rate"] = person_stage_df.apply(lambda r: safe_pct(r["misjudge_cnt"], r["qa_cnt"]), axis=1)
-    person_stage_df["missjudge_rate"] = person_stage_df.apply(lambda r: safe_pct(r["missjudge_cnt"], r["qa_cnt"]), axis=1)
-    person_stage_df["issue_rate"] = (person_stage_df["misjudge_rate"] + person_stage_df["missjudge_rate"]).round(2)
-
-    if stage_team_accuracy_df.empty:
-        stage_team_accuracy_df = build_dual_accuracy_group(combined_qa_df, ["batch_name", "team_name", "stage"])
-    if team_accuracy_df.empty:
-        team_accuracy_df = build_dual_accuracy_group(combined_qa_df, ["batch_name", "team_name"])
-    team_issue_df = team_accuracy_df.copy() if not team_accuracy_df.empty else pd.DataFrame()
-
-    if batch_compare_df.empty:
-        batch_compare_df = build_dual_accuracy_group(combined_qa_df, ["batch_name"])
-        batch_compare_df = batch_compare_df.merge(filtered_batch_df[["batch_name", "join_date"]], on="batch_name", how="left")
-        batch_compare_df["training_days"] = batch_compare_df["join_date"].apply(
-            lambda x: (date.today() - x).days if pd.notna(x) and x else 0
-        )
-
-    if batch_gap_df.empty and not team_accuracy_df.empty:
-        gap_base = team_accuracy_df.groupby("batch_name", as_index=False).agg(
-            team_cnt=("team_name", "nunique"),
-            avg_team_sample_accuracy=("sample_accuracy", "mean"),
-            avg_team_per_capita_accuracy=("per_capita_accuracy", "mean"),
-        )
-        best_rows = team_accuracy_df.loc[
-            team_accuracy_df.groupby("batch_name")["sample_accuracy"].idxmax(),
-            ["batch_name", "team_name", "sample_accuracy", "per_capita_accuracy", "issue_rate"],
-        ].rename(columns={
-            "team_name": "best_team_name",
-            "sample_accuracy": "best_team_acc",
-            "per_capita_accuracy": "best_team_per_capita_acc",
-            "issue_rate": "best_team_issue_rate",
-        })
-        worst_rows = team_accuracy_df.loc[
-            team_accuracy_df.groupby("batch_name")["sample_accuracy"].idxmin(),
-            ["batch_name", "team_name", "sample_accuracy", "per_capita_accuracy", "issue_rate"],
-        ].rename(columns={
-            "team_name": "worst_team_name",
-            "sample_accuracy": "worst_team_acc",
-            "per_capita_accuracy": "worst_team_per_capita_acc",
-            "issue_rate": "worst_team_issue_rate",
-        })
-        batch_gap_df = gap_base.merge(best_rows, on="batch_name", how="left").merge(worst_rows, on="batch_name", how="left")
-        batch_gap_df["best_team_acc"] = pd.to_numeric(batch_gap_df["best_team_acc"], errors="coerce").fillna(0)
-        batch_gap_df["worst_team_acc"] = pd.to_numeric(batch_gap_df["worst_team_acc"], errors="coerce").fillna(0)
-        batch_gap_df["best_team_per_capita_acc"] = pd.to_numeric(batch_gap_df["best_team_per_capita_acc"], errors="coerce").fillna(0)
-        batch_gap_df["worst_team_per_capita_acc"] = pd.to_numeric(batch_gap_df["worst_team_per_capita_acc"], errors="coerce").fillna(0)
-        batch_gap_df["sample_gap_pct"] = (batch_gap_df["best_team_acc"] - batch_gap_df["worst_team_acc"]).round(2)
-        batch_gap_df["per_capita_gap_pct"] = (batch_gap_df["best_team_per_capita_acc"] - batch_gap_df["worst_team_per_capita_acc"]).round(2)
-        batch_gap_df["gap_pct"] = batch_gap_df["sample_gap_pct"]
-
-    team_summary_df = members_df.groupby(["batch_name", "team_name", "team_leader", "delivery_pm", "owner"], as_index=False).agg(
-        人数=("reviewer_name", "count"),
-        培训中=("status", lambda x: (x == "training").sum()),
-        已转正=("status", lambda x: (x == "graduated").sum()),
-    )
-    team_summary_df = team_summary_df.merge(
-        team_accuracy_df[["batch_name", "team_name", "qa_cnt", "sample_accuracy", "per_capita_accuracy", "accuracy_gap", "misjudge_rate", "missjudge_rate", "issue_rate"]],
-        on=["batch_name", "team_name"],
-        how="left",
-    )
-
-    if management_perf_df.empty:
-        management_person_df = combined_qa_df.merge(
-            members_df[["reviewer_alias", "team_leader", "delivery_pm", "owner", "mentor_name"]].drop_duplicates(),
-            left_on="reviewer_name",
-            right_on="reviewer_alias",
-            how="left",
-        )
-        management_person_df = management_person_df.fillna({
-            "team_leader": "未填写",
-            "delivery_pm": "未填写",
-            "owner": "未填写",
-            "mentor_name": "未填写",
-        })
-        management_perf_df = build_dual_accuracy_group(management_person_df, ["team_leader", "delivery_pm", "owner", "mentor_name"])
-        management_perf_df = management_perf_df.fillna({
-            "team_leader": "未填写",
-            "delivery_pm": "未填写",
-            "owner": "未填写",
-            "mentor_name": "未填写",
-        })
-
-    recent_date = combined_qa_df["biz_date"].max()
-    if recent_date:
-        recent_cutoff = recent_date - timedelta(days=7)
-        recent_meta_df = members_df[["reviewer_alias", "team_leader", "delivery_pm", "owner", "mentor_name"]].drop_duplicates()
-        recent_qa_df = combined_qa_df[combined_qa_df["biz_date"] >= recent_cutoff].copy()
-        recent_qa_df = recent_qa_df.merge(recent_meta_df, left_on="reviewer_name", right_on="reviewer_alias", how="left")
-        recent_person_perf_df = recent_qa_df.groupby(
-            ["reviewer_name", "short_name", "batch_name", "team_name", "team_leader", "delivery_pm", "owner", "mentor_name"],
-            as_index=False,
-        ).agg(
+    if need_compare_detail:
+        person_stage_df = combined_qa_df.groupby(["batch_name", "reviewer_name", "short_name", "team_name", "stage"], as_index=False).agg(
             qa_cnt=("qa_cnt", "sum"),
             correct_cnt=("correct_cnt", "sum"),
             misjudge_cnt=("misjudge_cnt", "sum"),
             missjudge_cnt=("missjudge_cnt", "sum"),
-            latest_date=("biz_date", "max"),
         )
-        latest_stage_df = recent_qa_df.sort_values(["reviewer_name", "biz_date"]).groupby("reviewer_name", as_index=False).tail(1)[["reviewer_name", "stage"]]
-        latest_stage_df = latest_stage_df.rename(columns={"stage": "latest_stage"})
-        recent_person_perf_df = recent_person_perf_df.merge(latest_stage_df, on="reviewer_name", how="left")
-        recent_person_perf_df["sample_accuracy"] = recent_person_perf_df.apply(lambda r: safe_pct(r["correct_cnt"], r["qa_cnt"]), axis=1)
-        recent_person_perf_df["accuracy"] = recent_person_perf_df["sample_accuracy"]
-        recent_person_perf_df["misjudge_rate"] = recent_person_perf_df.apply(lambda r: safe_pct(r["misjudge_cnt"], r["qa_cnt"]), axis=1)
-        recent_person_perf_df["missjudge_rate"] = recent_person_perf_df.apply(lambda r: safe_pct(r["missjudge_cnt"], r["qa_cnt"]), axis=1)
-        recent_person_perf_df["issue_rate"] = (recent_person_perf_df["misjudge_rate"] + recent_person_perf_df["missjudge_rate"]).round(2)
-        recent_person_perf_df["risk_level"] = recent_person_perf_df.apply(
-            lambda r: "P0" if (r["accuracy"] < 90 or r["missjudge_rate"] >= 2.0)
-            else ("P1" if (r["accuracy"] < 95 or r["issue_rate"] >= 2.5)
-            else ("NEAR" if (r["latest_stage"] == "external" and 97.5 <= r["accuracy"] < 98) else "OK")),
-            axis=1,
-        )
+        person_stage_df["sample_accuracy"] = person_stage_df.apply(lambda r: safe_pct(r["correct_cnt"], r["qa_cnt"]), axis=1)
+        person_stage_df["accuracy"] = person_stage_df["sample_accuracy"]
+        person_stage_df["accuracy_rate"] = person_stage_df["sample_accuracy"]
+        person_stage_df["misjudge_rate"] = person_stage_df.apply(lambda r: safe_pct(r["misjudge_cnt"], r["qa_cnt"]), axis=1)
+        person_stage_df["missjudge_rate"] = person_stage_df.apply(lambda r: safe_pct(r["missjudge_cnt"], r["qa_cnt"]), axis=1)
+        person_stage_df["issue_rate"] = (person_stage_df["misjudge_rate"] + person_stage_df["missjudge_rate"]).round(2)
 
-        if not recent_person_perf_df.empty:
-            risk_rank_map = {"P0": 0, "P1": 1, "NEAR": 2, "OK": 3}
-            risk_focus_df = recent_person_perf_df[recent_person_perf_df["risk_level"].isin(["P0", "P1"])].copy()
-            if not risk_focus_df.empty:
-                risk_focus_df["risk_rank"] = risk_focus_df["risk_level"].map(risk_rank_map)
-                risk_focus_df = risk_focus_df.sort_values(["batch_name", "risk_rank", "accuracy", "issue_rate"], ascending=[True, True, True, False])
-                batch_focus_df = risk_focus_df.groupby("batch_name").agg(
-                    focus_people=("short_name", lambda x: format_name_list(list(x), limit=3)),
-                    p0_cnt=("risk_level", lambda x: int((x == "P0").sum())),
-                    p1_cnt=("risk_level", lambda x: int((x == "P1").sum())),
-                ).reset_index()
-            else:
-                batch_focus_df = pd.DataFrame(columns=["batch_name", "focus_people", "p0_cnt", "p1_cnt"])
+    if need_overview_fallback or need_dimension_fallback or need_alert_detail:
+        if stage_team_accuracy_df.empty and (need_dimension_fallback or need_alert_detail):
+            stage_team_accuracy_df = build_dual_accuracy_group(combined_qa_df, ["batch_name", "team_name", "stage"])
+        if team_accuracy_df.empty:
+            team_accuracy_df = build_dual_accuracy_group(combined_qa_df, ["batch_name", "team_name"])
+        team_issue_df = team_accuracy_df.copy() if not team_accuracy_df.empty else pd.DataFrame()
 
-            if batch_watch_df.empty:
-                batch_watch_df = batch_compare_df.merge(
-                    batch_gap_df[[
-                        "batch_name",
-                        "gap_pct",
-                        "sample_gap_pct",
-                        "per_capita_gap_pct",
-                        "best_team_name",
-                        "best_team_acc",
-                        "best_team_per_capita_acc",
-                        "worst_team_name",
-                        "worst_team_acc",
-                        "worst_team_per_capita_acc",
-                    ]],
-                    on="batch_name",
-                    how="left",
-                ) if not batch_gap_df.empty else batch_compare_df.copy()
-                if not batch_focus_df.empty:
-                    batch_watch_df = batch_watch_df.merge(batch_focus_df, on="batch_name", how="left")
-                for col, default in {
-                    "gap_pct": 0,
-                    "sample_gap_pct": 0,
-                    "per_capita_gap_pct": 0,
-                    "p0_cnt": 0,
-                    "p1_cnt": 0,
-                    "focus_people": "暂无",
-                    "best_team_name": "—",
-                    "worst_team_name": "—",
-                    "best_team_acc": 0,
-                    "best_team_per_capita_acc": 0,
-                    "worst_team_acc": 0,
-                    "worst_team_per_capita_acc": 0,
-                }.items():
-                    if col not in batch_watch_df.columns:
-                        batch_watch_df[col] = default
-                    else:
-                        batch_watch_df[col] = batch_watch_df[col].fillna(default)
-                batch_watch_df[["risk_label", "risk_color", "risk_bg"]] = batch_watch_df.apply(
-                    lambda r: pd.Series(classify_batch_risk(float(r["sample_accuracy"] or 0), float(r["sample_gap_pct"] or 0), int(r["p0_cnt"] or 0), int(r["p1_cnt"] or 0))),
-                    axis=1,
-                )
+        if batch_compare_df.empty:
+            batch_compare_df = build_dual_accuracy_group(combined_qa_df, ["batch_name"])
+            batch_compare_df = batch_compare_df.merge(filtered_batch_df[["batch_name", "join_date"]], on="batch_name", how="left")
+            batch_compare_df["training_days"] = batch_compare_df["join_date"].apply(
+                lambda x: (date.today() - x).days if pd.notna(x) and x else 0
+            )
 
-    if team_alert_df.empty and not team_issue_df.empty:
-        team_alert_df = team_issue_df.copy()
-        if error_summary_df is not None and not error_summary_df.empty:
-            team_error_focus_df = error_summary_df.groupby(["batch_name", "team_name", "error_type"], as_index=False)["error_cnt"].sum()
-            team_error_total_df = team_error_focus_df.groupby(["batch_name", "team_name"], as_index=False)["error_cnt"].sum().rename(columns={"error_cnt": "team_error_cnt"})
-            team_error_focus_df = team_error_focus_df.sort_values(["batch_name", "team_name", "error_cnt"], ascending=[True, True, False]).groupby(["batch_name", "team_name"], as_index=False).head(1)
-            team_error_focus_df = team_error_focus_df.merge(team_error_total_df, on=["batch_name", "team_name"], how="left")
-            team_error_focus_df["top_error_share"] = team_error_focus_df.apply(lambda r: safe_pct(r["error_cnt"], r["team_error_cnt"]), axis=1)
-            team_error_focus_df = team_error_focus_df.rename(columns={"error_type": "top_error_type"})
-            team_alert_df = team_alert_df.merge(
-                team_error_focus_df[["batch_name", "team_name", "top_error_type", "top_error_share"]],
-                on=["batch_name", "team_name"],
+        if batch_gap_df.empty and not team_accuracy_df.empty:
+            gap_base = team_accuracy_df.groupby("batch_name", as_index=False).agg(
+                team_cnt=("team_name", "nunique"),
+                avg_team_sample_accuracy=("sample_accuracy", "mean"),
+                avg_team_per_capita_accuracy=("per_capita_accuracy", "mean"),
+            )
+            best_rows = team_accuracy_df.loc[
+                team_accuracy_df.groupby("batch_name")["sample_accuracy"].idxmax(),
+                ["batch_name", "team_name", "sample_accuracy", "per_capita_accuracy", "issue_rate"],
+            ].rename(columns={
+                "team_name": "best_team_name",
+                "sample_accuracy": "best_team_acc",
+                "per_capita_accuracy": "best_team_per_capita_acc",
+                "issue_rate": "best_team_issue_rate",
+            })
+            worst_rows = team_accuracy_df.loc[
+                team_accuracy_df.groupby("batch_name")["sample_accuracy"].idxmin(),
+                ["batch_name", "team_name", "sample_accuracy", "per_capita_accuracy", "issue_rate"],
+            ].rename(columns={
+                "team_name": "worst_team_name",
+                "sample_accuracy": "worst_team_acc",
+                "per_capita_accuracy": "worst_team_per_capita_acc",
+                "issue_rate": "worst_team_issue_rate",
+            })
+            batch_gap_df = gap_base.merge(best_rows, on="batch_name", how="left").merge(worst_rows, on="batch_name", how="left")
+            batch_gap_df["best_team_acc"] = pd.to_numeric(batch_gap_df["best_team_acc"], errors="coerce").fillna(0)
+            batch_gap_df["worst_team_acc"] = pd.to_numeric(batch_gap_df["worst_team_acc"], errors="coerce").fillna(0)
+            batch_gap_df["best_team_per_capita_acc"] = pd.to_numeric(batch_gap_df["best_team_per_capita_acc"], errors="coerce").fillna(0)
+            batch_gap_df["worst_team_per_capita_acc"] = pd.to_numeric(batch_gap_df["worst_team_per_capita_acc"], errors="coerce").fillna(0)
+            batch_gap_df["sample_gap_pct"] = (batch_gap_df["best_team_acc"] - batch_gap_df["worst_team_acc"]).round(2)
+            batch_gap_df["per_capita_gap_pct"] = (batch_gap_df["best_team_per_capita_acc"] - batch_gap_df["worst_team_per_capita_acc"]).round(2)
+            batch_gap_df["gap_pct"] = batch_gap_df["sample_gap_pct"]
+
+    if need_overview_fallback or need_dimension_fallback:
+        if management_perf_df.empty:
+            management_person_df = combined_qa_df.merge(
+                members_df[["reviewer_alias", "team_leader", "delivery_pm", "owner", "mentor_name"]].drop_duplicates(),
+                left_on="reviewer_name",
+                right_on="reviewer_alias",
                 how="left",
             )
-        if not batch_watch_df.empty:
-            team_alert_df = team_alert_df.merge(batch_watch_df[["batch_name", "risk_label"]], on="batch_name", how="left")
-        if "top_error_type" not in team_alert_df.columns:
-            team_alert_df["top_error_type"] = "未标注"
-        else:
-            team_alert_df["top_error_type"] = team_alert_df["top_error_type"].fillna("未标注")
-        if "top_error_share" not in team_alert_df.columns:
-            team_alert_df["top_error_share"] = 0.0
-        else:
-            team_alert_df["top_error_share"] = pd.to_numeric(team_alert_df["top_error_share"], errors="coerce").fillna(0)
-        team_alert_df["关注分"] = (100 - team_alert_df["sample_accuracy"]) + (team_alert_df["issue_rate"] * 2) + (team_alert_df["missjudge_rate"] * 1.5)
-        team_alert_df["accuracy"] = team_alert_df["sample_accuracy"]
-        team_alert_df["建议动作"] = team_alert_df.apply(suggest_team_action, axis=1)
-        team_alert_df = team_alert_df.sort_values(["关注分", "sample_accuracy", "issue_rate"], ascending=[False, True, False])
+            management_person_df = management_person_df.fillna({
+                "team_leader": "未填写",
+                "delivery_pm": "未填写",
+                "owner": "未填写",
+                "mentor_name": "未填写",
+            })
+            management_perf_df = build_dual_accuracy_group(management_person_df, ["team_leader", "delivery_pm", "owner", "mentor_name"])
+            management_perf_df = management_perf_df.fillna({
+                "team_leader": "未填写",
+                "delivery_pm": "未填写",
+                "owner": "未填写",
+                "mentor_name": "未填写",
+            })
+
+    if need_alert_detail:
+        recent_date = combined_qa_df["biz_date"].max()
+        if recent_date:
+            recent_cutoff = recent_date - timedelta(days=7)
+            recent_meta_df = members_df[["reviewer_alias", "team_leader", "delivery_pm", "owner", "mentor_name"]].drop_duplicates()
+            recent_qa_df = combined_qa_df[combined_qa_df["biz_date"] >= recent_cutoff].copy()
+            recent_qa_df = recent_qa_df.merge(recent_meta_df, left_on="reviewer_name", right_on="reviewer_alias", how="left")
+            recent_person_perf_df = recent_qa_df.groupby(
+                ["reviewer_name", "short_name", "batch_name", "team_name", "team_leader", "delivery_pm", "owner", "mentor_name"],
+                as_index=False,
+            ).agg(
+                qa_cnt=("qa_cnt", "sum"),
+                correct_cnt=("correct_cnt", "sum"),
+                misjudge_cnt=("misjudge_cnt", "sum"),
+                missjudge_cnt=("missjudge_cnt", "sum"),
+                latest_date=("biz_date", "max"),
+            )
+            latest_stage_df = recent_qa_df.sort_values(["reviewer_name", "biz_date"]).groupby("reviewer_name", as_index=False).tail(1)[["reviewer_name", "stage"]]
+            latest_stage_df = latest_stage_df.rename(columns={"stage": "latest_stage"})
+            recent_person_perf_df = recent_person_perf_df.merge(latest_stage_df, on="reviewer_name", how="left")
+            recent_person_perf_df["sample_accuracy"] = recent_person_perf_df.apply(lambda r: safe_pct(r["correct_cnt"], r["qa_cnt"]), axis=1)
+            recent_person_perf_df["accuracy"] = recent_person_perf_df["sample_accuracy"]
+            recent_person_perf_df["misjudge_rate"] = recent_person_perf_df.apply(lambda r: safe_pct(r["misjudge_cnt"], r["qa_cnt"]), axis=1)
+            recent_person_perf_df["missjudge_rate"] = recent_person_perf_df.apply(lambda r: safe_pct(r["missjudge_cnt"], r["qa_cnt"]), axis=1)
+            recent_person_perf_df["issue_rate"] = (recent_person_perf_df["misjudge_rate"] + recent_person_perf_df["missjudge_rate"]).round(2)
+            recent_person_perf_df["risk_level"] = recent_person_perf_df.apply(
+                lambda r: "P0" if (r["accuracy"] < 90 or r["missjudge_rate"] >= 2.0)
+                else ("P1" if (r["accuracy"] < 95 or r["issue_rate"] >= 2.5)
+                else ("NEAR" if (r["latest_stage"] == "external" and 97.5 <= r["accuracy"] < 98) else "OK")),
+                axis=1,
+            )
+
+            if not recent_person_perf_df.empty:
+                risk_rank_map = {"P0": 0, "P1": 1, "NEAR": 2, "OK": 3}
+                risk_focus_df = recent_person_perf_df[recent_person_perf_df["risk_level"].isin(["P0", "P1"])].copy()
+                if not risk_focus_df.empty:
+                    risk_focus_df["risk_rank"] = risk_focus_df["risk_level"].map(risk_rank_map)
+                    risk_focus_df = risk_focus_df.sort_values(["batch_name", "risk_rank", "accuracy", "issue_rate"], ascending=[True, True, True, False])
+                    batch_focus_df = risk_focus_df.groupby("batch_name").agg(
+                        focus_people=("short_name", lambda x: format_name_list(list(x), limit=3)),
+                        p0_cnt=("risk_level", lambda x: int((x == "P0").sum())),
+                        p1_cnt=("risk_level", lambda x: int((x == "P1").sum())),
+                    ).reset_index()
+                else:
+                    batch_focus_df = pd.DataFrame(columns=["batch_name", "focus_people", "p0_cnt", "p1_cnt"])
+
+                if batch_watch_df.empty:
+                    batch_watch_df = batch_compare_df.merge(
+                        batch_gap_df[[
+                            "batch_name",
+                            "gap_pct",
+                            "sample_gap_pct",
+                            "per_capita_gap_pct",
+                            "best_team_name",
+                            "best_team_acc",
+                            "best_team_per_capita_acc",
+                            "worst_team_name",
+                            "worst_team_acc",
+                            "worst_team_per_capita_acc",
+                        ]],
+                        on="batch_name",
+                        how="left",
+                    ) if not batch_gap_df.empty else batch_compare_df.copy()
+                    if not batch_focus_df.empty:
+                        batch_watch_df = batch_watch_df.merge(batch_focus_df, on="batch_name", how="left")
+                    for col, default in {
+                        "gap_pct": 0,
+                        "sample_gap_pct": 0,
+                        "per_capita_gap_pct": 0,
+                        "p0_cnt": 0,
+                        "p1_cnt": 0,
+                        "focus_people": "暂无",
+                        "best_team_name": "—",
+                        "worst_team_name": "—",
+                        "best_team_acc": 0,
+                        "best_team_per_capita_acc": 0,
+                        "worst_team_acc": 0,
+                        "worst_team_per_capita_acc": 0,
+                    }.items():
+                        if col not in batch_watch_df.columns:
+                            batch_watch_df[col] = default
+                        else:
+                            batch_watch_df[col] = batch_watch_df[col].fillna(default)
+                    batch_watch_df[["risk_label", "risk_color", "risk_bg"]] = batch_watch_df.apply(
+                        lambda r: pd.Series(classify_batch_risk(float(r["sample_accuracy"] or 0), float(r["sample_gap_pct"] or 0), int(r["p0_cnt"] or 0), int(r["p1_cnt"] or 0))),
+                        axis=1,
+                    )
+
+        if team_alert_df.empty and not team_issue_df.empty:
+            team_alert_df = team_issue_df.copy()
+            if error_summary_df is not None and not error_summary_df.empty:
+                team_error_focus_df = error_summary_df.groupby(["batch_name", "team_name", "error_type"], as_index=False)["error_cnt"].sum()
+                team_error_total_df = team_error_focus_df.groupby(["batch_name", "team_name"], as_index=False)["error_cnt"].sum().rename(columns={"error_cnt": "team_error_cnt"})
+                team_error_focus_df = team_error_focus_df.sort_values(["batch_name", "team_name", "error_cnt"], ascending=[True, True, False]).groupby(["batch_name", "team_name"], as_index=False).head(1)
+                team_error_focus_df = team_error_focus_df.merge(team_error_total_df, on=["batch_name", "team_name"], how="left")
+                team_error_focus_df["top_error_share"] = team_error_focus_df.apply(lambda r: safe_pct(r["error_cnt"], r["team_error_cnt"]), axis=1)
+                team_error_focus_df = team_error_focus_df.rename(columns={"error_type": "top_error_type"})
+                team_alert_df = team_alert_df.merge(
+                    team_error_focus_df[["batch_name", "team_name", "top_error_type", "top_error_share"]],
+                    on=["batch_name", "team_name"],
+                    how="left",
+                )
+            if not batch_watch_df.empty:
+                team_alert_df = team_alert_df.merge(batch_watch_df[["batch_name", "risk_label"]], on="batch_name", how="left")
+            if "top_error_type" not in team_alert_df.columns:
+                team_alert_df["top_error_type"] = "未标注"
+            else:
+                team_alert_df["top_error_type"] = team_alert_df["top_error_type"].fillna("未标注")
+            if "top_error_share" not in team_alert_df.columns:
+                team_alert_df["top_error_share"] = 0.0
+            else:
+                team_alert_df["top_error_share"] = pd.to_numeric(team_alert_df["top_error_share"], errors="coerce").fillna(0)
+            team_alert_df["关注分"] = (100 - team_alert_df["sample_accuracy"]) + (team_alert_df["issue_rate"] * 2) + (team_alert_df["missjudge_rate"] * 1.5)
+            team_alert_df["accuracy"] = team_alert_df["sample_accuracy"]
+            team_alert_df = team_alert_df.sort_values(["关注分", "sample_accuracy", "issue_rate"], ascending=[False, True, False])
 
 team_summary_df = members_df.groupby(["batch_name", "team_name", "team_leader", "delivery_pm", "owner"], as_index=False).agg(
     人数=("reviewer_name", "count"),
@@ -1670,15 +1666,33 @@ if active_view == "person":
     if members_df.empty:
         st.info("暂无新人映射数据。")
     else:
-        person_options = members_df.apply(
+        person_options_df = members_df.reset_index(drop=True).copy()
+        person_options_df["person_label"] = person_options_df.apply(
             lambda r: f"{r['reviewer_alias']} ({r['batch_name']} · {r['team_name']})", axis=1
-        ).tolist()
-        selected_person = st.selectbox("选择审核人", options=person_options, key="nc_person_select")
+        )
+        selected_person_label = st.selectbox("选择审核人", options=person_options_df["person_label"].tolist(), key="nc_person_select")
 
-        if selected_person:
-            alias = selected_person.split(" (")[0]
-            person_info = members_df[members_df["reviewer_alias"] == alias].iloc[0]
-            person_qa = combined_qa_df[combined_qa_df["reviewer_name"] == alias].copy() if not combined_qa_df.empty else pd.DataFrame()
+        if selected_person_label:
+            person_info = person_options_df.loc[person_options_df["person_label"] == selected_person_label].iloc[0]
+            alias = person_info["reviewer_alias"]
+            person_batch_names = [person_info["batch_name"]] if person_info.get("batch_name") else (selected_batches if selected_batches else None)
+            person_newcomer_qa = load_newcomer_qa_daily(
+                person_batch_names,
+                reviewer_aliases=[alias],
+            ) if load_newcomer_stage else pd.DataFrame()
+            person_formal_qa = load_formal_qa_daily(
+                person_batch_names,
+                reviewer_aliases=[alias],
+            ) if load_formal_stage else pd.DataFrame()
+            person_qa = pd.concat(
+                [df for df in [person_newcomer_qa, person_formal_qa] if df is not None and not df.empty],
+                ignore_index=True,
+            ) if (not person_newcomer_qa.empty or not person_formal_qa.empty) else pd.DataFrame()
+            person_qa = ensure_accuracy_columns(person_qa)
+            if not person_qa.empty and "biz_date" in person_qa.columns:
+                person_qa = person_qa.copy()
+                person_qa["biz_date"] = pd.to_datetime(person_qa["biz_date"], errors="coerce").dt.date
+
             person_stage_view = person_qa.groupby("stage", as_index=False).agg(
                 qa_cnt=("qa_cnt", "sum"),
                 correct_cnt=("correct_cnt", "sum"),
@@ -1690,7 +1704,8 @@ if active_view == "person":
                 "external" if (not person_stage_view.empty and "external" in person_stage_view["stage"].tolist()) else "internal"
             )
             stage_label, stage_color, stage_bg, _ = get_stage_meta(current_stage)
-            days = (date.today() - person_info["join_date"]).days if person_info["join_date"] else 0
+            join_date_value = pd.to_datetime(person_info.get("join_date"), errors="coerce")
+            days = (date.today() - join_date_value.date()).days if pd.notna(join_date_value) else 0
 
             internal_person_acc = person_stage_view.loc[person_stage_view["stage"] == "internal", "accuracy"].max() if not person_stage_view.empty and "internal" in person_stage_view["stage"].values else 0
             external_person_acc = person_stage_view.loc[person_stage_view["stage"] == "external", "accuracy"].max() if not person_stage_view.empty and "external" in person_stage_view["stage"].values else 0
@@ -1763,7 +1778,7 @@ if active_view == "person":
                         fig_person_stage.update_layout(height=340, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                         render_plot(fig_person_stage, f"person_stage_{alias}")
 
-            st.markdown("##### 📋 近期错误明细")
+            st.markdown("##### 📋 最近 80 条错误明细")
             error_detail_df = load_newcomer_error_detail(alias, 80)
             if error_detail_df is not None and not error_detail_df.empty:
                 display_errors = error_detail_df[["biz_date", "stage", "queue_name", "content_type", "training_topic", "risk_level", "comment_text", "raw_judgement", "final_judgement", "error_type", "qa_note"]].copy()
@@ -2252,7 +2267,7 @@ if active_view == "alert":
                 })[["审核人", "阶段", "练习记录数", "开始日期", "结束日期"]]
                 st.dataframe(practice_view, use_container_width=True, hide_index=True, height=120)
 
-        st.markdown("##### 🛠️ 基地级风险拆解与带教动作")
+        st.markdown("##### 🛠️ 基地级风险拆解")
         if not team_alert_df.empty:
             alert_team_col1, alert_team_col2 = st.columns([1.15, 1])
             with alert_team_col1:
@@ -2270,8 +2285,7 @@ if active_view == "alert":
                     "top_error_type": "主要错误类型",
                     "top_error_share": "错误集中度",
                     "risk_label": "批次风险",
-                    "建议动作": "建议动作",
-                })[["批次风险", "批次", "基地/团队", "人数", "质检量", "样本正确率", "人均正确率", "口径差值", "总问题率", "错判率", "漏判率", "主要错误类型", "错误集中度", "建议动作"]]
+                })[["批次风险", "批次", "基地/团队", "人数", "质检量", "样本正确率", "人均正确率", "口径差值", "总问题率", "错判率", "漏判率", "主要错误类型", "错误集中度"]]
                 st.dataframe(team_alert_view.head(12), use_container_width=True, hide_index=True, height=320)
             with alert_team_col2:
                 for _, row in team_alert_df.head(4).iterrows():
@@ -2283,7 +2297,6 @@ if active_view == "alert":
                         <div style="font-size: 0.92rem; color: #111827; line-height: 1.65;">
                             样本正确率 <strong>{float(row['sample_accuracy']):.1f}%</strong>，人均正确率 <strong>{float(row['per_capita_accuracy']):.1f}%</strong>，主要错误：<strong>{display_text(row.get('top_error_type'))}</strong>
                         </div>
-                        <div style="font-size: 0.84rem; color: #475569; margin-top: 0.45rem;">建议动作：{row['建议动作']}</div>
                     </div>
                     """, unsafe_allow_html=True)
         else:
@@ -2296,7 +2309,7 @@ if active_view == "alert":
                 batch_alert_cards.append((
                     row["risk_label"],
                     f"**{row['batch_name']}** 批次内基地差值 **{row['gap_pct']:.1f}%**，待关注基地：**{display_text(row['worst_team_name'])}**（{float(row['worst_team_acc']):.1f}%）",
-                    f"优先辅导：{row['focus_people']}",
+                    f"重点人员：{row['focus_people']}",
                     row["risk_bg"],
                     row["risk_color"],
                 ))
@@ -2305,7 +2318,7 @@ if active_view == "alert":
                 batch_alert_cards.append((
                     "🟡 专题提醒",
                     f"**{row['batch_name']}** 当前错误集中在 **{row['error_type']}**，占近 7 天错误的 **{row['top_error_share']:.1f}%**",
-                    "建议围绕该错误类型安排专项复盘或抽样复训。",
+                    "告警口径：近 7 天滚动统计。",
                     "#fffbeb",
                     "#d97706",
                 ))
