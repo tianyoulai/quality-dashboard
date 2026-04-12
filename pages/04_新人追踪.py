@@ -118,42 +118,47 @@ def safe_pct(numerator, denominator) -> float:
 def ensure_accuracy_columns(df: pd.DataFrame) -> pd.DataFrame:
     """统一补齐样本正确率/人均口径所需列，并保留旧 accuracy_rate 兼容字段。"""
     if df is None:
-        return pd.DataFrame()
+        df = pd.DataFrame()
+    else:
+        df = df.copy()
+
+    numeric_columns = [
+        "qa_cnt",
+        "correct_cnt",
+        "misjudge_cnt",
+        "missjudge_cnt",
+        "accuracy_rate",
+        "sample_accuracy_rate",
+        "reviewer_accuracy_rate",
+        "sample_accuracy",
+        "per_capita_accuracy",
+        "accuracy",
+        "accuracy_gap",
+        "misjudge_rate",
+        "missjudge_rate",
+        "issue_rate",
+        "best_team_acc",
+        "best_team_per_capita_acc",
+        "worst_team_acc",
+        "worst_team_per_capita_acc",
+        "sample_gap_pct",
+        "per_capita_gap_pct",
+        "gap_pct",
+        "top_error_share",
+        "关注分",
+        "p0_cnt",
+        "p1_cnt",
+        "team_cnt",
+        "member_cnt",
+        "training_days",
+    ]
+    for column in numeric_columns:
+        if column not in df.columns:
+            df[column] = 0
+
+    df = normalize_numeric_columns(df, numeric_columns)
     if df.empty:
         return df
-    df = normalize_numeric_columns(
-        df,
-        [
-            "qa_cnt",
-            "correct_cnt",
-            "misjudge_cnt",
-            "missjudge_cnt",
-            "accuracy_rate",
-            "sample_accuracy_rate",
-            "reviewer_accuracy_rate",
-            "sample_accuracy",
-            "per_capita_accuracy",
-            "accuracy",
-            "accuracy_gap",
-            "misjudge_rate",
-            "missjudge_rate",
-            "issue_rate",
-            "best_team_acc",
-            "best_team_per_capita_acc",
-            "worst_team_acc",
-            "worst_team_per_capita_acc",
-            "sample_gap_pct",
-            "per_capita_gap_pct",
-            "gap_pct",
-            "top_error_share",
-            "关注分",
-            "p0_cnt",
-            "p1_cnt",
-            "team_cnt",
-            "member_cnt",
-            "training_days",
-        ],
-    )
     if "sample_accuracy_rate" not in df.columns:
         if "accuracy_rate" in df.columns:
             df["sample_accuracy_rate"] = df["accuracy_rate"]
@@ -242,6 +247,23 @@ def format_heatmap_text(matrix_df: pd.DataFrame) -> pd.DataFrame:
     return matrix_df.apply(
         lambda column: column.map(lambda value: f"{value:.1f}%" if pd.notna(value) and value > 0 else "—")
     )
+
+
+def ensure_default_columns(df: pd.DataFrame | None, defaults: dict[str, object]) -> pd.DataFrame:
+    if df is None:
+        df = pd.DataFrame()
+    else:
+        df = df.copy()
+
+    for column, default in defaults.items():
+        if column not in df.columns:
+            df[column] = default
+        else:
+            if isinstance(default, (int, float)):
+                df[column] = pd.to_numeric(df[column], errors="coerce").fillna(default)
+            else:
+                df[column] = df[column].fillna(default)
+    return df
 
 
 def split_multi_values(value: str | None) -> list[str]:
@@ -739,6 +761,19 @@ stage_filter = st.sidebar.selectbox(
 team_options = ["全部"] + sorted(all_teams)
 team_filter = st.sidebar.selectbox("基地/团队筛选", options=team_options, key="nc_team_filter")
 
+view_options = {
+    "📊 批次概览": "overview",
+    "📈 成长曲线": "growth",
+    "🔄 阶段对比": "compare",
+    "👤 个人追踪": "person",
+    "📊 维度分析": "dimension",
+    "⚠️ 异常告警": "alert",
+}
+active_view_label = st.sidebar.radio("查看模块", options=list(view_options.keys()), key="nc_view_filter")
+active_view = view_options[active_view_label]
+need_dimension_detail = active_view == "dimension"
+need_alert_detail = active_view == "alert"
+
 # ==================== 加载筛选后的数据 ====================
 
 owner_value = None if owner_filter == "全部" else owner_filter
@@ -791,61 +826,68 @@ combined_qa_df = ensure_accuracy_columns(combined_qa_df)
 error_summary_df = load_newcomer_error_summary(
     selected_batches if selected_batches else None,
     reviewer_aliases=reviewer_aliases,
-) if reviewer_aliases else pd.DataFrame()
+) if reviewer_aliases and need_alert_detail else pd.DataFrame()
 formal_dimension_df = load_formal_dimension_detail(
     selected_batches if selected_batches else None,
     reviewer_aliases=reviewer_aliases,
-) if reviewer_aliases else pd.DataFrame()
+) if reviewer_aliases and need_dimension_detail else pd.DataFrame()
 newcomer_dimension_df = load_newcomer_dimension_detail(
     selected_batches if selected_batches else None,
     reviewer_aliases=reviewer_aliases,
-) if reviewer_aliases else pd.DataFrame()
+) if reviewer_aliases and need_dimension_detail else pd.DataFrame()
 
-fact_newcomer_columns = get_table_columns("fact_newcomer_qa")
-fact_event_columns = get_table_columns("fact_qa_event")
-newcomer_dimension_ready = {"training_topic", "risk_level", "content_type"}.issubset(fact_newcomer_columns)
-formal_dimension_ready = {"training_topic", "risk_level", "content_type"}.issubset(fact_event_columns)
-if not newcomer_dimension_df.empty and not formal_dimension_df.empty:
-    dimension_current_status = "新人内/外检 + 正式阶段已接"
-elif not newcomer_dimension_df.empty:
-    dimension_current_status = "已接新人内/外检"
-elif newcomer_dimension_ready:
-    dimension_current_status = "字段已就绪，待新导入/回填"
-elif not formal_dimension_df.empty:
-    dimension_current_status = "已接正式阶段，待补新人字段"
+if need_dimension_detail:
+    fact_newcomer_columns = get_table_columns("fact_newcomer_qa")
+    fact_event_columns = get_table_columns("fact_qa_event")
+    newcomer_dimension_ready = {"training_topic", "risk_level", "content_type"}.issubset(fact_newcomer_columns)
+    formal_dimension_ready = {"training_topic", "risk_level", "content_type"}.issubset(fact_event_columns)
+    if not newcomer_dimension_df.empty and not formal_dimension_df.empty:
+        dimension_current_status = "新人内/外检 + 正式阶段已接"
+    elif not newcomer_dimension_df.empty:
+        dimension_current_status = "已接新人内/外检"
+    elif newcomer_dimension_ready:
+        dimension_current_status = "字段已就绪，待新导入/回填"
+    elif not formal_dimension_df.empty:
+        dimension_current_status = "已接正式阶段，待补新人字段"
+    else:
+        dimension_current_status = "待补新人内/外检字段"
+
+    dimension_status_df = pd.DataFrame([
+        {
+            "维度": "培训专题达标率",
+            "新人内/外检": "可用" if "training_topic" in fact_newcomer_columns else "缺失",
+            "正式阶段": "可用" if "training_topic" in fact_event_columns else "缺失",
+            "当前处理": dimension_current_status,
+            "说明": "用于识别专项培训短板",
+        },
+        {
+            "维度": "风险等级分布",
+            "新人内/外检": "可用" if "risk_level" in fact_newcomer_columns else "缺失",
+            "正式阶段": "可用" if "risk_level" in fact_event_columns else "缺失",
+            "当前处理": dimension_current_status,
+            "说明": "用于拆分高风险漏判和一般错判",
+        },
+        {
+            "维度": "内容类型分布",
+            "新人内/外检": "可用" if "content_type" in fact_newcomer_columns else "缺失",
+            "正式阶段": "可用" if "content_type" in fact_event_columns else "缺失",
+            "当前处理": dimension_current_status,
+            "说明": "用于识别特定内容类型薄弱基地",
+        },
+        {
+            "维度": "审核时效 / 人效",
+            "新人内/外检": "可用" if "qa_time" in fact_newcomer_columns else "部分可用",
+            "正式阶段": "缺失（当前汇总表无时效字段）",
+            "当前处理": "待补稳定产能或耗时口径",
+            "说明": "适合和正确率联动看赶量影响",
+        },
+    ])
 else:
-    dimension_current_status = "待补新人内/外检字段"
-
-dimension_status_df = pd.DataFrame([
-    {
-        "维度": "培训专题达标率",
-        "新人内/外检": "可用" if "training_topic" in fact_newcomer_columns else "缺失",
-        "正式阶段": "可用" if "training_topic" in fact_event_columns else "缺失",
-        "当前处理": dimension_current_status,
-        "说明": "用于识别专项培训短板",
-    },
-    {
-        "维度": "风险等级分布",
-        "新人内/外检": "可用" if "risk_level" in fact_newcomer_columns else "缺失",
-        "正式阶段": "可用" if "risk_level" in fact_event_columns else "缺失",
-        "当前处理": dimension_current_status,
-        "说明": "用于拆分高风险漏判和一般错判",
-    },
-    {
-        "维度": "内容类型分布",
-        "新人内/外检": "可用" if "content_type" in fact_newcomer_columns else "缺失",
-        "正式阶段": "可用" if "content_type" in fact_event_columns else "缺失",
-        "当前处理": dimension_current_status,
-        "说明": "用于识别特定内容类型薄弱基地",
-    },
-    {
-        "维度": "审核时效 / 人效",
-        "新人内/外检": "可用" if "qa_time" in fact_newcomer_columns else "部分可用",
-        "正式阶段": "缺失（当前汇总表无时效字段）",
-        "当前处理": "待补稳定产能或耗时口径",
-        "说明": "适合和正确率联动看赶量影响",
-    },
-])
+    fact_newcomer_columns = set()
+    fact_event_columns = set()
+    newcomer_dimension_ready = False
+    formal_dimension_ready = False
+    dimension_status_df = pd.DataFrame(columns=["维度", "新人内/外检", "正式阶段", "当前处理", "说明"])
 aggregate_payload = load_newcomer_aggregate_payload(
     selected_batches if selected_batches else None,
     owner=owner_value,
@@ -1167,14 +1209,12 @@ if not combined_qa_df.empty:
         team_alert_df["建议动作"] = team_alert_df.apply(suggest_team_action, axis=1)
         team_alert_df = team_alert_df.sort_values(["关注分", "sample_accuracy", "issue_rate"], ascending=[False, True, False])
 
-# ==================== Tab 切换 ====================
+# ==================== 模块切换 ====================
 
-tab_overview, tab_growth, tab_compare, tab_person, tab_dimension, tab_alert = st.tabs(
-    ["📊 批次概览", "📈 成长曲线", "🔄 阶段对比", "👤 个人追踪", "📊 维度分析", "⚠️ 异常告警"]
-)
+st.caption(f"当前查看：{active_view_label}。页面已改成按模块渲染，避免一次刷新把 6 个重模块一起跑完。")
 
-# ==================== Tab 1: 批次概览 ====================
-with tab_overview:
+# ==================== 模块 1: 批次概览 ====================
+if active_view == "overview":
     overview_batch_df = filtered_batch_df if not filtered_batch_df.empty else batch_df.iloc[0:0]
     overview_total_people = int(overview_batch_df["total_cnt"].sum()) if not overview_batch_df.empty else 0
     avg_training_days = 0
@@ -1602,8 +1642,8 @@ with tab_overview:
             })[["批次", "基地数", "最好基地", "最高正确率", "待关注基地", "最低正确率", "批次内差值"]]
             st.dataframe(gap_table.sort_values(["批次内差值", "最低正确率"], ascending=[False, True]), use_container_width=True, hide_index=True, height=260)
 
-# ==================== Tab 2: 成长曲线 ====================
-with tab_growth:
+# ==================== 模块 2: 成长曲线 ====================
+if active_view == "growth":
     st.markdown("#### 📈 批次成长曲线（入职天数视角）")
 
     if combined_qa_df.empty or filtered_batch_df.empty:
@@ -1687,8 +1727,8 @@ with tab_growth:
                 fig_mile.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                 render_plot(fig_mile, "growth_milestone_chart")
 
-# ==================== Tab 3: 阶段对比 ====================
-with tab_compare:
+# ==================== 模块 3: 阶段对比 ====================
+if active_view == "compare":
     st.markdown("#### 🔄 个人阶段跃迁与结构对比")
 
     if person_stage_df.empty:
@@ -1800,8 +1840,8 @@ with tab_compare:
         st.markdown("#### 📋 阶段转化明细")
         st.dataframe(compare_table, use_container_width=True, hide_index=True, height=420)
 
-# ==================== Tab 4: 个人追踪 ====================
-with tab_person:
+# ==================== 模块 4: 个人追踪 ====================
+if active_view == "person":
     st.markdown("#### 👤 个人追踪")
     st.caption("个人追踪页只展示单人样本正确率和错误明细，不展示聚合层的人均正确率。")
 
@@ -1917,8 +1957,8 @@ with tab_person:
             else:
                 st.info("暂无个人明细数据。")
 
-# ==================== Tab 5: 维度分析 ====================
-with tab_dimension:
+# ==================== 模块 5: 维度分析 ====================
+if active_view == "dimension":
     st.markdown("#### 📊 维度分析")
 
     if combined_qa_df.empty:
@@ -1985,8 +2025,7 @@ with tab_dimension:
             st.markdown("##### 🥊 批次差异榜")
             if not batch_compare_df.empty:
                 batch_rank_df = batch_compare_df.merge(batch_gap_df[["batch_name", "sample_gap_pct", "per_capita_gap_pct"]], on="batch_name", how="left") if not batch_gap_df.empty else batch_compare_df.copy()
-                batch_rank_df["sample_gap_pct"] = batch_rank_df["sample_gap_pct"].fillna(0)
-                batch_rank_df["per_capita_gap_pct"] = batch_rank_df["per_capita_gap_pct"].fillna(0)
+                batch_rank_df = ensure_default_columns(batch_rank_df, {"sample_gap_pct": 0.0, "per_capita_gap_pct": 0.0})
                 fig_batch_rank = px.bar(
                     batch_rank_df.sort_values(["sample_accuracy", "sample_gap_pct"], ascending=[False, False]),
                     x="batch_name",
@@ -2302,8 +2341,8 @@ with tab_dimension:
             })[["联营管理", "交付PM", "质培owner", "导师/质检", "人数", "质检量", "样本正确率", "人均正确率", "口径差值", "错判率", "漏判率"]]
             st.dataframe(management_table.sort_values(["样本正确率", "质检量"], ascending=[False, False]), use_container_width=True, hide_index=True, height=360)
 
-# ==================== Tab 6: 异常告警 ====================
-with tab_alert:
+# ==================== 模块 6: 异常告警 ====================
+if active_view == "alert":
     st.markdown("#### ⚠️ 异常告警")
 
     if combined_qa_df.empty:
