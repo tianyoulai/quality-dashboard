@@ -1,14 +1,16 @@
-# 质检日报自动推送 - GitHub Action
-# 每天北京时间 15:00 执行，生成昨日质检日报并推送到企业微信群
+# 质检日报推送 - GitHub Action
+# ⚠️ 默认关闭自动调度（与本地 LaunchAgents daily_refresh 重复）
+#    本地 13:05 已覆盖数据刷新+企微推送，此 workflow 仅作备用/手动触发
+#    如需启用自动调度，取消下方 schedule 注释即可
 
 name: Daily QA Report
 
 on:
-  schedule:
-    # UTC 7:00 = 北京时间 15:00（每天）
-    - cron: '0 7 * * *'
+  # schedule:
+  #   # UTC 10:20 = 北京时间 18:20（每天）
+  #   - cron: '20 10 * * *'
   workflow_dispatch:
-    # 允许手动触发（用于测试）
+    # 允许手动触发（用于测试或应急推送）
     inputs:
       report_date:
         description: '报告日期 (YYYY-MM-DD)，默认昨天'
@@ -20,6 +22,13 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-qa-report-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   daily-report:
     runs-on: ubuntu-latest
@@ -27,10 +36,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -53,36 +62,53 @@ jobs:
           mkdir -p config
 
           # 生成 settings.json
-          python3 << 'PYEOF'
-          import json
-          import os
+          python << 'PYEOF'
+          import json, os, sys
+
+          required = {
+              "TIDB_HOST": os.environ.get("TIDB_HOST", ""),
+              "TIDB_USER": os.environ.get("TIDB_USER", ""),
+              "TIDB_PASSWORD": os.environ.get("TIDB_PASSWORD", ""),
+              "TIDB_DATABASE": os.environ.get("TIDB_DATABASE", ""),
+              "WECOM_WEBHOOK": os.environ.get("WECOM_WEBHOOK", ""),
+          }
+          missing = [name for name, value in required.items() if not value]
+
+          if missing:
+              print(f"⚠️ Secrets 未配置（{', '.join(missing)}），跳过配置生成。")
+              print("   → 如需启用此 workflow，请在 Settings → Secrets 中配置以下变量：")
+              print("     TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE, WECOM_WEBHOOK_URL")
+              print("   → 或使用本地 LaunchAgents daily_refresh (每天 13:05) 已覆盖此功能")
+              # 写一个标记文件，让后续步骤知道配置未就绪
+              with open("config/.skip_flag", "w") as f:
+                  f.write("secrets_missing")
+              sys.exit(0)
 
           config = {
-              "wecom_webhook_url": os.environ.get("WECOM_WEBHOOK", ""),
+              "wecom_webhook_url": required["WECOM_WEBHOOK"],
               "wecom_webhook_key": "",
               "daily_report_hour": 18,
-              "daily_report_minute": 0,
+              "daily_report_minute": 20,
               "dashboard_url": "https://quality-dashboard-2026.streamlit.app/",
               "db_path": "data/warehouse/qa.duckdb",
               "tidb": {
-                  "host": os.environ.get("TIDB_HOST", ""),
+                  "host": required["TIDB_HOST"],
                   "port": int(os.environ.get("TIDB_PORT", "4000")),
-                  "user": os.environ.get("TIDB_USER", ""),
-                  "password": os.environ.get("TIDB_PASSWORD", ""),
-                  "database": os.environ.get("TIDB_DATABASE", ""),
+                  "user": required["TIDB_USER"],
+                  "password": required["TIDB_PASSWORD"],
+                  "database": required["TIDB_DATABASE"],
                   "charset": "utf8mb4"
               }
           }
 
-          with open("config/settings.json", "w") as f:
+          with open("config/settings.json", "w", encoding="utf-8") as f:
               json.dump(config, f, indent=2)
 
-          print("Config prepared:")
-          with open("config/settings.json", "r") as f:
-              print(f.read())
+          print("Config prepared (secrets omitted).")
           PYEOF
 
       - name: Run daily report
+        if: hashFiles('config/.skip_flag') == ''
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL }}
@@ -103,19 +129,21 @@ jobs:
           echo "Running: python jobs/daily_report.py $ARGS"
           python jobs/daily_report.py $ARGS
 
-      - name: Commit daily_data.json
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      - name: Skip notice
+        if: hashFiles('config/.skip_flag') != ''
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add daily_data.json || true
-          git diff --quiet && git diff --staged --quiet || git commit -m "Update daily_data.json [skip ci]"
-          git push
+          echo "::notice::⏭️ Daily QA Report 已跳过 — Secrets 未配置"
+          echo "::notice::   本地 LaunchAgents daily_refresh (13:05) 已覆盖此功能"
+          echo "::notice::   如需启用云端推送，请配置 Repository Secrets 后手动触发"
+          echo "SKIP=true" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload report artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: daily-report-${{ github.run_number }}
-          path: deliverables/
+          path: |
+            deliverables/
+            daily_data.json
+          if-no-files-found: warn
           retention-days: 30
