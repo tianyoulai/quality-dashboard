@@ -48,9 +48,9 @@ def load_newcomer_aggregate_payload(
     return build_newcomer_aggregate_payload(batch_names=batch_names, owner=owner, team_name=team_name)
 
 
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(show_spinner=False, ttl=3600)
 def get_table_columns(table_name: str) -> set[str]:
-    """读取表结构字段，便于兼容历史库和做维度可用性判断。"""
+    """读取表结构字段，缓存 1 小时（schema 很少变化）。"""
     try:
         columns_df = repo.fetch_df(f"SHOW COLUMNS FROM {table_name}")
         return set(columns_df["Field"].tolist()) if columns_df is not None and not columns_df.empty else set()
@@ -327,7 +327,15 @@ def render_plot(fig, key: str) -> None:
     st.plotly_chart(fig, use_container_width=True, key=key)
 
 
-ensure_newcomer_schema()
+_schema_checked = False
+def _ensure_schema_once():
+    """延迟执行 schema 检查，避免页面加载时立即触发 SQL 查询。"""
+    global _schema_checked
+    if not _schema_checked:
+        ensure_newcomer_schema()
+        _schema_checked = True
+
+_ensure_schema_once()
 
 # 正式队列人员：偶尔会被下线到新人队列练习，这类记录不应计入新人批次
 NON_NEWCOMER_PRACTICE_REVIEWERS = {
@@ -786,11 +794,16 @@ load_newcomer_stage = stage_code in (None, "internal", "external")
 load_formal_stage = stage_code in (None, "formal")
 newcomer_stage = stage_code if stage_code in {"internal", "external"} else None
 
+# 按当前 view 选择性加载数据，避免全量查询
+need_aggregate = active_view in ("overview", "dimension")
+need_combined_qa = need_growth_detail or need_compare_detail or need_alert_detail
+
 aggregate_payload = load_newcomer_aggregate_payload(
     selected_batches if selected_batches else None,
     owner=owner_value,
     team_name=team_value,
-) if not members_df.empty else {}
+) if not members_df.empty and need_aggregate else {}
+
 need_overview_fallback = active_view == "overview" and not all(
     aggregate_payload.get(key)
     for key in ["stage_summary", "batch_stage_summary", "team_accuracy", "batch_compare", "batch_gap", "batch_watch", "management_summary"]
@@ -799,7 +812,8 @@ need_dimension_fallback = active_view == "dimension" and not all(
     aggregate_payload.get(key)
     for key in ["stage_team_accuracy", "team_accuracy", "batch_compare", "batch_gap", "management_summary"]
 )
-need_combined_qa = need_growth_detail or need_compare_detail or need_alert_detail or need_overview_fallback or need_dimension_fallback
+# aggregate 未命中时，fallback 到 combined_qa 重新计算
+need_combined_qa = need_combined_qa or need_overview_fallback or need_dimension_fallback
 
 # 加载新人质检数据（尽量把筛选下推到 SQL）
 if reviewer_aliases and load_newcomer_stage and need_combined_qa:

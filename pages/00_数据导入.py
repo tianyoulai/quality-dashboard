@@ -64,7 +64,11 @@ def preview_file_rows(file_obj, file_type: str) -> dict:
 
 
 def get_upload_history(limit: int = 20) -> list[dict]:
-    """获取最近的上传记录。"""
+    """获取最近的上传记录（通过 Streamlit 缓存减少查询）。"""
+    return _cached_upload_history(limit)
+
+@st.cache_data(show_spinner=False, ttl=120)
+def _cached_upload_history(limit: int = 20) -> list[dict]:
     try:
         result = repo.fetch_df(
             """
@@ -543,7 +547,10 @@ with tab_import[6]:
     st.caption("根据日期范围删除质检数据，或全部清空。⚠️ 此操作不可逆，请谨慎操作。")
 
     # 显示当前数据量
-    total_cnt = repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_qa_event")["cnt"]
+    @st.cache_data(show_spinner=False, ttl=300)
+    def _get_total_cnt():
+        return repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_qa_event")["cnt"]
+    total_cnt = _get_total_cnt()
     st.info(f"📊 当前质检数据总量：**{total_cnt:,}** 条")
 
     # 清除方式选择

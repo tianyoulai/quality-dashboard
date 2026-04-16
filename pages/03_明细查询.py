@@ -59,13 +59,13 @@ st.markdown("""
 def get_filter_options() -> dict:
     """获取筛选选项（缓存 10 分钟）。
     
-    优化：从 fact_qa_event 直表查询 DISTINCT，避免扫描 vw_qa_base 视图（122 万行）。
+    优化：从 mart_day_group 聚合表查询 DISTINCT，避免扫描 fact_qa_event 全表。
     """
-    groups = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name FROM fact_qa_event WHERE sub_biz IS NOT NULL ORDER BY 1")
-    queues = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name, queue_name FROM fact_qa_event WHERE queue_name IS NOT NULL ORDER BY 1, 2")
-    reviewers = repo.fetch_df("SELECT DISTINCT reviewer_name FROM fact_qa_event WHERE reviewer_name IS NOT NULL ORDER BY 1")
-    error_types = repo.fetch_df("SELECT DISTINCT error_type FROM fact_qa_event WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
-    dates = repo.fetch_df("SELECT DISTINCT biz_date FROM fact_qa_event ORDER BY 1")
+    groups = repo.fetch_df("SELECT DISTINCT group_name FROM mart_day_group WHERE group_name IS NOT NULL ORDER BY 1")
+    queues = repo.fetch_df("SELECT DISTINCT group_name, queue_name FROM mart_day_queue WHERE queue_name IS NOT NULL ORDER BY 1, 2")
+    reviewers = repo.fetch_df("SELECT DISTINCT reviewer_name FROM mart_day_auditor WHERE reviewer_name IS NOT NULL ORDER BY 1")
+    error_types = repo.fetch_df("SELECT DISTINCT error_type FROM mart_day_error_topic WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
+    dates = repo.fetch_df("SELECT DISTINCT biz_date FROM mart_day_group ORDER BY 1")
     return {
         "groups": groups["group_name"].tolist() if not groups.empty else [],
         "queues": queues if not queues.empty else pd.DataFrame(columns=["group_name", "queue_name"]),
@@ -210,13 +210,21 @@ with st.container(border=True):
         )
         query_limit = limit_options[limit_sel]
 
+    do_query = st.button("🔍 查询", key="detail_query_btn", type="primary", use_container_width=True)
+
 group_val = group_sel if group_sel != "(全部)" else None
 queue_val = queue_sel if queue_sel != "(全部)" else None
 reviewer_val = reviewer_sel if reviewer_sel != "(全部)" else None
 error_val = error_sel if error_sel != "(全部)" else None
 issue_mode = issue_filter if only_issues and issue_filter != "全部问题" else None
 
-df = query_detail(date_start, date_end, group_val, queue_val, reviewer_val, error_val, only_issues, issue_filter if issue_filter != "全部问题" else "", query_limit)
+# 只在用户点击查询时才执行 SQL
+if do_query or "detail_df" in st.session_state:
+    if do_query:
+        st.session_state["detail_df"] = query_detail(date_start, date_end, group_val, queue_val, reviewer_val, error_val, only_issues, issue_filter if issue_filter != "全部问题" else "", query_limit)
+    df = st.session_state["detail_df"]
+else:
+    df = pd.DataFrame()
 
 if df.empty:
     st.info("当前筛选条件下没有数据。试试放宽筛选条件。")
