@@ -130,6 +130,12 @@ def load_group_overview(grain: str, selected_date: date) -> dict:
 
 
 @st.cache_data(show_spinner=False, ttl=300)
+def load_group_overview_lite(grain: str, selected_date: date) -> dict:
+    """轻量首屏：只查 group_df + alerts_df（2次查询代替7次）。"""
+    return service.load_dashboard_lite(grain, selected_date)
+
+
+@st.cache_data(show_spinner=False, ttl=300)
 def load_group_detail(
     grain: str,
     selected_date: date,
@@ -347,7 +353,7 @@ with mode_col4:
 st.markdown("---")
 
 # ==================== 加载数据 ====================
-payload = load_group_overview(grain, selected_date)
+payload = load_group_overview_lite(grain, selected_date)
 group_df: pd.DataFrame = payload["group_df"]
 alerts_df: pd.DataFrame = payload["alerts_df"]
 alert_summary: dict[str, int] = payload["alert_summary"]
@@ -376,7 +382,7 @@ elif grain == "week":
 else:
     prev_date = (selected_date.replace(day=1) - timedelta(days=1)).replace(day=1)
 
-prev_payload = load_group_overview(grain, prev_date)
+prev_payload = load_group_overview_lite(grain, prev_date)
 prev_group_df: pd.DataFrame = prev_payload["group_df"]
 
 if group_df.empty:
