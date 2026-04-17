@@ -2,6 +2,13 @@
 
 这套目录现在已经不是静态 demo，而是一版能继续接真实数据、直接往本机部署推进的骨架。
 
+## 项目身份（2026-04-17 校准）
+
+- **当前线上地址**：`https://quality-dashboard-2026.streamlit.app/`
+- **项目定位**：这是 **评论质量看板** 主项目。
+- **易混淆的兄弟项目**：TAO 看板在 `/Users/laitianyou/WorkBuddy/20260408163242/qc-dashboard/`，线上地址是 `https://f4qv5p8uuurnb369isiudq.streamlit.app/`
+- **排查原则**：后续看 launchd、日志、日报脚本时，先按 URL → 本地项目 → 定时任务 → 日志 这条链确认，不要再和 TAO 项目混看。
+
 ## 当前结构
 
 ```text
@@ -21,6 +28,27 @@ storage/
 deliverables/
   ├── qa_ops_demo.html
   └── qa_dashboard_schema_duckdb.sql
+```
+
+## 当前迁移补充（Next.js + FastAPI）
+
+除了上面的 Streamlit 主骨架，仓库里已经同时在推进一套 Next.js + FastAPI 迁移版：
+
+- `api/`：FastAPI 接口层，承接首页、明细查询、新人追踪等读接口
+- `frontend/`：Next.js 前端，当前已有 `/`、`/details`、`/newcomers` 三页迁移版
+- `jobs/smoke_checks.py`：迁移版部署前/后的只读冒烟入口
+
+当前只读冒烟已经明确覆盖到：
+
+- 首页告警详情闭环关键字段与首页详情页可见性
+- 明细查询 `returned_count / total_count / is_truncated / export_row_cap / export_expected_count / export_will_truncate` 语义一致性
+- 明细页四层结果口径文案：`当前命中总数 / 接口返回行数 / 页面预览行数 / CSV 导出范围`
+
+常用命令：
+
+```bash
+python3 jobs/smoke_checks.py --mode predeploy
+python3 jobs/smoke_checks.py --mode postdeploy --api-base http://127.0.0.1:8000 --frontend-base http://127.0.0.1:3000
 ```
 
 ## 各文件职责

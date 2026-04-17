@@ -35,13 +35,23 @@ class DashboardRepository:
         schema_file = Path(schema_path) if schema_path else Path(__file__).resolve().parent / "schema.sql"
         sql = schema_file.read_text(encoding="utf-8")
         statements = self._split_sql(sql)
-        for stmt in statements:
+        errors: list[str] = []
+
+        for idx, stmt in enumerate(statements, start=1):
             stmt = stmt.strip()
-            if stmt:
-                try:
-                    self._manager.execute(stmt)
-                except Exception:
-                    pass  # 视图/表已存在等可忽略
+            if not stmt:
+                continue
+            try:
+                self._manager.execute(stmt)
+            except Exception as exc:
+                preview = " ".join(stmt.split())[:120]
+                errors.append(f"[{idx}] {preview} -> {exc}")
+
+        if errors:
+            details = "\n".join(errors[:10])
+            raise RuntimeError(
+                f"Schema 初始化失败，共 {len(errors)} 条 SQL 执行失败：\n{details}"
+            )
 
     @staticmethod
     def _split_sql(sql: str) -> list[str]:
@@ -211,13 +221,19 @@ class DashboardRepository:
 
     # ==================== 组别/队列概览 ====================
 
-    def get_group_overview(self, grain: str, anchor_date: date) -> pd.DataFrame:
+    def get_group_overview(self, grain: str, anchor_date: date, inspect_type: str | None = None) -> pd.DataFrame:
         table = self._summary_table(grain, "group")
         anchor_column = self._anchor_column(grain)
+        conditions = [f"{anchor_column} = %s"]
+        params: list[Any] = [anchor_date]
+        if inspect_type:
+            conditions.append("inspect_type = %s")
+            params.append(inspect_type)
+        where_sql = " AND ".join(conditions)
         sql = f"""
         SELECT *
         FROM {table}
-        WHERE {anchor_column} = %s
+        WHERE {where_sql}
         ORDER BY
             CASE group_name
                 WHEN 'A组-评论' THEN 1
@@ -228,19 +244,24 @@ class DashboardRepository:
             final_accuracy_rate ASC,
             qa_cnt DESC
         """
-        return self.fetch_df(sql, [anchor_date])
+        return self.fetch_df(sql, params)
 
-    def get_queue_breakdown(self, grain: str, anchor_date: date, group_name: str) -> pd.DataFrame:
+    def get_queue_breakdown(self, grain: str, anchor_date: date, group_name: str, inspect_type: str | None = None) -> pd.DataFrame:
         table = self._summary_table(grain, "queue")
         anchor_column = self._anchor_column(grain)
+        conditions = [f"{anchor_column} = %s", "group_name = %s"]
+        params: list[Any] = [anchor_date, group_name]
+        if inspect_type:
+            conditions.append("inspect_type = %s")
+            params.append(inspect_type)
+        where_sql = " AND ".join(conditions)
         sql = f"""
         SELECT *
         FROM {table}
-        WHERE {anchor_column} = %s
-          AND group_name = %s
+        WHERE {where_sql}
         ORDER BY final_accuracy_rate ASC, qa_cnt DESC
         """
-        return self.fetch_df(sql, [anchor_date, group_name])
+        return self.fetch_df(sql, params)
 
     def get_auditor_breakdown(
         self,

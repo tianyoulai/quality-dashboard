@@ -64,6 +64,9 @@ CREATE TABLE IF NOT EXISTS fact_qa_event (
     comment_text TEXT,
     qa_note TEXT,
 
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检: external, internal',
+    workforce_type VARCHAR(16) DEFAULT 'formal' COMMENT '正式/新人: formal, newcomer',
+
     batch_id VARCHAR(64),
     source_file_name VARCHAR(256),
     row_hash VARCHAR(64),
@@ -75,6 +78,8 @@ CREATE INDEX IF NOT EXISTS idx_fqe_biz_date ON fact_qa_event (biz_date);
 CREATE INDEX IF NOT EXISTS idx_fqe_sub_biz ON fact_qa_event (sub_biz);
 CREATE INDEX IF NOT EXISTS idx_fqe_join_key ON fact_qa_event (join_key (128));
 CREATE INDEX IF NOT EXISTS idx_fqe_row_hash ON fact_qa_event (row_hash);
+CREATE INDEX IF NOT EXISTS idx_fqe_inspect_type ON fact_qa_event (inspect_type);
+CREATE INDEX IF NOT EXISTS idx_fqe_workforce_type ON fact_qa_event (workforce_type);
 
 CREATE TABLE IF NOT EXISTS fact_appeal_event (
     appeal_event_id VARCHAR(64),
@@ -213,6 +218,7 @@ CREATE TABLE IF NOT EXISTS mart_day_group (
     group_name VARCHAR(128),
     mother_biz VARCHAR(128),
     sub_biz VARCHAR(128),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     qa_cnt BIGINT,
     raw_correct_cnt BIGINT,
     final_correct_cnt BIGINT,
@@ -228,7 +234,7 @@ CREATE TABLE IF NOT EXISTS mart_day_group (
     misjudge_rate DOUBLE,
     missjudge_rate DOUBLE,
     appeal_reverse_rate DOUBLE,
-    PRIMARY KEY (biz_date, group_name)
+    PRIMARY KEY (biz_date, group_name, inspect_type)
 );
 
 CREATE INDEX IF NOT EXISTS idx_mdg_sub_biz ON mart_day_group (sub_biz);
@@ -237,6 +243,7 @@ CREATE TABLE IF NOT EXISTS mart_day_queue (
     biz_date DATE,
     group_name VARCHAR(128),
     queue_name VARCHAR(128),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     qa_cnt BIGINT,
     raw_correct_cnt BIGINT,
     final_correct_cnt BIGINT,
@@ -252,7 +259,7 @@ CREATE TABLE IF NOT EXISTS mart_day_queue (
     misjudge_rate DOUBLE,
     missjudge_rate DOUBLE,
     appeal_reverse_rate DOUBLE,
-    PRIMARY KEY (biz_date, group_name, queue_name)
+    PRIMARY KEY (biz_date, group_name, queue_name, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_day_auditor (
@@ -260,6 +267,7 @@ CREATE TABLE IF NOT EXISTS mart_day_auditor (
     group_name VARCHAR(128),
     queue_name VARCHAR(128),
     reviewer_name VARCHAR(128),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     qa_cnt BIGINT,
     raw_correct_cnt BIGINT,
     final_correct_cnt BIGINT,
@@ -270,7 +278,7 @@ CREATE TABLE IF NOT EXISTS mart_day_auditor (
     misjudge_rate DOUBLE,
     missjudge_rate DOUBLE,
     appeal_reverse_rate DOUBLE,
-    PRIMARY KEY (biz_date, group_name, queue_name, reviewer_name)
+    PRIMARY KEY (biz_date, group_name, queue_name, reviewer_name, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_week_group (
@@ -278,6 +286,7 @@ CREATE TABLE IF NOT EXISTS mart_week_group (
     group_name VARCHAR(128),
     mother_biz VARCHAR(128),
     sub_biz VARCHAR(128),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     qa_cnt BIGINT,
     active_days INT,
     raw_accuracy_rate DOUBLE,
@@ -285,13 +294,14 @@ CREATE TABLE IF NOT EXISTS mart_week_group (
     misjudge_rate DOUBLE,
     missjudge_rate DOUBLE,
     appeal_reverse_rate DOUBLE,
-    PRIMARY KEY (week_begin_date, group_name)
+    PRIMARY KEY (week_begin_date, group_name, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_week_queue (
     week_begin_date DATE,
     group_name VARCHAR(128),
     queue_name VARCHAR(128),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     qa_cnt BIGINT,
     active_days INT,
     raw_accuracy_rate DOUBLE,
@@ -299,7 +309,7 @@ CREATE TABLE IF NOT EXISTS mart_week_queue (
     misjudge_rate DOUBLE,
     missjudge_rate DOUBLE,
     appeal_reverse_rate DOUBLE,
-    PRIMARY KEY (week_begin_date, group_name, queue_name)
+    PRIMARY KEY (week_begin_date, group_name, queue_name, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_month_group (
@@ -307,6 +317,7 @@ CREATE TABLE IF NOT EXISTS mart_month_group (
     group_name VARCHAR(128),
     mother_biz VARCHAR(128),
     sub_biz VARCHAR(128),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     qa_cnt BIGINT,
     active_days INT,
     raw_accuracy_rate DOUBLE,
@@ -314,13 +325,14 @@ CREATE TABLE IF NOT EXISTS mart_month_group (
     misjudge_rate DOUBLE,
     missjudge_rate DOUBLE,
     appeal_reverse_rate DOUBLE,
-    PRIMARY KEY (month_begin_date, group_name)
+    PRIMARY KEY (month_begin_date, group_name, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_month_queue (
     month_begin_date DATE,
     group_name VARCHAR(128),
     queue_name VARCHAR(128),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     qa_cnt BIGINT,
     reviewer_cnt INT,
     raw_accuracy_rate DOUBLE,
@@ -328,7 +340,7 @@ CREATE TABLE IF NOT EXISTS mart_month_queue (
     misjudge_rate DOUBLE,
     missjudge_rate DOUBLE,
     appeal_reverse_rate DOUBLE,
-    PRIMARY KEY (month_begin_date, group_name, queue_name)
+    PRIMARY KEY (month_begin_date, group_name, queue_name, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_day_error_topic (
@@ -337,9 +349,10 @@ CREATE TABLE IF NOT EXISTS mart_day_error_topic (
     queue_name VARCHAR(128),
     error_type VARCHAR(128),
     error_reason VARCHAR(512),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     issue_cnt BIGINT,
     affected_reviewer_cnt INT,
-    PRIMARY KEY (biz_date, group_name, queue_name, error_type)
+    PRIMARY KEY (biz_date, group_name, queue_name, error_type, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_week_error_topic (
@@ -348,9 +361,10 @@ CREATE TABLE IF NOT EXISTS mart_week_error_topic (
     queue_name VARCHAR(128),
     error_type VARCHAR(128),
     error_reason VARCHAR(512),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     issue_cnt BIGINT,
     affected_reviewer_cnt INT,
-    PRIMARY KEY (week_begin_date, group_name, queue_name, error_type)
+    PRIMARY KEY (week_begin_date, group_name, queue_name, error_type, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_month_error_topic (
@@ -359,9 +373,10 @@ CREATE TABLE IF NOT EXISTS mart_month_error_topic (
     queue_name VARCHAR(128),
     error_type VARCHAR(128),
     error_reason VARCHAR(512),
+    inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检',
     issue_cnt BIGINT,
     affected_reviewer_cnt INT,
-    PRIMARY KEY (month_begin_date, group_name, queue_name, error_type)
+    PRIMARY KEY (month_begin_date, group_name, queue_name, error_type, inspect_type)
 );
 
 CREATE TABLE IF NOT EXISTS mart_training_action_recovery (
@@ -474,6 +489,8 @@ SELECT
     q.training_topic,
     q.comment_text,
     q.qa_note,
+    q.inspect_type,
+    q.workforce_type,
     COALESCE(q.is_raw_correct, 0) AS is_raw_correct,
     CASE
         WHEN COALESCE(TRIM(a.appeal_result), '') <> '' THEN TRIM(COALESCE(q.raw_judgement, '')) = TRIM(a.appeal_result)

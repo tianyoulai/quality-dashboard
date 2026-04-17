@@ -842,12 +842,12 @@ with rank_col:
         
         queue_show = pd.DataFrame()
         queue_show["队列"] = detail_queue_df["queue_name"]
-        queue_show["质检量"] = detail_queue_df["qa_cnt"]
-        queue_show["出错量"] = detail_queue_df["final_error_cnt"]
-        queue_show["原始正确率"] = detail_queue_df["raw_accuracy_rate"]
-        queue_show["最终正确率"] = detail_queue_df["final_accuracy_rate"]
-        queue_show["错判率"] = detail_queue_df["misjudge_rate"]
-        queue_show["漏判率"] = detail_queue_df["missjudge_rate"]
+        queue_show["质检量"] = pd.to_numeric(detail_queue_df["qa_cnt"], errors="coerce").fillna(0).astype(int)
+        queue_show["出错量"] = pd.to_numeric(detail_queue_df["final_error_cnt"], errors="coerce").fillna(0).astype(int)
+        queue_show["原始正确率"] = pd.to_numeric(detail_queue_df["raw_accuracy_rate"], errors="coerce").fillna(0).astype(float)
+        queue_show["最终正确率"] = pd.to_numeric(detail_queue_df["final_accuracy_rate"], errors="coerce").fillna(0).astype(float)
+        queue_show["错判率"] = pd.to_numeric(detail_queue_df["misjudge_rate"], errors="coerce").fillna(0).astype(float)
+        queue_show["漏判率"] = pd.to_numeric(detail_queue_df["missjudge_rate"], errors="coerce").fillna(0).astype(float)
 
         st.dataframe(
             queue_show,
@@ -875,11 +875,11 @@ with auditor_col:
         
         auditor_show = pd.DataFrame()
         auditor_show["审核人"] = final_auditor_df["reviewer_name"]
-        auditor_show["质检量"] = final_auditor_df["qa_cnt"]
-        auditor_show["原始正确率"] = final_auditor_df["raw_accuracy_rate"]
-        auditor_show["最终正确率"] = final_auditor_df["final_accuracy_rate"]
-        auditor_show["错判量"] = final_auditor_df["misjudge_cnt"]
-        auditor_show["漏判量"] = final_auditor_df["missjudge_cnt"]
+        auditor_show["质检量"] = pd.to_numeric(final_auditor_df["qa_cnt"], errors="coerce").fillna(0).astype(int)
+        auditor_show["原始正确率"] = pd.to_numeric(final_auditor_df["raw_accuracy_rate"], errors="coerce").fillna(0).astype(float)
+        auditor_show["最终正确率"] = pd.to_numeric(final_auditor_df["final_accuracy_rate"], errors="coerce").fillna(0).astype(float)
+        auditor_show["错判量"] = pd.to_numeric(final_auditor_df["misjudge_cnt"], errors="coerce").fillna(0).astype(int)
+        auditor_show["漏判量"] = pd.to_numeric(final_auditor_df["missjudge_cnt"], errors="coerce").fillna(0).astype(int)
 
         st.dataframe(
             auditor_show,

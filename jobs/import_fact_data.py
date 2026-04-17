@@ -45,6 +45,60 @@ BUSINESS_LINE_RULES = [
 ]
 
 
+# ==========================================================
+# 内检/外检、正式/新人 自动检测规则
+# ==========================================================
+
+# 内检文件名关键词（优先级从高到低）
+INTERNAL_INSPECT_KEYWORDS = [
+    "内检", "内部质检", "内部质量", "内部抽检",
+]
+# 外检文件名关键词（如果同时出现内外检关键词，以显式匹配为准）
+EXTERNAL_INSPECT_KEYWORDS = [
+    "外检", "外部质检", "外部质量", "外部抽检",
+]
+# 新人相关关键词
+NEWCOMER_KEYWORDS = [
+    "新人", "新员工", "实习生", "培训期", "试用期",
+    "18365",  # 新人内检队列号
+]
+
+
+def detect_inspect_type(filename: str) -> str:
+    """根据文件名自动检测检类（外检/内检）。
+
+    规则：
+    1. 文件名含内检关键词 → internal
+    2. 文件名含外检关键词 → external
+    3. 默认 → external（现有数据均为外检）
+    """
+    normalized = re.sub(r"\s+", "", filename).lower()
+    for keyword in INTERNAL_INSPECT_KEYWORDS:
+        if keyword.lower() in normalized:
+            return "internal"
+    for keyword in EXTERNAL_INSPECT_KEYWORDS:
+        if keyword.lower() in normalized:
+            return "external"
+    return "external"
+
+
+def detect_workforce_type(filename: str) -> str:
+    """根据文件名自动检测人力类型（正式/新人）。
+
+    规则：
+    1. 文件名含新人关键词 → newcomer
+    2. 默认 → formal（现有数据均为正式人力）
+
+    注意：更精确的判定需要与 dim_newcomer_batch 交叉匹配，
+    此函数仅做文件名层面的快速推断。
+    """
+    normalized = re.sub(r"\s+", "", filename).lower()
+    for keyword in NEWCOMER_KEYWORDS:
+        if keyword.lower() in normalized:
+            return "newcomer"
+    return "formal"
+
+
 def identify_business_line(filename: str) -> tuple[str, str]:
     """根据文件名识别业务线。
 
@@ -170,6 +224,8 @@ QA_INSERT_COLUMNS = [
     "appeal_reason",
     "comment_text",
     "qa_note",
+    "inspect_type",
+    "workforce_type",
     "batch_id",
     "source_file_name",
     "row_hash",
@@ -450,7 +506,14 @@ def build_join_key(
     return join_key
 
 
-def prepare_qa_frame(raw_df: pd.DataFrame, source_file_name: str, batch_id: str, import_day: date) -> tuple[pd.DataFrame, int]:
+def prepare_qa_frame(
+    raw_df: pd.DataFrame,
+    source_file_name: str,
+    batch_id: str,
+    import_day: date,
+    inspect_type: str = "external",
+    workforce_type: str = "formal",
+) -> tuple[pd.DataFrame, int]:
     mapped = map_columns(raw_df, QA_COLUMN_ALIASES)
     index = mapped.index
 
@@ -571,6 +634,8 @@ def prepare_qa_frame(raw_df: pd.DataFrame, source_file_name: str, batch_id: str,
             "appeal_reason": clean_text(mapped["appeal_reason"]),
             "comment_text": clean_text(mapped["comment_text"]),
             "qa_note": qa_note,
+            "inspect_type": inspect_type,
+            "workforce_type": workforce_type,
             "batch_id": clean_text(mapped["batch_id"]).fillna(batch_id),
             "source_file_name": source_file_name,
         }
@@ -838,10 +903,16 @@ def import_dataset(
     import_day: date,
     upload_id: str,
     skip_dedup: bool = False,
+    inspect_type: str | None = None,
+    workforce_type: str | None = None,
 ) -> ImportSummary:
     raw_df = read_table_file(file_path)
     file_size = file_path.stat().st_size if file_path.exists() else 0
     file_hash = compute_file_hash(file_path) if skip_dedup is False else ""
+    
+    # 自动检测 inspect_type 和 workforce_type（如果未显式指定）
+    effective_inspect = inspect_type or detect_inspect_type(source_name)
+    effective_workforce = workforce_type or detect_workforce_type(source_name)
     
     # 去重检测
     if not skip_dedup and check_file_duplicate(conn, file_hash, source_name, dataset, upload_id):
@@ -864,7 +935,11 @@ def import_dataset(
         return ImportSummary(dataset, str(file_path), len(raw_df), 0, len(raw_df), 0)
     
     if dataset == "qa":
-        prepared_df, warning_rows = prepare_qa_frame(raw_df, source_name, batch_id, import_day)
+        prepared_df, warning_rows = prepare_qa_frame(
+            raw_df, source_name, batch_id, import_day,
+            inspect_type=effective_inspect,
+            workforce_type=effective_workforce,
+        )
         inserted_rows, dedup_rows = insert_new_rows(conn, "fact_qa_event", QA_INSERT_COLUMNS, prepared_df)
         mother_biz, sub_biz = identify_business_line(source_name)
         business_line = sub_biz if sub_biz != "未识别" else mother_biz
@@ -908,6 +983,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-id", default=None, help="本次导入批次号；不传则自动生成")
     parser.add_argument("--skip-refresh", action="store_true", help="只导入 fact，不刷新 mart / 规则维表")
     parser.add_argument("--skip-dedup", action="store_true", help="跳过文件级去重检测（默认启用去重）")
+    parser.add_argument("--inspect-type", choices=["external", "internal"], default=None, help="强制指定检类：external(外检) 或 internal(内检)，不传则自动检测")
+    parser.add_argument("--workforce-type", choices=["formal", "newcomer"], default=None, help="强制指定人力类型：formal(正式) 或 newcomer(新人)，不传则自动检测")
     return parser.parse_args()
 
 
@@ -944,7 +1021,9 @@ def main() -> None:
             summary = import_dataset(
                 conn, dataset="qa", file_path=file_path, source_name=source_name,
                 batch_id=batch_id, import_day=date.today(), upload_id=upload_id,
-                skip_dedup=args.skip_dedup
+                skip_dedup=args.skip_dedup,
+                inspect_type=args.inspect_type,
+                workforce_type=args.workforce_type,
             )
             qa_summaries.append(summary)
             write_etl_log(

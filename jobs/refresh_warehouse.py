@@ -38,7 +38,7 @@ from storage.repository import DashboardRepository
 
 REFRESH_MART_DAY_GROUP = """
 REPLACE INTO mart_day_group (
-    biz_date, group_name, mother_biz, sub_biz,
+    biz_date, group_name, mother_biz, sub_biz, inspect_type,
     qa_cnt,
     raw_correct_cnt, final_correct_cnt,
     raw_error_cnt, final_error_cnt,
@@ -54,6 +54,7 @@ SELECT
     sub_biz AS group_name,
     MAX(mother_biz) AS mother_biz,
     sub_biz,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
     COUNT(*) AS qa_cnt,
     SUM(is_raw_correct) AS raw_correct_cnt,
     SUM(is_final_correct) AS final_correct_cnt,
@@ -71,12 +72,12 @@ SELECT
     ROUND(SUM(is_appeal_reversed) * 100.0 / NULLIF(NULLIF(SUM(is_appealed), 0), 0), 2) AS appeal_reverse_rate
 FROM fact_qa_event
 WHERE {where_clause}
-GROUP BY biz_date, sub_biz
+GROUP BY biz_date, sub_biz, COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
 REFRESH_MART_DAY_QUEUE = """
 REPLACE INTO mart_day_queue (
-    biz_date, group_name, queue_name,
+    biz_date, group_name, queue_name, inspect_type,
     qa_cnt,
     raw_correct_cnt, final_correct_cnt,
     raw_error_cnt, final_error_cnt,
@@ -91,6 +92,7 @@ SELECT
     biz_date,
     sub_biz AS group_name,
     COALESCE(queue_name, '未知') AS queue_name,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
     COUNT(*) AS qa_cnt,
     SUM(is_raw_correct) AS raw_correct_cnt,
     SUM(is_final_correct) AS final_correct_cnt,
@@ -108,12 +110,12 @@ SELECT
     ROUND(SUM(is_appeal_reversed) * 100.0 / NULLIF(NULLIF(SUM(is_appealed), 0), 0), 2) AS appeal_reverse_rate
 FROM fact_qa_event
 WHERE {where_clause}
-GROUP BY biz_date, sub_biz, COALESCE(queue_name, '未知')
+GROUP BY biz_date, sub_biz, COALESCE(queue_name, '未知'), COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
 REFRESH_MART_DAY_AUDITOR = """
 REPLACE INTO mart_day_auditor (
-    biz_date, group_name, queue_name, reviewer_name,
+    biz_date, group_name, queue_name, reviewer_name, inspect_type,
     qa_cnt,
     raw_correct_cnt, final_correct_cnt,
     misjudge_cnt, missjudge_cnt,
@@ -126,6 +128,7 @@ SELECT
     sub_biz AS group_name,
     COALESCE(queue_name, '未知') AS queue_name,
     COALESCE(reviewer_name, '未知') AS reviewer_name,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
     COUNT(*) AS qa_cnt,
     SUM(is_raw_correct) AS raw_correct_cnt,
     SUM(is_final_correct) AS final_correct_cnt,
@@ -138,12 +141,12 @@ SELECT
     ROUND(SUM(is_appeal_reversed) * 100.0 / NULLIF(NULLIF(SUM(is_appealed), 0), 0), 2) AS appeal_reverse_rate
 FROM fact_qa_event
 WHERE {where_clause}
-GROUP BY biz_date, sub_biz, COALESCE(queue_name, '未知'), COALESCE(reviewer_name, '未知')
+GROUP BY biz_date, sub_biz, COALESCE(queue_name, '未知'), COALESCE(reviewer_name, '未知'), COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
 REFRESH_MART_WEEK_GROUP = """
 REPLACE INTO mart_week_group (
-    week_begin_date, group_name, mother_biz, sub_biz,
+    week_begin_date, group_name, mother_biz, sub_biz, inspect_type,
     qa_cnt, active_days,
     raw_accuracy_rate, final_accuracy_rate,
     misjudge_rate, missjudge_rate,
@@ -154,6 +157,7 @@ SELECT
     sub_biz AS group_name,
     MAX(mother_biz) AS mother_biz,
     sub_biz,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
     COUNT(*) AS qa_cnt,
     COUNT(DISTINCT biz_date) AS active_days,
     ROUND(SUM(is_raw_correct) * 100.0 / NULLIF(COUNT(*), 0), 2) AS raw_accuracy_rate,
@@ -163,12 +167,12 @@ SELECT
     ROUND(SUM(is_appeal_reversed) * 100.0 / NULLIF(NULLIF(SUM(is_appealed), 0), 0), 2) AS appeal_reverse_rate
 FROM fact_qa_event
 WHERE {where_clause}
-GROUP BY DATE_SUB(biz_date, INTERVAL WEEKDAY(biz_date) DAY), sub_biz
+GROUP BY DATE_SUB(biz_date, INTERVAL WEEKDAY(biz_date) DAY), sub_biz, COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
 REFRESH_MART_WEEK_QUEUE = """
 REPLACE INTO mart_week_queue (
-    week_begin_date, group_name, queue_name,
+    week_begin_date, group_name, queue_name, inspect_type,
     qa_cnt, active_days,
     raw_accuracy_rate, final_accuracy_rate,
     misjudge_rate, missjudge_rate,
@@ -178,6 +182,7 @@ SELECT
     DATE_SUB(biz_date, INTERVAL WEEKDAY(biz_date) DAY) AS week_begin_date,
     sub_biz AS group_name,
     COALESCE(queue_name, '未知') AS queue_name,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
     COUNT(*) AS qa_cnt,
     COUNT(DISTINCT biz_date) AS active_days,
     ROUND(SUM(is_raw_correct) * 100.0 / NULLIF(COUNT(*), 0), 2) AS raw_accuracy_rate,
@@ -187,12 +192,12 @@ SELECT
     ROUND(SUM(is_appeal_reversed) * 100.0 / NULLIF(NULLIF(SUM(is_appealed), 0), 0), 2) AS appeal_reverse_rate
 FROM fact_qa_event
 WHERE {where_clause}
-GROUP BY DATE_SUB(biz_date, INTERVAL WEEKDAY(biz_date) DAY), sub_biz, COALESCE(queue_name, '未知')
+GROUP BY DATE_SUB(biz_date, INTERVAL WEEKDAY(biz_date) DAY), sub_biz, COALESCE(queue_name, '未知'), COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
 REFRESH_MART_MONTH_GROUP = """
 REPLACE INTO mart_month_group (
-    month_begin_date, group_name, mother_biz, sub_biz,
+    month_begin_date, group_name, mother_biz, sub_biz, inspect_type,
     qa_cnt, active_days,
     raw_accuracy_rate, final_accuracy_rate,
     misjudge_rate, missjudge_rate,
@@ -203,6 +208,7 @@ SELECT
     sub_biz AS group_name,
     MAX(mother_biz) AS mother_biz,
     sub_biz,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
     COUNT(*) AS qa_cnt,
     COUNT(DISTINCT biz_date) AS active_days,
     ROUND(SUM(is_raw_correct) * 100.0 / NULLIF(COUNT(*), 0), 2) AS raw_accuracy_rate,
@@ -212,12 +218,12 @@ SELECT
     ROUND(SUM(is_appeal_reversed) * 100.0 / NULLIF(NULLIF(SUM(is_appealed), 0), 0), 2) AS appeal_reverse_rate
 FROM fact_qa_event
 WHERE {where_clause}
-GROUP BY LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY, sub_biz
+GROUP BY LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY, sub_biz, COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
 REFRESH_MART_MONTH_QUEUE = """
 REPLACE INTO mart_month_queue (
-    month_begin_date, group_name, queue_name,
+    month_begin_date, group_name, queue_name, inspect_type,
     qa_cnt, reviewer_cnt,
     raw_accuracy_rate, final_accuracy_rate,
     misjudge_rate, missjudge_rate,
@@ -227,6 +233,7 @@ SELECT
     LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY AS month_begin_date,
     sub_biz AS group_name,
     COALESCE(queue_name, '未知') AS queue_name,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
     COUNT(*) AS qa_cnt,
     COUNT(DISTINCT reviewer_name) AS reviewer_cnt,
     ROUND(SUM(is_raw_correct) * 100.0 / NULLIF(COUNT(*), 0), 2) AS raw_accuracy_rate,
@@ -236,7 +243,7 @@ SELECT
     ROUND(SUM(is_appeal_reversed) * 100.0 / NULLIF(NULLIF(SUM(is_appealed), 0), 0), 2) AS appeal_reverse_rate
 FROM fact_qa_event
 WHERE {where_clause}
-GROUP BY LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY, sub_biz, COALESCE(queue_name, '未知')
+GROUP BY LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY, sub_biz, COALESCE(queue_name, '未知'), COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
 # 所有 mart 刷新 SQL（按执行顺序）
