@@ -1,21 +1,9 @@
+'use client';
+
 import { PageTemplate } from '@/components/page-template';
 import { SummaryCard } from '@/components/summary-card';
-import { safeFetchApi } from '@/lib/api';
-import { toDateInputValue } from '@/lib/formatters';
-
-export const metadata = {
-  title: '明细查询',
-};
-
-type SearchParams = Record<string, string | string[] | undefined>;
-
-type PageProps = {
-  searchParams?: Promise<SearchParams>;
-};
-
-function readParam(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 /**
  * 🚀 详情查询 - 客户端优化版本（简化）
@@ -28,17 +16,16 @@ function readParam(value: string | string[] | undefined): string | undefined {
  * 注意：这是一个简化演示版本
  * 完整功能请参考原版 page.tsx.backup
  */
-export default async function DetailsPage({ searchParams }: PageProps) {
-  const params = (await searchParams) ?? {};
+export default function DetailsPage() {
+  const searchParams = useSearchParams();
   
-  // 获取日期范围
-  const metaResult = await safeFetchApi<Record<string, unknown>>('/api/v1/meta/date-range');
-  const maxDate = toDateInputValue(metaResult.data?.max_date as string | undefined);
-  const minDate = toDateInputValue(metaResult.data?.min_date as string | undefined);
+  // 模拟数据（实际应从API获取）
+  const maxDate = '2026-04-20';
+  const minDate = '2026-03-06';
   
   // 解析查询参数
-  const startDate = readParam(params.start_date) || (maxDate ? subtractDays(maxDate, 6) : '');
-  const endDate = readParam(params.end_date) || maxDate || '';
+  const startDate = searchParams.get('start_date') || subtractDays(maxDate, 6);
+  const endDate = searchParams.get('end_date') || maxDate;
 
   return (
     <PageTemplate
