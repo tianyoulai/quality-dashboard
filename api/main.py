@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routers import dashboard, details, meta
+from api.routers import dashboard, details, meta, monitor
 # 内检路由 —— 6 个端点（summary/queues/trend/reviewers/error-types/qa-owners）
 from api.routers import internal as _internal_mod  # noqa: F401
 # 前端日志收集路由
@@ -140,6 +140,7 @@ async def access_log_middleware(request: Request, call_next):
 app.include_router(meta.router)
 app.include_router(dashboard.router)
 app.include_router(details.router)
+app.include_router(monitor.router)  # 实时监控路由
 if _newcomers_router is not None:
     app.include_router(_newcomers_router)
 app.include_router(_internal_mod.router)  # 内检看板路由
@@ -156,6 +157,7 @@ def health_check() -> dict[str, object]:
             "meta": True,
             "dashboard": True,
             "details": True,
+            "monitor": True,  # 新增
             "newcomers": _newcomers_router is not None,
             "internal": True,
         },
