@@ -63,11 +63,17 @@ export default async function HomePage() {
       <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
         <h3 className="panel-title">🛠️ 项目管理</h3>
         
-        <div className="grid-3" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
           <Link href="/performance" className="summary-card" style={{ textDecoration: 'none' }}>
             <div className="card-label">性能监控</div>
             <div className="card-value" style={{ fontSize: '2em' }}>📊</div>
             <div className="card-hint">实时系统性能指标</div>
+          </Link>
+
+          <Link href="/visualization" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">数据可视化</div>
+            <div className="card-value" style={{ fontSize: '2em' }}>📈</div>
+            <div className="card-hint">图表展示性能趋势</div>
           </Link>
 
           <Link href="/roadmap" className="summary-card" style={{ textDecoration: 'none' }}>
