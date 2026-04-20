@@ -30,13 +30,19 @@ export default async function HomePage() {
     >
       {/* 核心功能 */}
       <div className="panel">
-        <h3 className="panel-title">📊 核心功能</h3>
+        <h3 className="panel-title">📊 数据监控</h3>
         
         <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
-          <Link href="/details" className="summary-card" style={{ textDecoration: 'none' }}>
-            <div className="card-label">详情查询</div>
+          <Link href="/monitor" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">实时监控</div>
+            <div className="card-value" style={{ fontSize: '2em' }}>🎯</div>
+            <div className="card-hint">当日数据 vs 昨日对比</div>
+          </Link>
+
+          <Link href="/error-analysis" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">错误分析</div>
             <div className="card-value" style={{ fontSize: '2em' }}>🔍</div>
-            <div className="card-hint">明细数据下钻分析</div>
+            <div className="card-hint">多维度深度分析</div>
           </Link>
 
           <Link href="/internal" className="summary-card" style={{ textDecoration: 'none' }}>
@@ -50,11 +56,30 @@ export default async function HomePage() {
             <div className="card-value" style={{ fontSize: '2em' }}>👤</div>
             <div className="card-hint">新人成长轨迹分析</div>
           </Link>
+        </div>
+      </div>
+
+      {/* 数据查询 */}
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <h3 className="panel-title">🔎 数据查询</h3>
+        
+        <div className="grid-3" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <Link href="/details" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">详情查询</div>
+            <div className="card-value" style={{ fontSize: '2em' }}>📋</div>
+            <div className="card-hint">多维度下钻明细</div>
+          </Link>
+
+          <Link href="/visualization" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">数据可视化</div>
+            <div className="card-value" style={{ fontSize: '2em' }}>📊</div>
+            <div className="card-hint">图表展示趋势</div>
+          </Link>
 
           <Link href="/demo-client" className="summary-card" style={{ textDecoration: 'none' }}>
             <div className="card-label">性能演示</div>
             <div className="card-value" style={{ fontSize: '2em' }}>⚡</div>
-            <div className="card-hint">客户端优化效果</div>
+            <div className="card-hint">优化效果展示</div>
           </Link>
         </div>
       </div>
