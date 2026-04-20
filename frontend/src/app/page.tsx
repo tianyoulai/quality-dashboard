@@ -28,33 +28,58 @@ export default async function HomePage() {
       title="质培运营看板"
       subtitle="实时监控质检质量指标，支持多维度下钻分析"
     >
-      {/* 快速入口 */}
+      {/* 核心功能 */}
       <div className="panel">
-        <h3 className="panel-title">📊 快速入口</h3>
+        <h3 className="panel-title">📊 核心功能</h3>
         
         <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
           <Link href="/details" className="summary-card" style={{ textDecoration: 'none' }}>
             <div className="card-label">详情查询</div>
             <div className="card-value" style={{ fontSize: '2em' }}>🔍</div>
-            <div className="card-sublabel">明细数据下钻分析</div>
+            <div className="card-hint">明细数据下钻分析</div>
           </Link>
 
           <Link href="/internal" className="summary-card" style={{ textDecoration: 'none' }}>
             <div className="card-label">内检看板</div>
             <div className="card-value" style={{ fontSize: '2em' }}>📈</div>
-            <div className="card-sublabel">实时监控内检质量</div>
+            <div className="card-hint">实时监控内检质量</div>
           </Link>
 
           <Link href="/newcomers" className="summary-card" style={{ textDecoration: 'none' }}>
             <div className="card-label">新人追踪</div>
             <div className="card-value" style={{ fontSize: '2em' }}>👤</div>
-            <div className="card-sublabel">新人成长轨迹分析</div>
+            <div className="card-hint">新人成长轨迹分析</div>
           </Link>
 
           <Link href="/demo-client" className="summary-card" style={{ textDecoration: 'none' }}>
             <div className="card-label">性能演示</div>
             <div className="card-value" style={{ fontSize: '2em' }}>⚡</div>
-            <div className="card-sublabel">客户端优化效果</div>
+            <div className="card-hint">客户端优化效果</div>
+          </Link>
+        </div>
+      </div>
+
+      {/* 项目管理 */}
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <h3 className="panel-title">🛠️ 项目管理</h3>
+        
+        <div className="grid-3" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <Link href="/performance" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">性能监控</div>
+            <div className="card-value" style={{ fontSize: '2em' }}>📊</div>
+            <div className="card-hint">实时系统性能指标</div>
+          </Link>
+
+          <Link href="/roadmap" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">项目路线图</div>
+            <div className="card-value" style={{ fontSize: '2em' }}>🗺️</div>
+            <div className="card-hint">演进历程与未来规划</div>
+          </Link>
+
+          <Link href="/smoke" className="summary-card" style={{ textDecoration: 'none' }}>
+            <div className="card-label">冒烟测试</div>
+            <div className="card-value" style={{ fontSize: '2em' }}>🧪</div>
+            <div className="card-hint">API接口健康检查</div>
           </Link>
         </div>
       </div>
