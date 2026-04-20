@@ -1,0 +1,115 @@
+{
+  "meta": {
+    "fixture_name": "system_alert_same_group_queue_shift",
+    "selected_date": "2026-04-11",
+    "title": "系统级告警同组别队列收敛演示样本"
+  },
+  "alert": {
+    "alert_id": "demo-system-alert-queue-shift",
+    "severity": "P0",
+    "rule_code": "JOIN_MATCH_LT_85_DAY",
+    "rule_name": "日质检样本与申诉数据关联率低于85%",
+    "target_level": "system",
+    "target_key": "全局联表命中率",
+    "metric_value": 72.4,
+    "threshold_value": 85.0,
+    "alert_status": "open",
+    "owner_name": "",
+    "handle_note": "",
+    "alert_message": "演示样本：用于稳定复验“组别没变，但队列更收敛”分支。",
+    "alert_created_at": "2026-04-11T09:00:00",
+    "status_updated_at": "2026-04-11T09:00:00"
+  },
+  "alert_sample_title": "告警关联样本 · 全局联表未命中（fixture）",
+  "alert_sample_hint": "这是 dev-only fixture，用来稳定触发“组别没变，但队列更收敛”分支。",
+  "alert_sample_df": [
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Top1",
+      "reviewer_name": "审核员A1",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本1：组别A 的主战场已经开始收敛到队列Top1。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_001"
+    },
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Top1",
+      "reviewer_name": "审核员A2",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本2：继续给队列Top1 累积更高占比。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_002"
+    },
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Top1",
+      "reviewer_name": "审核员A3",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本3：队列Top1 仍然是最新主战场。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_003"
+    },
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Top1",
+      "reviewer_name": "审核员A4",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本4：用于让 Top1 与 Return 队列拉开差距。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_004"
+    },
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Top1",
+      "reviewer_name": "审核员A5",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本5：Top1 队列稳定保持 5 条样本。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_005"
+    },
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Return",
+      "reviewer_name": "审核员B1",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本6：旧返回队列仍保留 3 条样本。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_006"
+    },
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Return",
+      "reviewer_name": "审核员B2",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本7：页面返回时应继续高亮旧返回队列。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_007"
+    },
+    {
+      "biz_date": "2026-04-11",
+      "group_name": "组别A",
+      "queue_name": "队列Return",
+      "reviewer_name": "审核员B3",
+      "join_status": "unmatched",
+      "join_key_type": "content_id",
+      "comment_text": "演示样本8：但同时提示最新 Top1 已换成队列Top1。",
+      "qa_note": "fixture",
+      "join_key": "fixture_jk_008"
+    }
+  ]
+}

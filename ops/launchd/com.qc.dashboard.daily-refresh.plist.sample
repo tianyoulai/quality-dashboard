@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.qc.dashboard.daily-refresh</string>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/laitianyou/WorkBuddy/20260326191218</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd /Users/laitianyou/WorkBuddy/20260326191218 &amp;&amp; if [ -x .venv/bin/python ]; then .venv/bin/python jobs/daily_refresh.py; else python3 jobs/daily_refresh.py; fi</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>13</integer>
+      <key>Minute</key>
+      <integer>5</integer>
+    </dict>
+    <dict>
+      <key>Hour</key>
+      <integer>17</integer>
+      <key>Minute</key>
+      <integer>35</integer>
+    </dict>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/Users/laitianyou/WorkBuddy/20260326191218/logs/launchd/daily-refresh.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/laitianyou/WorkBuddy/20260326191218/logs/launchd/daily-refresh.err.log</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+</dict>
+</plist>

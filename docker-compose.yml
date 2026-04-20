@@ -1,0 +1,87 @@
+# ============================================================
+# QC 统一看板 - Docker Compose 配置
+# ============================================================
+# 服务：
+#   - api: FastAPI 后端
+#   - frontend: Next.js 前端
+#   - redis: 缓存（可选）
+# ============================================================
+
+version: '3.8'
+
+services:
+  # FastAPI 后端
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qc-dashboard-api
+    ports:
+      - "8000:8000"
+    environment:
+      # API 配置
+      - API_ALLOW_ORIGINS=http://localhost:3000,http://frontend:3000
+      - API_SLOW_THRESHOLD_MS=800
+      
+      # TiDB 配置（从环境变量读取，或使用 .env 文件）
+      - tidb.host=${TIDB_HOST:-gateway01.us-east-1.prod.aws.tidbcloud.com}
+      - tidb.port=${TIDB_PORT:-4000}
+      - tidb.user=${TIDB_USER:-root}
+      - tidb.password=${TIDB_PASSWORD}
+      - tidb.database=${TIDB_DATABASE:-test}
+      
+      # 日志配置
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./logs:/app/logs  # 日志持久化
+      - ./config:/app/config  # 配置文件
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - qc-dashboard-network
+
+  # Next.js 前端
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: qc-dashboard-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://api:8000
+      - NODE_ENV=production
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - qc-dashboard-network
+
+  # Redis 缓存（可选）
+  redis:
+    image: redis:7-alpine
+    container_name: qc-dashboard-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - qc-dashboard-network
+    command: redis-server --appendonly yes  # 开启持久化
+
+# 网络
+networks:
+  qc-dashboard-network:
+    driver: bridge
+
+# 数据卷
+volumes:
+  redis-data:
+    driver: local

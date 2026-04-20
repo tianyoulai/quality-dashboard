@@ -1,0 +1,83 @@
+# 告警模块分类规则 —— 跨前后端单一真实源
+#
+# 消费方：
+#   - Python:  utils/alert_module.py  (直接加载 yaml)
+#   - TS:      frontend/src/lib/alert-module.config.generated.ts
+#              由 scripts/gen-alert-module-config.mts 自动生成，请勿手改该 .ts
+#
+# 改这里后：
+#   1. 前端跑:  cd frontend && pnpm gen:config
+#   2. 后端无需重跑，运行时直接读取本文件
+#
+# 规则匹配顺序 = rules 数组顺序；命中第一条即返回对应模块。
+# 字段说明：
+#   match:
+#     target_key_upper_includes:  target_key.upper() 包含任一子串即命中
+#     target_key_upper_startswith: target_key.upper() 以任一前缀开头
+#     target_key_contains:        target_key(原始大小写) 包含任一子串
+#     target_key_equals:          target_key 严格等于（原始大小写）
+#     rule_code_upper_includes:   rule_code.upper() 包含任一子串
+#   module: 命中时返回的模块名
+#   其中所有 match.* 字段之间是 **OR 关系**（任意一个命中即整条规则命中）
+
+modules_in_order:
+  - 外检
+  - 内检
+  - 新人外检
+  - 新人内检
+  - BadCase
+  - 全局
+  - 其他
+
+default_module: 其他
+
+grain_map:
+  system: 全局
+  queue: 队列
+  group: 组
+  reviewer: 审核员
+
+grain_options:
+  - 队列
+  - 组
+  - 全局
+  - 审核员
+
+rules:
+  # BadCase：rule_code 或 target_key 带 BADCASE 标识，或包含“外部反馈”
+  - name: badcase
+    module: BadCase
+    match:
+      rule_code_upper_includes: [BADCASE]
+      target_key_upper_startswith: [BADCASE]
+      target_key_contains: [外部反馈]
+
+  # 新人内检：队列号 18365
+  - name: newcomer_internal
+    module: 新人内检
+    match:
+      target_key_upper_includes: ["18365"]
+
+  # 新人外检：队列号 10816
+  - name: newcomer_external
+    module: 新人外检
+    match:
+      target_key_upper_includes: ["10816"]
+
+  # 内检：导出队列 / 内部团队
+  - name: internal
+    module: 内检
+    match:
+      target_key_contains: [导出, 内部团队]
+
+  # 外检：A/B/C 组
+  - name: external
+    module: 外检
+    match:
+      target_key_contains: [A组, B组, C组]
+
+  # 全局：target_key == "全局"
+  - name: system
+    module: 全局
+    match:
+      target_key_equals: [全局]

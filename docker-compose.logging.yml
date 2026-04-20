@@ -1,0 +1,73 @@
+"""日志聚合配置 - 使用 Fluentd 收集日志到 Elasticsearch。
+
+架构：
+    应用日志 → Fluentd → Elasticsearch → Kibana
+
+部署方式：
+    1. 使用 Docker Compose 启动完整堆栈
+    2. 或单独配置 Fluentd（连接到现有 ES 集群）
+
+使用方式：
+    # 启动完整日志栈（Fluentd + ES + Kibana）
+    docker-compose -f docker-compose.logging.yml up -d
+    
+    # 查看 Kibana
+    open http://localhost:5601
+"""
+
+version: '3.8'
+
+services:
+  # Elasticsearch - 日志存储
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: qc-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false  # 简化配置，生产环境建议启用
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"  # 限制内存使用
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    networks:
+      - logging-network
+    restart: unless-stopped
+
+  # Kibana - 日志可视化
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: qc-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - logging-network
+    restart: unless-stopped
+
+  # Fluentd - 日志收集
+  fluentd:
+    image: fluent/fluentd:v1.16-1
+    container_name: qc-fluentd
+    ports:
+      - "24224:24224"  # Forward input
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd/fluent.conf:/fluentd/etc/fluent.conf
+      - ./logs:/logs  # 挂载应用日志目录
+    depends_on:
+      - elasticsearch
+    networks:
+      - logging-network
+    restart: unless-stopped
+
+networks:
+  logging-network:
+    driver: bridge
+
+volumes:
+  es-data:
+    driver: local

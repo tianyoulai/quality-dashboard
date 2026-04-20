@@ -1,79 +1,79 @@
 {
-  "report_date": "2026-04-15",
+  "report_date": "2026-04-18",
   "has_data": true,
   "target": 99.0,
   "overview": {
-    "total_qa": 39403,
-    "raw_correct": 39266,
-    "error_total": 137,
+    "total_qa": 36911,
+    "raw_correct": 36768,
+    "error_total": 143,
     "cuopan": 0,
     "loupan": 0,
     "appealed": 0,
     "appeal_reversed": 0,
-    "raw_acc": 99.65,
+    "raw_acc": 99.61,
     "appeal_rev_rate": 0.0,
-    "volume_change_pct": 0.04
+    "volume_change_pct": -12.1
   },
   "mother_list": [
     {
       "mother_biz": "A组",
-      "qa_cnt": 35842,
-      "raw_correct": 35726,
+      "qa_cnt": 31568,
+      "raw_correct": 31450,
       "cuopan": 0,
       "loupan": 0,
-      "error_total": 116,
+      "error_total": 118,
       "appealed": 0,
       "appeal_reversed": 0,
-      "raw_acc": 99.68
+      "raw_acc": 99.63
     },
     {
       "mother_biz": "B组",
-      "qa_cnt": 3561,
-      "raw_correct": 3540,
+      "qa_cnt": 5343,
+      "raw_correct": 5318,
       "cuopan": 0,
       "loupan": 0,
-      "error_total": 21,
+      "error_total": 25,
       "appealed": 0,
       "appeal_reversed": 0,
-      "raw_acc": 99.41
+      "raw_acc": 99.53
     }
   ],
   "sub_list": [
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
-      "qa_cnt": 35842,
-      "raw_correct": 35726,
+      "qa_cnt": 31568,
+      "raw_correct": 31450,
       "cuopan": 0,
       "loupan": 0,
-      "error_total": 116,
+      "error_total": 118,
       "appealed": 0,
       "appeal_reversed": 0,
-      "raw_acc": 99.68
+      "raw_acc": 99.63
     },
     {
       "mother_biz": "B组",
       "sub_biz": "B组-评论",
-      "qa_cnt": 2650,
-      "raw_correct": 2636,
+      "qa_cnt": 4875,
+      "raw_correct": 4852,
       "cuopan": 0,
       "loupan": 0,
-      "error_total": 14,
+      "error_total": 23,
       "appealed": 0,
       "appeal_reversed": 0,
-      "raw_acc": 99.47
+      "raw_acc": 99.53
     },
     {
       "mother_biz": "B组",
       "sub_biz": "B组-账号",
-      "qa_cnt": 911,
-      "raw_correct": 904,
+      "qa_cnt": 468,
+      "raw_correct": 466,
       "cuopan": 0,
       "loupan": 0,
-      "error_total": 7,
+      "error_total": 2,
       "appealed": 0,
       "appeal_reversed": 0,
-      "raw_acc": 99.23
+      "raw_acc": 99.57
     }
   ],
   "top_error_queues": [
@@ -81,23 +81,7 @@
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
       "queue": "色情低俗评论专审质检",
-      "err_cnt": 59,
-      "cuopan": 0,
-      "loupan": 0
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "引流专项评论质检",
-      "err_cnt": 15,
-      "cuopan": 0,
-      "loupan": 0
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "未成年相关评论专列质检",
-      "err_cnt": 15,
+      "err_cnt": 48,
       "cuopan": 0,
       "loupan": 0
     },
@@ -105,7 +89,39 @@
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
       "queue": "3赞评论审核质检队列-2",
-      "err_cnt": 15,
+      "err_cnt": 19,
+      "cuopan": 0,
+      "loupan": 0
+    },
+    {
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "引流专项评论质检",
+      "err_cnt": 18,
+      "cuopan": 0,
+      "loupan": 0
+    },
+    {
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "动态评论拦截抽检质检队列",
+      "err_cnt": 12,
+      "cuopan": 0,
+      "loupan": 0
+    },
+    {
+      "mother_biz": "B组",
+      "sub_biz": "B组-评论",
+      "queue": "3赞评论审核质检队列-2",
+      "err_cnt": 11,
+      "cuopan": 0,
+      "loupan": 0
+    },
+    {
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "未成年相关评论专列质检",
+      "err_cnt": 9,
       "cuopan": 0,
       "loupan": 0
     },
@@ -113,22 +129,14 @@
       "mother_biz": "B组",
       "sub_biz": "B组-评论",
       "queue": "评论复审质检队列-11",
-      "err_cnt": 13,
-      "cuopan": 0,
-      "loupan": 0
-    },
-    {
-      "mother_biz": "B组",
-      "sub_biz": "B组-账号",
-      "queue": "账号评论质检队列",
-      "err_cnt": 7,
+      "err_cnt": 8,
       "cuopan": 0,
       "loupan": 0
     },
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
-      "queue": "动态弹幕质检队列-27",
+      "queue": "曝光评论健康度质检队列",
       "err_cnt": 6,
       "cuopan": 0,
       "loupan": 0
@@ -136,24 +144,16 @@
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
-      "queue": "动态评论拦截抽检质检队列",
-      "err_cnt": 3,
+      "queue": "动态弹幕质检队列-27",
+      "err_cnt": 5,
       "cuopan": 0,
       "loupan": 0
     },
     {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "GS相关feed及评论先审后发质检队列",
-      "err_cnt": 2,
-      "cuopan": 0,
-      "loupan": 0
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "曝光评论健康度质检队列",
-      "err_cnt": 1,
+      "mother_biz": "B组",
+      "sub_biz": "B组-评论",
+      "queue": "色情低俗评论专审质检",
+      "err_cnt": 4,
       "cuopan": 0,
       "loupan": 0
     }
@@ -161,137 +161,137 @@
   "top_error_types": [
     {
       "error_type": "未标注",
-      "cnt": 137
+      "cnt": 143
     }
   ],
   "alerts": {
     "P0": 0,
-    "P1": 1,
+    "P1": 3,
     "P2": 1,
-    "total": 2
+    "total": 4
   },
   "watch_queues": [
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
-      "queue": "动态弹幕质检队列-27",
-      "qa_cnt": 777,
-      "raw_acc": 99.23
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
       "queue": "动态评论拦截抽检质检队列",
-      "qa_cnt": 614,
-      "raw_acc": 99.51
+      "qa_cnt": 565,
+      "raw_acc": 97.88
     },
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
-      "queue": "未成年相关评论专列质检",
-      "qa_cnt": 3045,
-      "raw_acc": 99.51
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "色情低俗评论专审质检",
-      "qa_cnt": 17973,
-      "raw_acc": 99.67
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "引流专项评论质检",
-      "qa_cnt": 4574,
-      "raw_acc": 99.67
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "GS相关feed及评论先审后发质检队列",
-      "qa_cnt": 684,
-      "raw_acc": 99.71
-    },
-    {
-      "mother_biz": "A组",
-      "sub_biz": "A组-评论",
-      "queue": "3赞评论审核质检队列-2",
-      "qa_cnt": 5978,
-      "raw_acc": 99.75
+      "queue": "动态弹幕质检队列-27",
+      "qa_cnt": 902,
+      "raw_acc": 99.45
     },
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
       "queue": "曝光评论健康度质检队列",
-      "qa_cnt": 1160,
-      "raw_acc": 99.91
+      "qa_cnt": 1210,
+      "raw_acc": 99.5
     },
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
       "queue": "曝光弹幕健康度质检队列",
-      "qa_cnt": 192,
-      "raw_acc": 100.0
+      "qa_cnt": 199,
+      "raw_acc": 99.5
+    },
+    {
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "3赞评论审核质检队列-2",
+      "qa_cnt": 4433,
+      "raw_acc": 99.57
+    },
+    {
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "未成年相关评论专列质检",
+      "qa_cnt": 2290,
+      "raw_acc": 99.61
+    },
+    {
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "引流专项评论质检",
+      "qa_cnt": 4774,
+      "raw_acc": 99.62
+    },
+    {
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "色情低俗评论专审质检",
+      "qa_cnt": 15291,
+      "raw_acc": 99.69
     },
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
       "queue": "3赞评论审核质检队列-1",
-      "qa_cnt": 3,
+      "qa_cnt": 6,
       "raw_acc": 100.0
     },
     {
       "mother_biz": "A组",
       "sub_biz": "A组-评论",
       "queue": "模型回答评论质检",
-      "qa_cnt": 842,
+      "qa_cnt": 909,
       "raw_acc": 100.0
     },
     {
-      "mother_biz": "B组",
-      "sub_biz": "B组-评论",
-      "queue": "评论复审质检队列-11",
-      "qa_cnt": 1926,
-      "raw_acc": 99.33
-    },
-    {
-      "mother_biz": "B组",
-      "sub_biz": "B组-评论",
-      "queue": "色情低俗评论专审质检",
-      "qa_cnt": 294,
-      "raw_acc": 99.66
-    },
-    {
-      "mother_biz": "B组",
-      "sub_biz": "B组-评论",
-      "queue": "引流专项评论质检",
-      "qa_cnt": 10,
+      "mother_biz": "A组",
+      "sub_biz": "A组-评论",
+      "queue": "GS相关feed及评论先审后发质检队列",
+      "qa_cnt": 989,
       "raw_acc": 100.0
     },
     {
       "mother_biz": "B组",
       "sub_biz": "B组-评论",
       "queue": "3赞评论审核质检队列-2",
-      "qa_cnt": 420,
+      "qa_cnt": 1890,
+      "raw_acc": 99.42
+    },
+    {
+      "mother_biz": "B组",
+      "sub_biz": "B组-评论",
+      "queue": "色情低俗评论专审质检",
+      "qa_cnt": 879,
+      "raw_acc": 99.54
+    },
+    {
+      "mother_biz": "B组",
+      "sub_biz": "B组-评论",
+      "queue": "评论复审质检队列-11",
+      "qa_cnt": 2063,
+      "raw_acc": 99.61
+    },
+    {
+      "mother_biz": "B组",
+      "sub_biz": "B组-评论",
+      "queue": "引流专项评论质检",
+      "qa_cnt": 43,
       "raw_acc": 100.0
     },
     {
       "mother_biz": "B组",
       "sub_biz": "B组-账号",
       "queue": "账号评论质检队列",
-      "qa_cnt": 911,
-      "raw_acc": 99.23
+      "qa_cnt": 468,
+      "raw_acc": 99.57
     }
   ],
   "yesterday_overall": {
-    "total_qa": 39388,
-    "raw_acc": 99.72
+    "total_qa": 41990,
+    "raw_acc": 99.73
   },
   "yesterday_alerts": {
     "P0": 0,
-    "P1": 2,
+    "P1": 3,
     "P2": 1,
-    "total": 3
+    "total": 4
   }
 }

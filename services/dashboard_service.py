@@ -78,6 +78,36 @@ class DashboardService:
         except Exception:
             return False
 
+    # --------------------------------------------------------------------- #
+    # Demo fixture hooks（future hook，当前始终返回 None，由上层 fallback 到 repo）
+    # --------------------------------------------------------------------- #
+    def load_demo_alerts_df(self, demo_fixture: str | None) -> pd.DataFrame | None:  # noqa: ARG002
+        """Dev-only fixture 钩子；未实现时返回 None，路由层会降级到正式 repo。"""
+        return None
+
+    def load_demo_group_payload(
+        self,
+        *,
+        grain: str,  # noqa: ARG002
+        selected_date: date,  # noqa: ARG002
+        group_name: str,  # noqa: ARG002
+        queue_name: str | None = None,  # noqa: ARG002
+        demo_fixture: str | None = None,  # noqa: ARG002
+    ) -> dict[str, Any] | None:
+        """Dev-only fixture 钩子；未实现时返回 None，路由层会降级到正式 payload。"""
+        return None
+
+    def get_data_date_range(self) -> tuple[date, date]:
+        today = date.today()
+        try:
+            row = self.repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
+        except Exception:
+            return today, today
+
+        min_date = row.get("min_d") if row else None
+        max_date = row.get("max_d") if row else None
+        return min_date or today, max_date or today
+
     def load_dashboard_payload(self, grain: str, selected_date: date) -> dict[str, Any]:
         anchor_date = self.normalize_anchor_date(grain, selected_date)
         alerts_df = self.repo.get_alerts(grain, anchor_date)
@@ -136,8 +166,9 @@ class DashboardService:
 
     def load_dashboard_lite(self, grain: str, selected_date: date) -> dict[str, Any]:
         """轻量首屏加载：只查 group_df + alerts_df，不查 queue/auditor/sample。
-
-        将 7 次 DB 查询降为 2 次，首屏加载从 ~4s 降到 ~1s。
+        
+        用于首页首屏渲染，后续下探按需调 load_group_payload。
+        将 7 次 DB 查询降为 2 次，首屏加载时间从 4s 降到 ~1s。
         """
         anchor_date = self.normalize_anchor_date(grain, selected_date)
         alerts_df = self.repo.get_alerts(grain, anchor_date)
@@ -147,6 +178,37 @@ class DashboardService:
             "group_df": group_df,
             "alerts_df": alerts_df,
             "alert_summary": self.summarize_alerts(alerts_df),
+        }
+
+    def load_queue_overview_payload(
+        self,
+        grain: str,
+        start_date: date,
+        end_date: date,
+        group_name: str | None,
+    ) -> dict[str, Any]:
+        if not group_name:
+            return {
+                "start_date": start_date,
+                "end_date": end_date,
+                "group_name": group_name,
+                "queue_df": pd.DataFrame(),
+                "trend_df": pd.DataFrame(),
+            }
+
+        anchor_date = self.normalize_anchor_date(grain, end_date)
+        queue_df = self.repo.get_queue_breakdown(grain, anchor_date, group_name)
+        trend_df = self.repo.get_trend_series(grain, group_name, anchor_date)
+        if not trend_df.empty and "anchor_date" in trend_df.columns:
+            anchor_series = pd.to_datetime(trend_df["anchor_date"], errors="coerce").dt.date
+            trend_df = trend_df.loc[(anchor_series >= start_date) & (anchor_series <= end_date)].copy()
+
+        return {
+            "start_date": start_date,
+            "end_date": end_date,
+            "group_name": group_name,
+            "queue_df": queue_df,
+            "trend_df": trend_df,
         }
 
     def load_group_payload(

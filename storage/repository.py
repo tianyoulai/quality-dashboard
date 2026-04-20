@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -11,8 +12,22 @@ from typing import Any, Iterable
 import pandas as pd
 
 from storage.tidb_manager import TiDBManager
+from utils.logger import get_logger
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_log = get_logger("dashboard.repo")
+
+
+def _clean_sql(sql: str, limit: int = 160) -> str:
+    """压扁 SQL（去多余空白/换行）用于日志单行展示。"""
+    return re.sub(r"\s+", " ", sql).strip()[:limit]
+
+
+def _truncate_params(params: Iterable[Any] | None, limit: int = 80) -> str:
+    if params is None:
+        return "-"
+    s = str(list(params) if not isinstance(params, (list, tuple)) else params)
+    return s if len(s) <= limit else s[:limit] + "..."
 
 
 @dataclass
@@ -61,10 +76,38 @@ class DashboardRepository:
         return [p for p in parts if p and not p.startswith('--')]
 
     def fetch_df(self, sql: str, params: Iterable[Any] | None = None) -> pd.DataFrame:
-        return self._manager.fetch_df(sql, params)
+        t0 = time.perf_counter()
+        try:
+            df = self._manager.fetch_df(sql, params)
+            cost_ms = (time.perf_counter() - t0) * 1000
+            if cost_ms > 500:  # 慢查询 >500ms 才记，避免日志爆炸
+                # 附带 SQL 前 160 字符 + 参数，便于定位是哪次冷启动
+                _log.warning(
+                    "slow_query cost=%.0fms rows=%d params=%s sql=%s",
+                    cost_ms, len(df), _truncate_params(params),
+                    _clean_sql(sql),
+                )
+            return df
+        except Exception as e:
+            cost_ms = (time.perf_counter() - t0) * 1000
+            _log.error("fetch_df failed cost=%.0fms err=%s sql=%s",
+                       cost_ms, e, sql[:200])
+            raise
 
     def fetch_one(self, sql: str, params: Iterable[Any] | None = None) -> dict[str, Any] | None:
-        return self._manager.fetch_one(sql, params)
+        t0 = time.perf_counter()
+        try:
+            row = self._manager.fetch_one(sql, params)
+            cost_ms = (time.perf_counter() - t0) * 1000
+            if cost_ms > 500:
+                _log.warning("slow_query cost=%.0fms params=%s sql=%s",
+                             cost_ms, _truncate_params(params), _clean_sql(sql))
+            return row
+        except Exception as e:
+            cost_ms = (time.perf_counter() - t0) * 1000
+            _log.error("fetch_one failed cost=%.0fms err=%s sql=%s",
+                       cost_ms, e, sql[:200])
+            raise
 
     def execute(self, sql: str, params: Iterable[Any] | None = None) -> None:
         self._manager.execute(sql, params)
