@@ -1,12 +1,13 @@
-"""ErrorBoundary 测试页面 - 验证错误边界是否生效。
-
-访问路径：http://localhost:3000/test-error
-
-功能：
-1. 触发同步错误（点击按钮）
-2. 触发异步错误（API 请求失败）
-3. 触发子组件错误
-"""
+/**
+ * ErrorBoundary 测试页面 - 验证错误边界是否生效。
+ * 
+ * 访问路径：http://localhost:3000/test-error
+ * 
+ * 功能：
+ * 1. 触发同步错误（点击按钮）
+ * 2. 触发异步错误（API 请求失败）
+ * 3. 触发子组件错误
+ */
 
 'use client';
 

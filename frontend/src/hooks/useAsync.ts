@@ -11,8 +11,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { requestApiWithRetry, RequestCanceller, formatBusinessError } from './api-enhanced';
-import type { ApiRequestOptions } from './api';
+import { requestApiWithRetry, RequestCanceller, formatBusinessError } from '@/lib/api-enhanced';
+import type { ApiRequestOptions } from '@/lib/api';
 
 export type AsyncState<T> = {
   loading: boolean;

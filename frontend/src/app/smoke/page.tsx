@@ -231,7 +231,7 @@ async function checkNewcomersAggregates(): Promise<CheckResult> {
 /** 拿到 summary 后用第一个 batch_name 查 members —— 决定页面能否渲染成员列表和筛选器 */
 async function checkNewcomersMembers(): Promise<CheckResult> {
   // 先拿一个可用 batch_name
-  const { result: sumResult } = await timed(() => safeFetchApi<Record<string, unknown>>("/api/v1/newcomers/summary"));
+  const { result: sumResult, latencyMs: sumLatency } = await timed(() => safeFetchApi<Record<string, unknown>>("/api/v1/newcomers/summary"));
   const batches = asArray(sumResult.data?.batches);
   const firstBatch = batches.length > 0 ? pickString((batches[0] as Record<string, unknown>).batch_name) : "";
   if (!firstBatch) {
@@ -241,7 +241,7 @@ async function checkNewcomersMembers(): Promise<CheckResult> {
       target: "/api/v1/newcomers/members?batch_names=[...]",
       status: "warn",
       message: "无可用批次，跳过 members 接口检查。",
-      latencyMs: sumResult.latencyMs ?? 0,
+      latencyMs: sumLatency,
     };
   }
 
@@ -276,7 +276,7 @@ async function checkNewcomersMembers(): Promise<CheckResult> {
 /** 正式阶段趋势 —— 新人页"培训期 vs 正式上线"对比的核心数据源 */
 async function checkNewcomersFormalDaily(): Promise<CheckResult> {
   // 先拿到一个 reviewer_alias（从 members）
-  const { result: sumResult } = await timed(() => safeFetchApi<Record<string, unknown>>("/api/v1/newcomers/summary"));
+  const { result: sumResult, latencyMs: sumLatency } = await timed(() => safeFetchApi<Record<string, unknown>>("/api/v1/newcomers/summary"));
   const batches = asArray(sumResult.data?.batches);
   const firstBatch = batches.length > 0 ? pickString((batches[0] as Record<string, unknown>).batch_name) : "";
   if (!firstBatch) {
@@ -286,11 +286,11 @@ async function checkNewcomersFormalDaily(): Promise<CheckResult> {
       target: "/api/v1/newcomers/formal-daily?reviewer_aliases=[...]",
       status: "warn",
       message: "无可用批次，跳过正式阶段接口检查。",
-      latencyMs: sumResult.latencyMs ?? 0,
+      latencyMs: sumLatency,
     };
   }
   // 用第一个 batch 拿 members 再取 alias
-  const { result: memResult } = await timed(() =>
+  const { result: memResult, latencyMs: memLatency } = await timed(() =>
     safeFetchApi<Record<string, unknown>>(`/api/v1/newcomers/members?batch_names=${encodeURIComponent(firstBatch)}`)
   );
   const members = asArray(memResult.data?.items);
@@ -303,7 +303,7 @@ async function checkNewcomersFormalDaily(): Promise<CheckResult> {
       status: "warn",
       message: `批次 ${firstBatch} 无可用 reviewer_alias。`,
       hint: "可能 dim_newcomer_batch 的 reviewer_alias 字段为空。",
-      latencyMs: memResult.latencyMs ?? 0,
+      latencyMs: memLatency,
     };
   }
 
@@ -337,7 +337,7 @@ async function checkNewcomersFormalDaily(): Promise<CheckResult> {
 
 /** 个人错误明细 —— 详情下钻面板的数据源 */
 async function checkNewcomersPersonDetail(): Promise<CheckResult> {
-  const { result: sumResult } = await timed(() => safeFetchApi<Record<string, unknown>>("/api/v1/newcomers/summary"));
+  const { result: sumResult, latencyMs: sumLatency } = await timed(() => safeFetchApi<Record<string, unknown>>("/api/v1/newcomers/summary"));
   const batches = asArray(sumResult.data?.batches);
   const firstBatch = batches.length > 0 ? pickString((batches[0] as Record<string, unknown>).batch_name) : "";
   if (!firstBatch) {
@@ -347,10 +347,10 @@ async function checkNewcomersPersonDetail(): Promise<CheckResult> {
       target: "/api/v1/newcomers/person-detail?reviewer_alias=...",
       status: "warn",
       message: "无可用批次，跳过个人明细接口检查。",
-      latencyMs: sumResult.latencyMs ?? 0,
+      latencyMs: sumLatency,
     };
   }
-  const { result: memResult } = await timed(() =>
+  const { result: memResult, latencyMs: memLatency2 } = await timed(() =>
     safeFetchApi<Record<string, unknown>>(`/api/v1/newcomers/members?batch_names=${encodeURIComponent(firstBatch)}`)
   );
   const members = asArray(memResult.data?.items);
@@ -362,7 +362,7 @@ async function checkNewcomersPersonDetail(): Promise<CheckResult> {
       target: "/api/v1/newcomers/person-detail",
       status: "warn",
       message: "无可用 reviewer_alias，跳过个人明细。",
-      latencyMs: memResult.latencyMs ?? 0,
+      latencyMs: memLatency2,
     };
   }
 
