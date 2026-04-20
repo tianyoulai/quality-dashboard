@@ -272,3 +272,223 @@ function formatSafeError(error: unknown): string {
   }
   return error instanceof Error ? error.message : "未知错误";
 }
+
+// ==================== 监控接口（Monitor） ====================
+
+export type MonitorDashboardResponse = {
+  date: string;
+  yesterday_date: string;
+  today: {
+    total_count: number;
+    correct_count: number;
+    correct_rate: number;
+    misjudge_rate: number;
+    appeal_rate: number;
+  };
+  yesterday: {
+    total_count: number;
+    correct_count: number;
+    correct_rate: number;
+    misjudge_rate: number;
+    appeal_rate: number;
+  };
+  changes: {
+    total_count: number;
+    total_count_rate: number;
+    correct_rate: number;
+    misjudge_rate: number;
+    appeal_rate: number;
+  };
+  alerts: Array<{
+    type: string;
+    level: string;
+    title: string;
+    message: string;
+    current_value: number;
+    previous_value: number;
+    change: number;
+  }>;
+};
+
+export async function getMonitorDashboard(date?: string): Promise<MonitorDashboardResponse> {
+  const path = date ? `/api/v1/monitor/dashboard?date=${date}` : '/api/v1/monitor/dashboard';
+  return fetchApi<MonitorDashboardResponse>(path);
+}
+
+export type QueueRankingItem = {
+  rank: number;
+  queue_name: string;
+  total_count: number;
+  correct_count: number;
+  correct_rate: number;
+  misjudge_rate: number;
+  missjudge_rate: number;
+  main_errors: string;
+};
+
+export async function getQueueRanking(threshold: number = 90, limit: number = 10): Promise<QueueRankingItem[]> {
+  return fetchApi<QueueRankingItem[]>(`/api/v1/monitor/queue-ranking?threshold=${threshold}&limit=${limit}`);
+}
+
+export type ErrorRankingItem = {
+  rank: number;
+  error_type: string;
+  error_count: number;
+  error_percentage: number;
+  misjudge_count: number;
+  missjudge_count: number;
+  misjudge_rate: number;
+  missjudge_rate: number;
+  main_queues: string;
+};
+
+export async function getErrorRanking(limit: number = 5): Promise<ErrorRankingItem[]> {
+  return fetchApi<ErrorRankingItem[]>(`/api/v1/monitor/error-ranking?limit=${limit}`);
+}
+
+export type ReviewerRankingItem = {
+  rank: number;
+  reviewer_name: string;
+  queue_name: string;
+  review_count: number;
+  correct_count: number;
+  correct_rate: number;
+  misjudge_rate: number;
+  missjudge_rate: number;
+  main_errors: string;
+};
+
+export async function getReviewerRanking(threshold: number = 85, limit: number = 10): Promise<ReviewerRankingItem[]> {
+  return fetchApi<ReviewerRankingItem[]>(`/api/v1/monitor/reviewer-ranking?threshold=${threshold}&limit=${limit}`);
+}
+
+// ==================== 分析接口（Analysis） ====================
+
+export type ErrorOverviewResponse = {
+  date_range: {
+    start_date: string;
+    end_date: string;
+    days: number;
+  };
+  total_errors: number;
+  total_reviews: number;
+  error_rate: number;
+  daily_trend: Array<{
+    date: string;
+    review_count: number;
+    error_count: number;
+    error_rate: number;
+  }>;
+  error_distribution: Array<{
+    error_type: string;
+    count: number;
+    percentage: number;
+  }>;
+  top_queues: Array<{
+    queue_name: string;
+    total_count: number;
+    error_count: number;
+    error_rate: number;
+  }>;
+  misjudge_stats: {
+    misjudge_count: number;
+    missjudge_count: number;
+    misjudge_rate: number;
+    missjudge_rate: number;
+  };
+};
+
+export async function getErrorOverview(days: number = 7): Promise<ErrorOverviewResponse> {
+  return fetchApi<ErrorOverviewResponse>(`/api/v1/analysis/error-overview?days=${days}`);
+}
+
+export type ErrorHeatmapResponse = {
+  date_range: {
+    start_date: string;
+    end_date: string;
+    days: number;
+  };
+  error_types: string[];
+  queues: string[];
+  matrix: Array<{
+    error_type: string;
+    queue: string;
+    count: number;
+    rate: number;
+  }>;
+  summary: {
+    total_error_types: number;
+    total_queues: number;
+    total_combinations: number;
+    total_errors: number;
+  };
+};
+
+export async function getErrorHeatmap(days: number = 7): Promise<ErrorHeatmapResponse> {
+  return fetchApi<ErrorHeatmapResponse>(`/api/v1/analysis/error-heatmap?days=${days}`);
+}
+
+
+// ==================== 可视化接口（Visualization） ====================
+
+export type PerformanceTrendResponse = {
+  metric: string;
+  date_range: {
+    start_date: string;
+    end_date: string;
+    days: number;
+  };
+  data: {
+    dates: string[];
+    values: number[];
+  };
+  statistics: {
+    average: number;
+    max: number;
+    min: number;
+    latest: number;
+  };
+  trend: {
+    status: string;
+    direction: string;
+    change: number;
+    change_rate: number;
+    first_half_avg: number;
+    second_half_avg: number;
+  };
+};
+
+export async function getPerformanceTrend(
+  days: number = 7,
+  metric: 'correct_rate' | 'misjudge_rate' | 'appeal_rate' = 'correct_rate'
+): Promise<PerformanceTrendResponse> {
+  return fetchApi<PerformanceTrendResponse>(`/api/v1/visualization/performance-trend?days=${days}&metric=${metric}`);
+}
+
+export type ApiPerformanceResponse = {
+  date: string;
+  note: string;
+  apis: Array<{
+    endpoint: string;
+    avg_response_time: number;
+    p95_response_time: number;
+    p99_response_time: number;
+    qps: number;
+    error_rate: number;
+    status: string;
+  }>;
+  summary: {
+    total_apis: number;
+    healthy_count: number;
+    warning_count: number;
+    critical_count: number;
+    avg_response_time: number;
+    total_qps: number;
+  };
+};
+
+export async function getApiPerformance(date?: string): Promise<ApiPerformanceResponse> {
+  const path = date ? `/api/v1/visualization/api-performance?date=${date}` : '/api/v1/visualization/api-performance';
+  return fetchApi<ApiPerformanceResponse>(path);
+}
+
