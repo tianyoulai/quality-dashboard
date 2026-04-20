@@ -1,8 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { DataTable } from '@/components/data-table';
-import { SkeletonLoader } from '@/components/skeleton-loader';
+import { SkeletonTable } from '@/components/skeleton-loader';
 
 interface DetailsFilter {
   start_date: string;
@@ -210,17 +209,33 @@ export function DetailsQueryClient({
 
       {isPending && (
         <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-          <SkeletonLoader type="table" rows={5} />
+          <SkeletonTable rows={5} />
         </div>
       )}
 
       {!isPending && results.length > 0 && (
         <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
           <h3 className="panel-title">查询结果（{results.length} 条）</h3>
-          <DataTable 
-            columns={Object.keys(results[0] || {})} 
-            rows={results}
-          />
+          <div style={{ overflowX: 'auto' }}>
+            <table className="data-table" style={{ width: '100%', marginTop: 'var(--spacing-md)' }}>
+              <thead>
+                <tr>
+                  {Object.keys(results[0]).map((key) => (
+                    <th key={key}>{key}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {results.map((row, idx) => (
+                  <tr key={idx}>
+                    {Object.values(row).map((value, cellIdx) => (
+                      <td key={cellIdx}>{String(value)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
