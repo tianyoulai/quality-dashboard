@@ -1,11 +1,11 @@
-"""外检看板 API — 基于 mart_day_queue / mart_day_auditor (qc_module='external')"""
+"""外检看板 API — 基于 mart_day_queue / mart_day_auditor (inspect_type='external')"""
 
 from fastapi import APIRouter, Query, HTTPException
 from typing import Optional, List, Dict, Any
 import logging
 from datetime import date, timedelta
 
-from db.tidb_manager import TiDBManager
+from storage.tidb_manager import TiDBManager
 
 router = APIRouter(prefix="/api/v1/external", tags=["外检看板"])
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ def _date_range(start: Optional[str], end: Optional[str]):
     else:
         # 默认取最近有数据日期
         db = _db()
-        rows = db.execute_query("SELECT MAX(biz_date) FROM mart_day_queue WHERE qc_module='external'")
+        rows = db.execute_query("SELECT MAX(biz_date) FROM mart_day_queue WHERE inspect_type='external'")
         end_d = rows[0][0] if rows and rows[0][0] else today
     if start:
         start_d = date.fromisoformat(start)
@@ -77,7 +77,7 @@ async def get_summary(
             COUNT(DISTINCT queue_name),
             MAX(reviewer_cnt)
         FROM mart_day_queue
-        WHERE qc_module='external'
+        WHERE inspect_type='external'
           AND biz_date BETWEEN %s AND %s{gf_sql}
         """
         rows = db.execute_query(query, tuple([start, end] + gf_params))
@@ -123,7 +123,7 @@ async def get_trend(
             ROUND(SUM(misjudge_cnt)*100.0/NULLIF(SUM(qa_cnt),0), 2),
             ROUND(SUM(missjudge_cnt)*100.0/NULLIF(SUM(qa_cnt),0), 2)
         FROM mart_day_queue
-        WHERE qc_module='external'
+        WHERE inspect_type='external'
           AND biz_date BETWEEN %s AND %s{gf_sql}
         GROUP BY biz_date
         ORDER BY biz_date ASC
@@ -174,7 +174,7 @@ async def get_queue_ranking(
             ROUND(SUM(appeal_reversed_cnt)*100.0/NULLIF(SUM(qa_cnt),0), 2),
             MAX(reviewer_cnt)
         FROM mart_day_queue
-        WHERE qc_module='external'
+        WHERE inspect_type='external'
           AND biz_date BETWEEN %s AND %s{gf_sql}
         GROUP BY group_name, queue_name
         ORDER BY 4 ASC
@@ -226,7 +226,7 @@ async def get_reviewer_ranking(
             SUM(misjudge_cnt),
             SUM(missjudge_cnt)
         FROM mart_day_auditor
-        WHERE qc_module='external'
+        WHERE inspect_type='external'
           AND biz_date BETWEEN %s AND %s{gf_sql}
         GROUP BY reviewer_name, group_name, queue_name
         ORDER BY 5 ASC
@@ -261,7 +261,7 @@ async def get_meta(
     try:
         start, end = _date_range(start_date, end_date)
         groups = db.execute_query(
-            "SELECT DISTINCT group_name FROM mart_day_queue WHERE qc_module='external' AND biz_date BETWEEN %s AND %s ORDER BY group_name",
+            "SELECT DISTINCT group_name FROM mart_day_queue WHERE inspect_type='external' AND biz_date BETWEEN %s AND %s ORDER BY group_name",
             (start, end)
         )
         return {

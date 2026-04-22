@@ -12,6 +12,12 @@ export const NAV_ITEMS = [
     description: "内部团队质检、队列排名、审核人分析",
   },
   {
+    key: "external",
+    label: "外检看板",
+    href: "/external",
+    description: "外部质检数据、队列排名、趋势分析",
+  },
+  {
     key: "details",
     label: "明细查询",
     href: "/details",
