@@ -71,10 +71,6 @@ async def get_monitor_dashboard(
     except Exception as e:
         logger.error(f"获取监控数据失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.get("/queue-ranking")
 async def get_queue_ranking(
     date: Optional[str] = Query(None, description="查询日期"),
@@ -133,10 +129,6 @@ async def get_queue_ranking(
     except Exception as e:
         logger.error(f"获取队列排行失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.get("/error-ranking")
 async def get_error_ranking(
     date: Optional[str] = Query(None, description="查询日期"),
@@ -198,10 +190,6 @@ async def get_error_ranking(
     except Exception as e:
         logger.error(f"获取错误排行失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.get("/reviewer-ranking")
 async def get_reviewer_ranking(
     date: Optional[str] = Query(None, description="查询日期"),
@@ -262,10 +250,6 @@ async def get_reviewer_ranking(
     except Exception as e:
         logger.error(f"获取审核人排行失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 # ==================== 辅助函数 ====================
 
 async def _get_daily_stats(db: TiDBManager, date) -> Dict[str, Any]:

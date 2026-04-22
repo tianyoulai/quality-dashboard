@@ -71,10 +71,6 @@ async def get_error_overview(
     except Exception as e:
         logger.error(f"获取错误总览失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.get("/error-heatmap")
 async def get_error_heatmap(
     days: int = Query(7, description="查询天数", ge=1, le=30)
@@ -158,10 +154,6 @@ async def get_error_heatmap(
     except Exception as e:
         logger.error(f"获取错误热力图失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.get("/root-cause")
 async def get_root_cause_analysis(
     error_type: Optional[str] = Query(None, description="错误类型"),
@@ -236,10 +228,6 @@ async def get_root_cause_analysis(
     except Exception as e:
         logger.error(f"根因分析失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 # ==================== 辅助函数 ====================
 
 async def _get_total_error_stats(db: TiDBManager, start_date, end_date) -> Dict[str, Any]:

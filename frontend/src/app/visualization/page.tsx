@@ -1,172 +1,371 @@
 'use client';
 
 import { PageTemplate } from '@/components/page-template';
-import {
-  PerformanceTrendChart,
-  ApiPerformanceBarChart,
-  PerformanceImprovementAreaChart,
-  PerformanceDistributionPieChart,
-  DatabaseQueryBarChart,
-} from '@/components/charts';
+import { SummaryCard } from '@/components/summary-card';
+import { useState, useEffect } from 'react';
 
-export default function DataVisualizationPage() {
-  // 性能趋势数据
-  const trendData = [
-    { name: '第1天', 响应时间: 1000, 目标值: 200 },
-    { name: '第2天', 响应时间: 950, 目标值: 200 },
-    { name: '第3天', 响应时间: 800, 目标值: 200 },
-    { name: '第4天', 响应时间: 600, 目标值: 200 },
-    { name: '第5天', 响应时间: 400, 目标值: 200 },
-    { name: '第6天', 响应时间: 250, 目标值: 200 },
-    { name: '第7天', 响应时间: 180, 目标值: 200 },
-  ];
+/**
+ * 📊 数据可视化页面
+ * 
+ * 显示性能趋势、队列分布等
+ */
+export default function VisualizationPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [days, setDays] = useState(7);
+  
+  // API数据
+  const [performanceData, setPerformanceData] = useState<any>(null);
+  const [queueData, setQueueData] = useState<any>(null);
+  const [errorTrendData, setErrorTrendData] = useState<any>(null);
 
-  // 接口性能对比数据
-  const apiPerformanceData = [
-    { name: '首页加载', 优化前: 356, 优化后: 14, 目标值: 50 },
-    { name: '告警列表', 优化前: 259, 优化后: 31, 目标值: 20 },
-    { name: '内检汇总', 优化前: 787, 优化后: 876, 目标值: 50 },
-    { name: '新人汇总', 优化前: 547, 优化后: 527, 目标值: 50 },
-  ];
+  useEffect(() => {
+    loadData();
+  }, [days]);
 
-  // 性能提升幅度数据
-  const improvementData = [
-    { name: '路由切换', 提升幅度: 80 },
-    { name: '首页加载', 提升幅度: 96 },
-    { name: '告警接口', 提升幅度: 88 },
-    { name: '日期筛选', 提升幅度: 92 },
-    { name: '按钮响应', 提升幅度: 87 },
-  ];
+  async function loadData() {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const endDate = new Date('2026-04-01');
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - days + 1);
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      const baseUrl = 'http://localhost:8000/api/v1/visualization';
+      
+      // 暂时只加载performance-trend，其他2个端点待后端实现
+      const performance = await fetch(`${baseUrl}/performance-trend?days=${days}`).then(r => r.json());
+      
+      setPerformanceData(performance);
+      // setQueueData(queue); // TODO: 等待后端实现 queue-distribution API
+      // setErrorTrendData(errorTrend); // TODO: 等待后端实现 error-trend API
+    } catch (err) {
+      console.error('加载数据失败:', err);
+      setError(err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  // 性能分布数据
-  const distributionData = [
-    { name: '优秀 (<50ms)', value: 2 },
-    { name: '良好 (50-100ms)', value: 3 },
-    { name: '一般 (100-500ms)', value: 2 },
-    { name: '较慢 (>500ms)', value: 2 },
-  ];
+  if (loading) {
+    return (
+      <PageTemplate title="数据可视化" subtitle="加载中...">
+        <div className="panel">
+          <p style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-muted)' }}>
+            正在加载数据...
+          </p>
+        </div>
+      </PageTemplate>
+    );
+  }
 
-  // 数据库查询性能
-  const databaseQueryData = [
-    { name: '首页查询', 查询时间: 14 },
-    { name: '告警查询', 查询时间: 31 },
-    { name: '队列统计', 查询时间: 45 },
-    { name: '详情查询', 查询时间: 120 },
-    { name: '内检汇总', 查询时间: 876 },
-    { name: '新人汇总', 查询时间: 527 },
-  ];
+  if (error || !performanceData) {
+    return (
+      <PageTemplate title="数据可视化" subtitle="加载失败">
+        <div className="panel" style={{ background: 'var(--danger-bg)', borderColor: 'var(--danger)' }}>
+          <p style={{ color: 'var(--danger)' }}>加载数据失败: {error || '数据为空'}</p>
+          <button 
+            onClick={loadData} 
+            className="button"
+            style={{ marginTop: 'var(--spacing-md)' }}
+          >
+            重试
+          </button>
+        </div>
+      </PageTemplate>
+    );
+  }
 
   return (
     <PageTemplate
       title="数据可视化"
-      subtitle="通过图表直观展示系统性能指标和优化效果"
+      subtitle={`${performanceData.date_range?.start_date || ''} 至 ${performanceData.date_range?.end_date || ''}`}
+      actions={
+        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="input"
+            style={{ width: '120px' }}
+          >
+            <option value={7}>最近7天</option>
+            <option value={14}>最近14天</option>
+            <option value={30}>最近30天</option>
+          </select>
+          <button onClick={loadData} className="button">
+            刷新数据
+          </button>
+        </div>
+      }
     >
-      {/* 性能趋势 */}
+      {/* 性能趋势总览 */}
       <div className="panel">
-        <h3 className="panel-title">📈 路由切换性能趋势（7天）</h3>
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            通过客户端组件优化，路由切换时间从 1000ms 降至 180ms，达成目标
-          </p>
-          <PerformanceTrendChart data={trendData} />
-        </div>
-      </div>
-
-      {/* 接口性能对比 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">⚡ 接口性能优化对比</h3>
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            首页和告警接口已达到优秀水平，内检和新人汇总仍需进一步优化
-          </p>
-          <ApiPerformanceBarChart data={apiPerformanceData} />
-        </div>
-      </div>
-
-      {/* 性能提升幅度 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">🚀 各项性能提升幅度</h3>
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            前端交互性能提升最明显，平均提升幅度超过 85%
-          </p>
-          <PerformanceImprovementAreaChart data={improvementData} />
-        </div>
-      </div>
-
-      {/* 性能分布 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">🎯 接口性能等级分布</h3>
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            目前有 22% 的接口达到优秀水平，55% 处于良好或一般水平
-          </p>
-          <PerformanceDistributionPieChart data={distributionData} />
-        </div>
-      </div>
-
-      {/* 数据库查询性能 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">🗄️ 数据库查询性能排行</h3>
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            内检汇总和新人汇总是当前的性能瓶颈，需要 SQL 深度优化
-          </p>
-          <DatabaseQueryBarChart data={databaseQueryData} />
-        </div>
-      </div>
-
-      {/* 关键指标总览 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">📊 关键指标总览</h3>
+        <h3 className="panel-title">📈 性能趋势总览</h3>
         
-        <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
-          <div style={{ textAlign: 'center', padding: 'var(--spacing-md)', background: 'var(--success-bg)', borderRadius: 'var(--radius)' }}>
-            <div style={{ fontSize: '2.5em', fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
-              96%
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.875em' }}>最大性能提升</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.75em', marginTop: '4px' }}>首页加载</div>
-          </div>
+        <div className="cards-grid" style={{ marginTop: 'var(--spacing-md)' }}>
+          <SummaryCard
+            label="平均正确率"
+            value={`${(performanceData.statistics?.average || 0).toFixed(2)}%`}
+            hint={`最高: ${(performanceData.statistics?.max || 0).toFixed(2)}% / 最低: ${(performanceData.statistics?.min || 0).toFixed(2)}%`}
+            tone="success"
+          />
 
-          <div style={{ textAlign: 'center', padding: 'var(--spacing-md)', background: 'var(--success-bg)', borderRadius: 'var(--radius)' }}>
-            <div style={{ fontSize: '2.5em', fontWeight: 700, color: 'var(--success)', marginBottom: '8px' }}>
-              88%
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.875em' }}>平均提升幅度</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.75em', marginTop: '4px' }}>前端交互</div>
-          </div>
+          <SummaryCard
+            label="最新正确率"
+            value={`${(performanceData.statistics?.latest || 0).toFixed(2)}%`}
+            hint={`变化: ${performanceData.trend?.change >= 0 ? '+' : ''}${(performanceData.trend?.change || 0).toFixed(2)}%`}
+            tone={performanceData.trend?.direction === 'up' ? 'success' : performanceData.trend?.direction === 'down' ? 'warning' : 'neutral'}
+          />
 
-          <div style={{ textAlign: 'center', padding: 'var(--spacing-md)', background: 'var(--warning-bg)', borderRadius: 'var(--radius)' }}>
-            <div style={{ fontSize: '2.5em', fontWeight: 700, color: 'var(--warning)', marginBottom: '8px' }}>
-              2
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.875em' }}>待优化接口</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.75em', marginTop: '4px' }}>内检/新人汇总</div>
-          </div>
+          <SummaryCard
+            label="趋势状态"
+            value={performanceData.trend?.direction === 'up' ? '↑ 上升' : performanceData.trend?.direction === 'down' ? '↓ 下降' : '→ 稳定'}
+            hint={`${performanceData.trend?.status === 'normal' ? '正常' : '异常'}`}
+            tone={performanceData.trend?.direction === 'up' ? 'success' : performanceData.trend?.direction === 'down' ? 'danger' : 'neutral'}
+          />
 
-          <div style={{ textAlign: 'center', padding: 'var(--spacing-md)', background: 'var(--info-bg)', borderRadius: 'var(--radius)' }}>
-            <div style={{ fontSize: '2.5em', fontWeight: 700, color: 'var(--info)', marginBottom: '8px' }}>
-              20
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.875em' }}>数据库索引</div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.75em', marginTop: '4px' }}>已优化</div>
-          </div>
+          <SummaryCard
+            label="数据天数"
+            value={performanceData.date_range?.days?.toString() || '0'}
+            hint={`${performanceData.data?.dates?.length || 0}天有效数据`}
+            tone="neutral"
+          />
         </div>
       </div>
+
+      {/* 正确率趋势图 */}
+      {performanceData.data?.dates && performanceData.data.dates.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">📊 正确率趋势图</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>日期</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>正确率</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>可视化</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {performanceData.data.dates.map((date: string, index: number) => {
+                    const value = performanceData.data.values[index];
+                    const percentage = ((value - 90) / 10) * 100; // 90-100%映射到0-100%
+                    return (
+                      <tr key={index} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: 'var(--spacing-sm)' }}>{date}</td>
+                        <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right', fontWeight: 'bold' }}>
+                          {value.toFixed(2)}%
+                        </td>
+                        <td style={{ padding: 'var(--spacing-sm)' }}>
+                          <div style={{ 
+                            height: '20px', 
+                            background: 'var(--border)', 
+                            borderRadius: '4px',
+                            overflow: 'hidden',
+                            position: 'relative'
+                          }}>
+                            <div style={{ 
+                              width: `${Math.max(0, Math.min(100, percentage))}%`,
+                              height: '100%',
+                              background: value >= 99 ? 'var(--success)' : value >= 95 ? 'var(--warning)' : 'var(--danger)',
+                              transition: 'width 0.3s ease'
+                            }} />
+                            <span style={{
+                              position: 'absolute',
+                              left: '50%',
+                              top: '50%',
+                              transform: 'translate(-50%, -50%)',
+                              fontSize: '0.75em',
+                              fontWeight: 'bold',
+                              color: percentage > 50 ? 'white' : 'inherit'
+                            }}>
+                              {value.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 队列工作量分布 */}
+      {queueData?.queues && queueData.queues.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🎯 队列工作量分布</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
+              总队列数: {queueData.total_queues || 0} / 总工作量: {(queueData.total_work_count || 0).toLocaleString()}
+            </p>
+            
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>队列名称</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>工作量</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>占比</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>可视化</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queueData.queues.slice(0, 10).map((queue: any, index: number) => (
+                    <tr key={index} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: 'var(--spacing-sm)', fontWeight: 'bold' }}>
+                        {queue.queue_name}
+                      </td>
+                      <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>
+                        {(queue.work_count || 0).toLocaleString()}
+                      </td>
+                      <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>
+                        {(queue.percentage || 0).toFixed(1)}%
+                      </td>
+                      <td style={{ padding: 'var(--spacing-sm)' }}>
+                        <div style={{ 
+                          height: '20px', 
+                          background: 'var(--border)', 
+                          borderRadius: '4px',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{ 
+                            width: `${Math.min(100, queue.percentage || 0)}%`,
+                            height: '100%',
+                            background: 'var(--primary)',
+                            transition: 'width 0.3s ease'
+                          }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 错误趋势 */}
+      {errorTrendData?.error_types && errorTrendData.error_types.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🔴 高频错误趋势 Top 5</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>错误类型</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>总数</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>日均</th>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>趋势</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {errorTrendData.error_types.map((error: any, index: number) => (
+                    <tr key={index} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: 'var(--spacing-sm)', fontWeight: 'bold' }}>
+                        {error.error_type}
+                      </td>
+                      <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>
+                        {(error.total_count || 0).toLocaleString()}
+                      </td>
+                      <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>
+                        {(error.avg_daily || 0).toFixed(1)}
+                      </td>
+                      <td style={{ padding: 'var(--spacing-sm)' }}>
+                        <span style={{ 
+                          padding: '2px 8px', 
+                          borderRadius: '4px',
+                          fontSize: '0.875em',
+                          background: error.trend === 'increasing' ? 'var(--danger-bg)' : error.trend === 'decreasing' ? 'var(--success-bg)' : 'var(--card-bg)',
+                          color: error.trend === 'increasing' ? 'var(--danger)' : error.trend === 'decreasing' ? 'var(--success)' : 'var(--text-muted)'
+                        }}>
+                          {error.trend === 'increasing' ? '↑ 增加' : error.trend === 'decreasing' ? '↓ 减少' : '→ 稳定'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 使用提示 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)', background: 'var(--info-bg)', borderColor: 'var(--info)' }}>
-        <h3 className="panel-title" style={{ color: 'var(--info)' }}>💡 图表说明</h3>
-        
-        <ul style={{ marginLeft: 'var(--spacing-lg)', marginTop: 'var(--spacing-md)', lineHeight: 2 }}>
-          <li><strong>折线图</strong>：展示性能趋势，蓝线为实际值，绿色虚线为目标值</li>
-          <li><strong>柱状图</strong>：对比优化前后的性能数据，红色为优化前，绿色为优化后</li>
-          <li><strong>面积图</strong>：展示性能提升幅度，紫色区域面积越大表示提升越明显</li>
-          <li><strong>饼图</strong>：展示接口性能等级分布，便于了解整体状态</li>
-          <li><strong>横向柱状图</strong>：排行榜形式，直观对比各接口查询时间</li>
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)', background: 'var(--card-bg)' }}>
+        <h3 className="panel-title">💡 使用提示</h3>
+        <ul style={{ marginTop: 'var(--spacing-md)', paddingLeft: '20px', color: 'var(--text-muted)', lineHeight: 1.8 }}>
+          <li>趋势图使用CSS柱状图展示，可快速识别异常波动</li>
+          <li>队列分布可识别工作量不均衡问题</li>
+          <li>错误趋势帮助预测未来问题</li>
+          <li>当前数据基于2026-04-01的测试数据</li>
         </ul>
       </div>
+
+      {/* JSON数据查看器 */}
+      <details style={{ marginTop: 'var(--spacing-lg)' }}>
+        <summary style={{ cursor: 'pointer', color: 'var(--primary)', fontWeight: 'bold' }}>
+          📋 查看完整API响应数据
+        </summary>
+        <div style={{ marginTop: 'var(--spacing-md)', display: 'grid', gap: 'var(--spacing-md)' }}>
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Performance Data</summary>
+            <pre style={{ 
+              marginTop: 'var(--spacing-sm)', 
+              padding: 'var(--spacing-md)', 
+              background: '#1e1e1e', 
+              color: '#d4d4d4',
+              borderRadius: '8px',
+              overflow: 'auto',
+              fontSize: '12px'
+            }}>
+              {JSON.stringify(performanceData, null, 2)}
+            </pre>
+          </details>
+          
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Queue Data</summary>
+            <pre style={{ 
+              marginTop: 'var(--spacing-sm)', 
+              padding: 'var(--spacing-md)', 
+              background: '#1e1e1e', 
+              color: '#d4d4d4',
+              borderRadius: '8px',
+              overflow: 'auto',
+              fontSize: '12px'
+            }}>
+              {JSON.stringify(queueData, null, 2)}
+            </pre>
+          </details>
+          
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Error Trend Data</summary>
+            <pre style={{ 
+              marginTop: 'var(--spacing-sm)', 
+              padding: 'var(--spacing-md)', 
+              background: '#1e1e1e', 
+              color: '#d4d4d4',
+              borderRadius: '8px',
+              overflow: 'auto',
+              fontSize: '12px'
+            }}>
+              {JSON.stringify(errorTrendData, null, 2)}
+            </pre>
+          </details>
+        </div>
+      </details>
     </PageTemplate>
   );
 }

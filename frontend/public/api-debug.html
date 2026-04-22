@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API诊断工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: #4ec9b0;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+        
+        .section {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            color: #569cd6;
+            font-size: 18px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 10px;
+        }
+        
+        .test-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #1e1e1e;
+            border-radius: 4px;
+        }
+        
+        .test-name {
+            color: #dcdcaa;
+            margin-bottom: 5px;
+        }
+        
+        .test-result {
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 5px;
+            font-size: 12px;
+        }
+        
+        .success {
+            background: #1e3a1e;
+            color: #4ec9b0;
+            border-left: 3px solid #4ec9b0;
+        }
+        
+        .error {
+            background: #3a1e1e;
+            color: #f48771;
+            border-left: 3px solid: #f48771;
+        }
+        
+        .warning {
+            background: #3a3a1e;
+            color: #ce9178;
+            border-left: 3px solid #ce9178;
+        }
+        
+        button {
+            background: #0e639c;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        button:hover {
+            background: #1177bb;
+        }
+        
+        pre {
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            color: #ce9178;
+        }
+        
+        .loading {
+            color: #569cd6;
+        }
+        
+        .config-box {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .config-item {
+            margin-bottom: 8px;
+        }
+        
+        .config-label {
+            color: #9cdcfe;
+            display: inline-block;
+            width: 150px;
+        }
+        
+        .config-value {
+            color: #ce9178;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 API诊断工具</h1>
+        
+        <div class="section">
+            <div class="section-title">📋 环境配置</div>
+            <div class="config-box">
+                <div class="config-item">
+                    <span class="config-label">当前页面URL:</span>
+                    <span class="config-value" id="currentUrl"></span>
+                </div>
+                <div class="config-item">
+                    <span class="config-label">API Base URL:</span>
+                    <span class="config-value" id="apiBaseUrl"></span>
+                </div>
+                <div class="config-item">
+                    <span class="config-label">测试日期:</span>
+                    <span class="config-value">2026-04-01</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">🚀 快速测试</div>
+            <button onclick="testAll()">运行全部测试</button>
+            <button onclick="testBackendHealth()">测试后端健康</button>
+            <button onclick="testMonitorAPI()">测试Monitor API</button>
+            <button onclick="testCORS()">测试CORS</button>
+        </div>
+        
+        <div class="section">
+            <div class="section-title">📊 测试结果</div>
+            <div id="results"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE_URL = 'http://localhost:8000';
+        const TEST_DATE = '2026-04-01';
+        
+        // 显示当前配置
+        document.getElementById('currentUrl').textContent = window.location.href;
+        document.getElementById('apiBaseUrl').textContent = API_BASE_URL;
+        
+        function addResult(name, status, message, data) {
+            const results = document.getElementById('results');
+            const item = document.createElement('div');
+            item.className = 'test-item';
+            
+            const statusClass = status === 'success' ? 'success' : status === 'error' ? 'error' : 'warning';
+            
+            item.innerHTML = `
+                <div class="test-name">${name}</div>
+                <div class="test-result ${statusClass}">
+                    ${message}
+                    ${data ? `<pre>${JSON.stringify(data, null, 2)}</pre>` : ''}
+                </div>
+            `;
+            
+            results.appendChild(item);
+        }
+        
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+        
+        async function testBackendHealth() {
+            clearResults();
+            addResult('后端健康检查', 'warning', '测试中...', null);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/health`);
+                const data = await response.json();
+                
+                if (response.ok && data.ok) {
+                    clearResults();
+                    addResult('后端健康检查', 'success', 
+                        `✅ 后端服务正常运行<br>服务: ${data.service}<br>路由数: ${Object.keys(data.routers || {}).length}`, 
+                        data);
+                } else {
+                    clearResults();
+                    addResult('后端健康检查', 'error', '❌ 后端返回错误', data);
+                }
+            } catch (error) {
+                clearResults();
+                addResult('后端健康检查', 'error', 
+                    `❌ 无法连接到后端<br>错误: ${error.message}<br><br>可能原因:<br>1. 后端服务未启动<br>2. 端口8000被占用<br>3. 防火墙阻止访问`, 
+                    null);
+            }
+        }
+        
+        async function testMonitorAPI() {
+            addResult('Monitor Dashboard API', 'warning', '测试中...', null);
+            
+            try {
+                const url = `${API_BASE_URL}/api/v1/monitor/dashboard?date=${TEST_DATE}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                clearResults();
+                
+                if (response.ok) {
+                    if (data.today && data.yesterday) {
+                        addResult('Monitor Dashboard API', 'success', 
+                            `✅ API响应正常<br>日期: ${data.date}<br>今日数据: ${data.today.total_count || 0}条<br>正确率: ${data.today.correct_rate || 0}%`, 
+                            data);
+                    } else if (data.detail) {
+                        addResult('Monitor Dashboard API', 'warning', 
+                            `⚠️ API返回但无数据<br>原因: ${data.detail}`, 
+                            data);
+                    } else {
+                        addResult('Monitor Dashboard API', 'warning', 
+                            '⚠️ API响应格式异常', 
+                            data);
+                    }
+                } else {
+                    addResult('Monitor Dashboard API', 'error', 
+                        `❌ API返回错误 (HTTP ${response.status})`, 
+                        data);
+                }
+            } catch (error) {
+                clearResults();
+                addResult('Monitor Dashboard API', 'error', 
+                    `❌ 请求失败<br>错误: ${error.message}`, 
+                    null);
+            }
+        }
+        
+        async function testCORS() {
+            addResult('CORS跨域测试', 'warning', '测试中...', null);
+            
+            try {
+                const url = `${API_BASE_URL}/api/health`;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Origin': window.location.origin
+                    }
+                });
+                
+                const corsHeader = response.headers.get('access-control-allow-origin');
+                
+                clearResults();
+                
+                if (corsHeader) {
+                    addResult('CORS跨域测试', 'success', 
+                        `✅ CORS配置正常<br>允许来源: ${corsHeader}`, 
+                        { 'Access-Control-Allow-Origin': corsHeader });
+                } else {
+                    addResult('CORS跨域测试', 'warning', 
+                        '⚠️ 未检测到CORS头（可能导致前端无法访问）', 
+                        null);
+                }
+            } catch (error) {
+                clearResults();
+                addResult('CORS跨域测试', 'error', 
+                    `❌ CORS测试失败<br>错误: ${error.message}`, 
+                    null);
+            }
+        }
+        
+        async function testAll() {
+            clearResults();
+            
+            await testBackendHealth();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testCORS();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testMonitorAPI();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // 测试其他API
+            const otherAPIs = [
+                { name: 'Queue Ranking', url: `/api/v1/monitor/queue-ranking?date=${TEST_DATE}&threshold=90&limit=5` },
+                { name: 'Error Ranking', url: `/api/v1/monitor/error-ranking?date=${TEST_DATE}&limit=10` },
+                { name: 'Error Overview', url: `/api/v1/analysis/error-overview?start_date=2026-03-28&end_date=${TEST_DATE}` }
+            ];
+            
+            for (const api of otherAPIs) {
+                try {
+                    const response = await fetch(`${API_BASE_URL}${api.url}`);
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        const dataType = Array.isArray(data) ? `数组(${data.length}项)` : '对象';
+                        addResult(api.name, 'success', 
+                            `✅ API响应正常<br>数据类型: ${dataType}`, 
+                            null);
+                    } else {
+                        addResult(api.name, 'warning', 
+                            `⚠️ HTTP ${response.status}`, 
+                            data);
+                    }
+                } catch (error) {
+                    addResult(api.name, 'error', 
+                        `❌ 请求失败: ${error.message}`, 
+                        null);
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+        
+        // 页面加载时自动运行测试
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                testBackendHealth();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

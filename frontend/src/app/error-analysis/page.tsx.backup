@@ -1,0 +1,397 @@
+'use client';
+
+import { PageTemplate } from '@/components/page-template';
+import { SummaryCard } from '@/components/summary-card';
+import { useState, useEffect } from 'react';
+import { 
+  getErrorOverview, 
+  getErrorHeatmap, 
+  getRootCause,
+  type ErrorOverviewResponse,
+  type ErrorHeatmapResponse,
+  type RootCauseResponse
+} from '@/lib/analysis-api';
+
+/**
+ * 🔍 深度错误分析页面
+ * 
+ * 核心目标：
+ * 1. 多维度分析错误（错误类型×队列×审核人×时间）
+ * 2. 识别问题根因（培训问题 vs 标准问题 vs 系统问题）
+ * 3. 提供改进建议（培训重点/标准优化/流程改进）
+ */
+export default function ErrorAnalysisPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // API数据状态
+  const [overviewData, setOverviewData] = useState<ErrorOverviewResponse | null>(null);
+  const [heatmapData, setHeatmapData] = useState<ErrorHeatmapResponse | null>(null);
+  const [rootCauseData, setRootCauseData] = useState<RootCauseResponse | null>(null);
+  
+  // 查询天数
+  const [days, setDays] = useState(7);
+
+  useEffect(() => {
+    loadData();
+  }, [days]);
+
+  async function loadData() {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // 计算日期范围
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() - 1); // 昨天
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - days + 1);
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      // 并行请求所有API
+      const [overview, heatmap, rootCause] = await Promise.all([
+        getErrorOverview(days),
+        getErrorHeatmap(days),
+        getRootCause(startDateStr, endDateStr)
+      ]);
+      
+      setOverviewData(overview);
+      setHeatmapData(heatmap);
+      setRootCauseData(rootCause);
+    } catch (err) {
+      console.error('加载数据失败:', err);
+      setError(err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <PageTemplate title="深度错误分析" subtitle="加载中...">
+        <div className="panel">
+          <p style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-muted)' }}>
+            正在加载数据...
+          </p>
+        </div>
+      </PageTemplate>
+    );
+  }
+
+  if (error || !overviewData) {
+    return (
+      <PageTemplate title="深度错误分析" subtitle="加载失败">
+        <div className="panel" style={{ background: 'var(--danger-bg)', borderColor: 'var(--danger)' }}>
+          <p style={{ color: 'var(--danger)' }}>加载数据失败: {error || '数据为空'}</p>
+          <button 
+            onClick={loadData} 
+            className="button"
+            style={{ marginTop: 'var(--spacing-md)' }}
+          >
+            重试
+          </button>
+        </div>
+      </PageTemplate>
+    );
+  }
+
+  return (
+    <PageTemplate
+      title="深度错误分析"
+      subtitle={`${overviewData.date_range.start_date} 至 ${overviewData.date_range.end_date}（${days}天）`}
+    >
+      {/* 天数选择 */}
+      <div className="panel">
+        <label htmlFor="days-picker" style={{ marginRight: 'var(--spacing-sm)' }}>
+          分析周期：
+        </label>
+        <select
+          id="days-picker"
+          value={days}
+          onChange={(e) => setDays(Number(e.target.value))}
+          style={{
+            padding: 'var(--spacing-sm)',
+            borderRadius: 'var(--radius)',
+            border: '1px solid var(--border)'
+          }}
+        >
+          <option value={7}>最近7天</option>
+          <option value={14}>最近14天</option>
+          <option value={30}>最近30天</option>
+        </select>
+        <button
+          onClick={loadData}
+          className="button"
+          style={{ marginLeft: 'var(--spacing-sm)' }}
+        >
+          刷新
+        </button>
+      </div>
+
+      {/* 错误总览 */}
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <h3 className="panel-title">📊 错误总览</h3>
+        
+        <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <SummaryCard
+            label="总错误数"
+            value={overviewData.total_errors.toLocaleString()}
+            hint={`错误率: ${overviewData.error_rate.toFixed(2)}%`}
+            tone={overviewData.error_rate > 10 ? 'danger' : 'warning'}
+          />
+
+          <SummaryCard
+            label="误判数"
+            value={overviewData.misjudge_stats.total_misjudge.toLocaleString()}
+            hint={`误判率: ${overviewData.misjudge_stats.misjudge_rate.toFixed(2)}%`}
+            tone="danger"
+          />
+
+          <SummaryCard
+            label="漏判数"
+            value={overviewData.misjudge_stats.total_miss.toLocaleString()}
+            hint={`漏判率: ${overviewData.misjudge_stats.miss_rate.toFixed(2)}%`}
+            tone="warning"
+          />
+
+          <SummaryCard
+            label="质检总量"
+            value={overviewData.total_reviews.toLocaleString()}
+            hint={`日均: ${Math.round(overviewData.total_reviews / days).toLocaleString()}`}
+            tone="neutral"
+          />
+        </div>
+      </div>
+
+      {/* 每日趋势 */}
+      {overviewData.daily_trend && overviewData.daily_trend.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">📈 错误趋势</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)', overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>日期</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>错误数</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>审核量</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>错误率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overviewData.daily_trend.map((day) => (
+                  <tr key={day.date} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: 'var(--spacing-sm)' }}>{day.date}</td>
+                    <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>{day.error_count.toLocaleString()}</td>
+                    <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>{day.review_count.toLocaleString()}</td>
+                    <td style={{ 
+                      padding: 'var(--spacing-sm)', 
+                      textAlign: 'right',
+                      color: day.error_rate > 10 ? 'var(--danger)' : 'var(--text)',
+                      fontWeight: day.error_rate > 10 ? 600 : 400
+                    }}>
+                      {day.error_rate.toFixed(2)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 错误类型分布 */}
+      {overviewData.error_distribution && overviewData.error_distribution.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🎯 错误类型分布（Top 10）</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <div className="grid-2" style={{ gap: 'var(--spacing-md)' }}>
+              {overviewData.error_distribution.slice(0, 10).map((error, index) => {
+                const color = index < 3 ? 'danger' : (index < 6 ? 'warning' : 'info');
+                return (
+                  <div 
+                    key={error.error_type}
+                    style={{ 
+                      padding: 'var(--spacing-md)', 
+                      background: 'var(--card-bg)', 
+                      borderRadius: 'var(--radius)', 
+                      borderLeft: `3px solid var(--${color})` 
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <strong>{error.error_type}</strong>
+                      <span style={{ color: `var(--${color})`, fontWeight: 700, fontSize: '1.25em' }}>
+                        {error.count} 次
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.875em', color: 'var(--text-muted)' }}>
+                      占比: {error.rate.toFixed(1)}%
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top错误队列 */}
+      {overviewData.top_queues && overviewData.top_queues.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">⚠️ 错误高发队列（Top 10）</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)', overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>队列名称</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>错误数</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>审核量</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>错误率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overviewData.top_queues.map((queue) => (
+                  <tr key={queue.queue_name} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>{queue.queue_name}</td>
+                    <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>{queue.error_count.toLocaleString()}</td>
+                    <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>{queue.review_count.toLocaleString()}</td>
+                    <td style={{ 
+                      padding: 'var(--spacing-sm)', 
+                      textAlign: 'right',
+                      color: queue.error_rate > 10 ? 'var(--danger)' : 'var(--warning)',
+                      fontWeight: 600
+                    }}>
+                      {queue.error_rate.toFixed(2)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 错误热力图 */}
+      {heatmapData && heatmapData.matrix && heatmapData.matrix.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🔥 错误热力矩阵（错误类型 × 队列）</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
+              显示错误集中分布，重点关注高频区域
+            </p>
+            
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875em' }}>
+                <thead>
+                  <tr style={{ background: 'var(--card-bg)' }}>
+                    <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>错误类型 \ 队列</th>
+                    {heatmapData.queues.slice(0, 10).map(queue => (
+                      <th key={queue} style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
+                        {queue}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {heatmapData.error_types.slice(0, 10).map(errorType => (
+                    <tr key={errorType} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>{errorType}</td>
+                      {heatmapData.queues.slice(0, 10).map(queue => {
+                        const cell = heatmapData.matrix.find(
+                          m => m.error_type === errorType && m.queue === queue
+                        );
+                        const count = cell?.count || 0;
+                        const bgColor = count > 50 ? '#fee' : (count > 20 ? '#ffc' : (count > 0 ? '#eff' : 'white'));
+                        return (
+                          <td 
+                            key={queue}
+                            style={{ 
+                              padding: 'var(--spacing-sm)', 
+                              textAlign: 'center',
+                              background: bgColor,
+                              fontWeight: count > 50 ? 600 : 400
+                            }}
+                          >
+                            {count > 0 ? count : '-'}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 根因分析 */}
+      {rootCauseData && rootCauseData.categories && rootCauseData.categories.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🔍 根因分析</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
+              覆盖率: {rootCauseData.summary.coverage_rate.toFixed(1)}% | 
+              已分析: {rootCauseData.summary.has_root_cause} / {rootCauseData.summary.total_analyzed}
+            </p>
+            
+            <div className="grid-2" style={{ gap: 'var(--spacing-md)' }}>
+              {rootCauseData.categories.map((category, index) => {
+                const color = index === 0 ? 'danger' : (index === 1 ? 'warning' : 'info');
+                return (
+                  <div 
+                    key={category.category}
+                    style={{ 
+                      padding: 'var(--spacing-md)', 
+                      background: 'var(--card-bg)', 
+                      borderRadius: 'var(--radius)', 
+                      borderLeft: `3px solid var(--${color})` 
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <strong>{category.category}</strong>
+                      <span style={{ color: `var(--${color})`, fontWeight: 700, fontSize: '1.25em' }}>
+                        {category.count} 次
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.875em', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      占比: {category.rate.toFixed(1)}%
+                    </div>
+                    {category.examples && category.examples.length > 0 && (
+                      <div style={{ fontSize: '0.875em', marginTop: '8px' }}>
+                        <strong>示例：</strong> {category.examples.slice(0, 3).join('、')}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 快速操作 */}
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <h3 className="panel-title">⚡ 快速操作</h3>
+        
+        <div style={{ marginTop: 'var(--spacing-md)', display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
+          <a href="/details" className="button button-primary" style={{ textDecoration: 'none' }}>
+            📋 查看明细数据
+          </a>
+          <a href="/monitor" className="button" style={{ textDecoration: 'none' }}>
+            📊 实时监控
+          </a>
+          <a href="/visualization" className="button" style={{ textDecoration: 'none' }}>
+            📈 数据可视化
+          </a>
+        </div>
+      </div>
+    </PageTemplate>
+  );
+}

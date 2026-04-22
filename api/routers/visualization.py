@@ -104,10 +104,6 @@ async def get_performance_trend(
     except Exception as e:
         logger.error(f"获取性能趋势失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.get("/api-performance")
 async def get_api_performance(
     date: Optional[str] = Query(None, description="查询日期（YYYY-MM-DD），默认今天")
@@ -266,10 +262,6 @@ async def get_queue_trend(
     except Exception as e:
         logger.error(f"获取队列趋势失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 @router.get("/reviewer-trend")
 async def get_reviewer_trend(
     reviewer_name: str = Query(..., description="审核人名称"),
@@ -350,10 +342,6 @@ async def get_reviewer_trend(
     except Exception as e:
         logger.error(f"获取审核人趋势失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-    finally:
-        db.close()
-
-
 # ==================== 辅助函数 ====================
 
 def _analyze_metric_trend(values: List[float], metric: str) -> Dict[str, Any]:

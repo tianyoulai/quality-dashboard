@@ -5,51 +5,42 @@ import { SummaryCard } from '@/components/summary-card';
 import { useState, useEffect } from 'react';
 
 /**
- * 🎯 实时数据监控页面
+ * 📊 实时监控页面（简化版）
  * 
- * 核心目标：
- * 1. 快速发现数据异常（正确率突降、错误类型激增、队列异常）
- * 2. 实时监控关键指标（当日/昨日对比）
- * 3. 聚焦高风险问题（误判/漏判/申诉率）
- * 4. 支持快速下钻（点击跳转详情查询）
+ * 显示当日 vs 昨日核心指标对比
  */
-export default function RealTimeMonitorPage() {
+export default function MonitorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // 模拟数据（实际应从API获取）
-  const maxDate = '2026-04-20';
-  const yesterdayDate = '2026-04-19';
-
-  const todayCorrectRate = 92.5;
-  const yesterdayCorrectRate = 94.2;
-  const correctRateChange = todayCorrectRate - yesterdayCorrectRate;
-
-  const todayTotalCount = 4523;
-  const yesterdayTotalCount = 4198;
-  const countChange = todayTotalCount - yesterdayTotalCount;
-
-  const todayMisjudgeRate = 4.8;
-  const yesterdayMisjudgeRate = 3.5;
-  const misjudgeRateChange = todayMisjudgeRate - yesterdayMisjudgeRate;
-
-  const todayAppealRate = 6.2;
-  const yesterdayAppealRate = 5.1;
-  const appealRateChange = todayAppealRate - yesterdayAppealRate;
-
-  // 判断异常状态
-  const isCorrectRateAbnormal = correctRateChange < -5; // 正确率下降超过5%
-  const isMisjudgeAbnormal = misjudgeRateChange > 2; // 误判率上升超过2%
-  const isAppealAbnormal = appealRateChange > 3; // 申诉率上升超过3%
+  const [date, setDate] = useState('2026-04-01');
+  const [dashboardData, setDashboardData] = useState<any>(null);
 
   useEffect(() => {
-    // TODO: 实际从API获取数据
-    setLoading(false);
-  }, []);
+    loadData();
+  }, [date]);
+
+  async function loadData() {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/monitor/dashboard?date=${date}`);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setDashboardData(data);
+    } catch (err) {
+      console.error('加载数据失败:', err);
+      setError(err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (loading) {
     return (
-      <PageTemplate title="实时数据监控" subtitle="加载中...">
+      <PageTemplate title="实时监控" subtitle="加载中...">
         <div className="panel">
           <p style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-muted)' }}>
             正在加载数据...
@@ -59,341 +50,122 @@ export default function RealTimeMonitorPage() {
     );
   }
 
-  if (error) {
+  if (error || !dashboardData) {
     return (
-      <PageTemplate title="实时数据监控" subtitle="加载失败">
+      <PageTemplate title="实时监控" subtitle="加载失败">
         <div className="panel" style={{ background: 'var(--danger-bg)', borderColor: 'var(--danger)' }}>
-          <p style={{ color: 'var(--danger)' }}>加载数据失败: {error}</p>
+          <p style={{ color: 'var(--danger)' }}>加载数据失败: {error || '数据为空'}</p>
+          <button 
+            onClick={loadData} 
+            className="button"
+            style={{ marginTop: 'var(--spacing-md)' }}
+          >
+            重试
+          </button>
         </div>
       </PageTemplate>
     );
   }
 
+  const { today, yesterday, changes, alerts } = dashboardData;
+
   return (
     <PageTemplate
-      title="实时数据监控"
-      subtitle={`${maxDate} 实时数据 vs ${yesterdayDate} 对比`}
-    >
-      {/* 异常告警（如果有） */}
-      {(isCorrectRateAbnormal || isMisjudgeAbnormal || isAppealAbnormal) && (
-        <div className="panel" style={{ background: 'var(--danger-bg)', borderColor: 'var(--danger)' }}>
-          <h3 className="panel-title" style={{ color: 'var(--danger)' }}>🚨 异常告警</h3>
-          
-          <div style={{ marginTop: 'var(--spacing-md)' }}>
-            {isCorrectRateAbnormal && (
-              <div style={{ padding: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)', background: 'white', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--danger)' }}>
-                <strong style={{ color: 'var(--danger)' }}>⚠️ 正确率大幅下降</strong>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.875em', color: 'var(--text-muted)' }}>
-                  当前正确率 {todayCorrectRate.toFixed(2)}%，较昨日下降 {Math.abs(correctRateChange).toFixed(2)}%
-                </p>
-              </div>
-            )}
-            
-            {isMisjudgeAbnormal && (
-              <div style={{ padding: 'var(--spacing-sm)', marginBottom: 'var(--spacing-xs)', background: 'white', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--danger)' }}>
-                <strong style={{ color: 'var(--danger)' }}>⚠️ 误判率异常上升</strong>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.875em', color: 'var(--text-muted)' }}>
-                  当前误判率 {todayMisjudgeRate.toFixed(2)}%，较昨日上升 {misjudgeRateChange.toFixed(2)}%
-                </p>
-              </div>
-            )}
-            
-            {isAppealAbnormal && (
-              <div style={{ padding: 'var(--spacing-sm)', background: 'white', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--danger)' }}>
-                <strong style={{ color: 'var(--danger)' }}>⚠️ 申诉率异常上升</strong>
-                <p style={{ margin: '4px 0 0 0', fontSize: '0.875em', color: 'var(--text-muted)' }}>
-                  当前申诉率 {todayAppealRate.toFixed(2)}%，较昨日上升 {appealRateChange.toFixed(2)}%
-                </p>
-              </div>
-            )}
-          </div>
+      title="实时监控"
+      subtitle={`${date} vs ${dashboardData.yesterday_date} 核心指标对比`}
+      actions={
+        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="input"
+            style={{ width: '160px' }}
+          />
+          <button onClick={loadData} className="button">
+            刷新数据
+          </button>
         </div>
-      )}
-
-      {/* 核心指标对比 */}
-      <div className="panel" style={{ marginTop: isCorrectRateAbnormal || isMisjudgeAbnormal || isAppealAbnormal ? 'var(--spacing-lg)' : 0 }}>
-        <h3 className="panel-title">📊 核心指标（当日 vs 昨日）</h3>
+      }
+    >
+      {/* 核心指标卡片 */}
+      <div className="panel">
+        <h3 className="panel-title">📊 核心指标</h3>
         
-        <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <div className="cards-grid" style={{ marginTop: 'var(--spacing-md)' }}>
           <SummaryCard
             label="正确率"
-            value={`${todayCorrectRate.toFixed(2)}%`}
-            hint={`昨日: ${yesterdayCorrectRate.toFixed(2)}% ${correctRateChange >= 0 ? '↑' : '↓'} ${Math.abs(correctRateChange).toFixed(2)}%`}
-            tone={isCorrectRateAbnormal ? 'danger' : (correctRateChange >= 0 ? 'success' : 'warning')}
+            value={`${today.correct_rate.toFixed(2)}%`}
+            hint={`昨日: ${yesterday.correct_rate.toFixed(2)}% ${changes.correct_rate >= 0 ? '↑' : '↓'} ${Math.abs(changes.correct_rate).toFixed(2)}%`}
+            tone={changes.correct_rate >= 0 ? 'success' : 'danger'}
           />
 
           <SummaryCard
             label="质检总量"
-            value={todayTotalCount.toLocaleString()}
-            hint={`昨日: ${yesterdayTotalCount.toLocaleString()} ${countChange >= 0 ? '↑' : '↓'} ${Math.abs(countChange).toLocaleString()}`}
-            tone={Math.abs(countChange) > yesterdayTotalCount * 0.2 ? 'warning' : 'neutral'}
+            value={today.total_count.toLocaleString()}
+            hint={`昨日: ${yesterday.total_count.toLocaleString()} ${changes.total_count >= 0 ? '↑' : '↓'} ${Math.abs(changes.total_count).toLocaleString()}`}
+            tone="neutral"
           />
 
           <SummaryCard
             label="误判率"
-            value={`${todayMisjudgeRate.toFixed(2)}%`}
-            hint={`昨日: ${yesterdayMisjudgeRate.toFixed(2)}% ${misjudgeRateChange >= 0 ? '↑' : '↓'} ${Math.abs(misjudgeRateChange).toFixed(2)}%`}
-            tone={isMisjudgeAbnormal ? 'danger' : (misjudgeRateChange <= 0 ? 'success' : 'warning')}
+            value={`${today.misjudge_rate.toFixed(2)}%`}
+            hint={`昨日: ${yesterday.misjudge_rate.toFixed(2)}% ${changes.misjudge_rate >= 0 ? '↑' : '↓'} ${Math.abs(changes.misjudge_rate).toFixed(2)}%`}
+            tone={changes.misjudge_rate <= 0 ? 'success' : 'warning'}
           />
 
           <SummaryCard
             label="申诉率"
-            value={`${todayAppealRate.toFixed(2)}%`}
-            hint={`昨日: ${yesterdayAppealRate.toFixed(2)}% ${appealRateChange >= 0 ? '↑' : '↓'} ${Math.abs(appealRateChange).toFixed(2)}%`}
-            tone={isAppealAbnormal ? 'danger' : (appealRateChange <= 0 ? 'success' : 'warning')}
+            value={`${today.appeal_rate.toFixed(2)}%`}
+            hint={`昨日: ${yesterday.appeal_rate.toFixed(2)}% ${changes.appeal_rate >= 0 ? '↑' : '↓'} ${Math.abs(changes.appeal_rate).toFixed(2)}%`}
+            tone={changes.appeal_rate <= 0 ? 'success' : 'warning'}
           />
         </div>
       </div>
 
-      {/* 队列质量排行（Top 10 最差队列） */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">⚠️ 重点关注队列（正确率 &lt;90%）</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            以下队列正确率低于 90%，需要重点关注和改进
-          </p>
-          
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>排名</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>队列名称</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>正确率</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>质检量</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>误判率</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>漏判率</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>主要错误</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* 模拟数据，实际需要从 API 获取 */}
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>1</td>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>视频号评论队列A</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right', color: 'var(--danger)', fontWeight: 600 }}>85.2%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>1,234</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>8.5%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>6.3%</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>引流判定</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                    <a href="/details?queue_name=视频号评论队列A" style={{ color: 'var(--primary)', textDecoration: 'none' }}>详情 →</a>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>2</td>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>视频号评论队列B</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right', color: 'var(--danger)', fontWeight: 600 }}>87.8%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>982</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>7.2%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>5.0%</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>低质内容</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                    <a href="/details?queue_name=视频号评论队列B" style={{ color: 'var(--primary)', textDecoration: 'none' }}>详情 →</a>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>3</td>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>公众号评论队列</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right', color: 'var(--warning)', fontWeight: 600 }}>89.1%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>756</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>6.5%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>4.4%</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>广告识别</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                    <a href="/details?queue_name=公众号评论队列" style={{ color: 'var(--primary)', textDecoration: 'none' }}>详情 →</a>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      {/* 异常告警 */}
+      {alerts && alerts.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)', background: 'var(--warning-bg)', borderColor: 'var(--warning)' }}>
+          <h3 className="panel-title">⚠️ 异常告警</h3>
+          <ul style={{ marginTop: 'var(--spacing-md)', paddingLeft: '20px' }}>
+            {alerts.map((alert: any, index: number) => (
+              <li key={index} style={{ marginBottom: 'var(--spacing-sm)', color: 'var(--warning)' }}>
+                {alert.message}
+              </li>
+            ))}
+          </ul>
         </div>
-      </div>
+      )}
 
-      {/* 错误类型分布（Top 5） */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">🎯 高频错误类型（Top 5）</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            聚焦高频错误，精准培训提升
-          </p>
-          
-          <div className="grid-2" style={{ gap: 'var(--spacing-md)' }}>
-            {/* 模拟数据 */}
-            <div style={{ padding: 'var(--spacing-md)', background: 'var(--card-bg)', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--danger)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong>评论引流判定</strong>
-                <span style={{ color: 'var(--danger)', fontWeight: 700, fontSize: '1.25em' }}>342 次</span>
-              </div>
-              <div style={{ fontSize: '0.875em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                占比: 28.5% | 误判率: 65% | 漏判率: 35%
-              </div>
-              <div style={{ fontSize: '0.875em' }}>
-                主要队列: 视频号评论队列A、B
-              </div>
-              <div style={{ marginTop: '8px' }}>
-                <a href="/details?error_type=评论引流判定" style={{ color: 'var(--primary)', fontSize: '0.875em', textDecoration: 'none' }}>查看明细 →</a>
-              </div>
-            </div>
-
-            <div style={{ padding: 'var(--spacing-md)', background: 'var(--card-bg)', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--warning)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong>低质内容判定</strong>
-                <span style={{ color: 'var(--warning)', fontWeight: 700, fontSize: '1.25em' }}>218 次</span>
-              </div>
-              <div style={{ fontSize: '0.875em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                占比: 18.2% | 误判率: 55% | 漏判率: 45%
-              </div>
-              <div style={{ fontSize: '0.875em' }}>
-                主要队列: 视频号评论队列B、C
-              </div>
-              <div style={{ marginTop: '8px' }}>
-                <a href="/details?error_type=低质内容判定" style={{ color: 'var(--primary)', fontSize: '0.875em', textDecoration: 'none' }}>查看明细 →</a>
-              </div>
-            </div>
-
-            <div style={{ padding: 'var(--spacing-md)', background: 'var(--card-bg)', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--warning)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong>广告识别</strong>
-                <span style={{ color: 'var(--warning)', fontWeight: 700, fontSize: '1.25em' }}>156 次</span>
-              </div>
-              <div style={{ fontSize: '0.875em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                占比: 13.0% | 误判率: 48% | 漏判率: 52%
-              </div>
-              <div style={{ fontSize: '0.875em' }}>
-                主要队列: 公众号评论队列
-              </div>
-              <div style={{ marginTop: '8px' }}>
-                <a href="/details?error_type=广告识别" style={{ color: 'var(--primary)', fontSize: '0.875em', textDecoration: 'none' }}>查看明细 →</a>
-              </div>
-            </div>
-
-            <div style={{ padding: 'var(--spacing-md)', background: 'var(--card-bg)', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--info)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                <strong>违规内容</strong>
-                <span style={{ color: 'var(--info)', fontWeight: 700, fontSize: '1.25em' }}>124 次</span>
-              </div>
-              <div style={{ fontSize: '0.875em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                占比: 10.3% | 误判率: 42% | 漏判率: 58%
-              </div>
-              <div style={{ fontSize: '0.875em' }}>
-                主要队列: 视频号评论队列C
-              </div>
-              <div style={{ marginTop: '8px' }}>
-                <a href="/details?error_type=违规内容" style={{ color: 'var(--primary)', fontSize: '0.875em', textDecoration: 'none' }}>查看明细 →</a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 审核人员表现（Top 10 最需关注） */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">👤 重点关注审核人（正确率 &lt;85%）</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            以下审核人员正确率低于 85%，需要加强培训
-          </p>
-          
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>排名</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>审核人</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>正确率</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>审核量</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>误判率</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>漏判率</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>主要问题</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>所属队列</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {/* 模拟数据 */}
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>1</td>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>张三</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right', color: 'var(--danger)', fontWeight: 600 }}>78.5%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>456</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>12.8%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>8.7%</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>引流判定</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>视频号评论队列A</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                    <a href="/details?reviewer_name=张三" style={{ color: 'var(--primary)', textDecoration: 'none' }}>详情 →</a>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>2</td>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>李四</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right', color: 'var(--danger)', fontWeight: 600 }}>81.2%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>389</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>10.5%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>8.3%</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>低质内容</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>视频号评论队列B</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                    <a href="/details?reviewer_name=李四" style={{ color: 'var(--primary)', textDecoration: 'none' }}>详情 →</a>
-                  </td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>3</td>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>王五</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right', color: 'var(--warning)', fontWeight: 600 }}>83.7%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>312</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>9.2%</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>7.1%</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>广告识别</td>
-                  <td style={{ padding: 'var(--spacing-sm)' }}>公众号评论队列</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                    <a href="/details?reviewer_name=王五" style={{ color: 'var(--primary)', textDecoration: 'none' }}>详情 →</a>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* 快速操作 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">⚡ 快速操作</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-md)', display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
-          <a href="/details" className="button button-primary" style={{ textDecoration: 'none' }}>
-            📋 查看全部明细
-          </a>
-          <a href={`/details?start_date=${maxDate}&end_date=${maxDate}`} className="button" style={{ textDecoration: 'none' }}>
-            📅 导出当日数据
-          </a>
-          <a href="/internal" className="button" style={{ textDecoration: 'none' }}>
-            📊 内检看板
-          </a>
-          <a href="/newcomers" className="button" style={{ textDecoration: 'none' }}>
-            👤 新人追踪
-          </a>
-        </div>
-      </div>
-
-      {/* 使用说明 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)', background: 'var(--info-bg)', borderColor: 'var(--info)' }}>
-        <h3 className="panel-title" style={{ color: 'var(--info)' }}>💡 监控说明</h3>
-        
-        <ul style={{ marginLeft: 'var(--spacing-lg)', marginTop: 'var(--spacing-md)', lineHeight: 2 }}>
-          <li><strong>异常告警</strong>：自动检测正确率/误判率/申诉率异常波动</li>
-          <li><strong>队列排行</strong>：聚焦正确率 &lt;90% 的队列，优先改进</li>
-          <li><strong>错误类型</strong>：统计高频错误，精准培训提升</li>
-          <li><strong>人员表现</strong>：识别正确率 &lt;85% 的审核人，加强培训</li>
-          <li><strong>快速下钻</strong>：点击「详情 →」跳转到明细查询页面</li>
-          <li><strong>数据来源</strong>：当前为演示数据，实际使用时将接入真实API</li>
+      {/* 使用提示 */}
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)', background: 'var(--card-bg)' }}>
+        <h3 className="panel-title">💡 使用提示</h3>
+        <ul style={{ marginTop: 'var(--spacing-md)', paddingLeft: '20px', color: 'var(--text-muted)', lineHeight: 1.8 }}>
+          <li>选择日期后点击"刷新数据"获取最新数据</li>
+          <li>推荐测试日期：2026-04-01（有39,140条真实数据）</li>
+          <li>正确率：当日正确数/质检总量</li>
+          <li>误判率：误判数/质检总量</li>
+          <li>申诉率：申诉数/质检总量</li>
         </ul>
       </div>
+
+      {/* JSON数据查看器（调试用） */}
+      <details style={{ marginTop: 'var(--spacing-lg)' }}>
+        <summary style={{ cursor: 'pointer', color: 'var(--primary)', fontWeight: 'bold' }}>
+          📋 查看完整API响应数据
+        </summary>
+        <pre style={{ 
+          marginTop: 'var(--spacing-md)', 
+          padding: 'var(--spacing-md)', 
+          background: '#1e1e1e', 
+          color: '#d4d4d4',
+          borderRadius: '8px',
+          overflow: 'auto',
+          fontSize: '12px'
+        }}>
+          {JSON.stringify(dashboardData, null, 2)}
+        </pre>
+      </details>
     </PageTemplate>
   );
 }

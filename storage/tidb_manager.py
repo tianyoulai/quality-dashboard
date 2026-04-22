@@ -198,6 +198,25 @@ class TiDBManager:
             finally:
                 cursor.close()
 
+    def execute_query(self, sql: str, params: Iterable[Any] | None = None) -> list[tuple]:
+        """执行查询并返回结果列表（兼容层方法）。
+        
+        返回 list[tuple] 格式以兼容索引访问 result[0][0]。
+        如果需要字典格式，请使用 fetch_df() 或 fetch_one()。
+        """
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(sql, tuple(params) if params else ())
+                rows = cursor.fetchall()
+                return rows if rows else []
+            finally:
+                cursor.close()
+    
+    def close(self):
+        """兼容层方法：连接池自动管理，无需手动关闭。"""
+        pass
+
     def execute(self, sql: str, params: Iterable[Any] | None = None) -> None:
         """执行 SQL（INSERT/UPDATE/DELETE 等）。"""
         with self.get_connection() as conn:

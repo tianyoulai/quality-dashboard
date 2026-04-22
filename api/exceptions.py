@@ -78,6 +78,26 @@ class ValidationError(BusinessException):
         )
 
 
+class InvalidDateRangeError(BusinessException):
+    """日期范围无效异常。
+    
+    适用场景：
+    - 开始日期晚于结束日期
+    - 日期范围超过允许的最大值
+    - 日期格式错误
+    
+    Args:
+        message: 错误描述
+    """
+    
+    def __init__(self, message: str = "日期范围无效"):
+        super().__init__(
+            code="INVALID_DATE_RANGE",
+            message=message,
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+
+
 class DatabaseError(BusinessException):
     """数据库操作失败异常。
     

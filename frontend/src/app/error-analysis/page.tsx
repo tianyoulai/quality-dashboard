@@ -1,307 +1,330 @@
+'use client';
+
 import { PageTemplate } from '@/components/page-template';
 import { SummaryCard } from '@/components/summary-card';
-
-export const metadata = {
-  title: '错误分析',
-};
+import { useState, useEffect } from 'react';
 
 /**
- * 🔍 深度错误分析页面
+ * 🔍 错误分析页面
  * 
- * 核心目标：
- * 1. 多维度分析错误（错误类型×队列×审核人×时间）
- * 2. 识别问题根因（培训问题 vs 标准问题 vs 系统问题）
- * 3. 提供改进建议（培训重点/标准优化/流程改进）
+ * 显示错误总览、热力图、根因分析等
  */
 export default function ErrorAnalysisPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [days, setDays] = useState(7);
+  
+  // API数据
+  const [overviewData, setOverviewData] = useState<any>(null);
+  const [heatmapData, setHeatmapData] = useState<any>(null);
+  const [rootCauseData, setRootCauseData] = useState<any>(null);
+
+  useEffect(() => {
+    loadData();
+  }, [days]);
+
+  async function loadData() {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // 计算日期范围
+      const endDate = new Date('2026-04-01'); // 固定使用有数据的日期
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - days + 1);
+      
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      
+      const baseUrl = 'http://localhost:8000/api/v1/analysis';
+      
+      // 并行请求
+      const [overview, heatmap, rootCause] = await Promise.all([
+        fetch(`${baseUrl}/error-overview?start_date=${startDateStr}&end_date=${endDateStr}`).then(r => r.json()),
+        fetch(`${baseUrl}/error-heatmap?start_date=${startDateStr}&end_date=${endDateStr}`).then(r => r.json()),
+        fetch(`${baseUrl}/root-cause?start_date=${startDateStr}&end_date=${endDateStr}`).then(r => r.json())
+      ]);
+      
+      setOverviewData(overview);
+      setHeatmapData(heatmap);
+      setRootCauseData(rootCause);
+    } catch (err) {
+      console.error('加载数据失败:', err);
+      setError(err instanceof Error ? err.message : '未知错误');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <PageTemplate title="错误分析" subtitle="加载中...">
+        <div className="panel">
+          <p style={{ textAlign: 'center', padding: 'var(--spacing-xl)', color: 'var(--text-muted)' }}>
+            正在加载数据...
+          </p>
+        </div>
+      </PageTemplate>
+    );
+  }
+
+  if (error || !overviewData) {
+    return (
+      <PageTemplate title="错误分析" subtitle="加载失败">
+        <div className="panel" style={{ background: 'var(--danger-bg)', borderColor: 'var(--danger)' }}>
+          <p style={{ color: 'var(--danger)' }}>加载数据失败: {error || '数据为空'}</p>
+          <button 
+            onClick={loadData} 
+            className="button"
+            style={{ marginTop: 'var(--spacing-md)' }}
+          >
+            重试
+          </button>
+        </div>
+      </PageTemplate>
+    );
+  }
+
   return (
     <PageTemplate
-      title="深度错误分析"
-      subtitle="多维度分析错误根因，精准制定改进方案"
+      title="错误分析"
+      subtitle={`${overviewData.date_range?.start_date || ''} 至 ${overviewData.date_range?.end_date || ''} (${days}天)`}
+      actions={
+        <div style={{ display: 'flex', gap: 'var(--spacing-sm)', alignItems: 'center' }}>
+          <select
+            value={days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="input"
+            style={{ width: '120px' }}
+          >
+            <option value={7}>最近7天</option>
+            <option value={14}>最近14天</option>
+            <option value={30}>最近30天</option>
+          </select>
+          <button onClick={loadData} className="button">
+            刷新数据
+          </button>
+        </div>
+      }
     >
       {/* 错误总览 */}
       <div className="panel">
-        <h3 className="panel-title">📊 错误总览（最近7天）</h3>
+        <h3 className="panel-title">📊 错误总览</h3>
         
-        <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
+        <div className="cards-grid" style={{ marginTop: 'var(--spacing-md)' }}>
           <SummaryCard
             label="总错误数"
-            value="1,245"
-            hint="较上周 ↑ 8.5%"
-            tone="warning"
+            value={overviewData.total_errors?.toLocaleString() || '0'}
+            hint={`总审核量: ${overviewData.total_reviews?.toLocaleString() || '0'}`}
+            tone="neutral"
+          />
+
+          <SummaryCard
+            label="错误率"
+            value={`${(overviewData.error_rate || 0).toFixed(2)}%`}
+            hint={`误判率: ${(overviewData.misjudge_stats?.rate || 0).toFixed(2)}%`}
+            tone={(overviewData.error_rate || 0) > 5 ? 'danger' : 'success'}
           />
 
           <SummaryCard
             label="误判数"
-            value="723"
-            hint="占比 58.1%"
-            tone="danger"
-          />
-
-          <SummaryCard
-            label="漏判数"
-            value="522"
-            hint="占比 41.9%"
+            value={overviewData.misjudge_stats?.count?.toLocaleString() || '0'}
+            hint={`占总错误: ${((overviewData.misjudge_stats?.count || 0) / (overviewData.total_errors || 1) * 100).toFixed(1)}%`}
             tone="warning"
           />
 
           <SummaryCard
-            label="申诉翻案率"
-            value="32.5%"
-            hint="较上周 ↑ 5.2%"
-            tone="danger"
+            label="错误类型"
+            value={overviewData.error_distribution?.length?.toString() || '0'}
+            hint="不同错误分类数量"
+            tone="neutral"
           />
         </div>
       </div>
 
-      {/* 错误类型 × 队列热力矩阵 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">🔥 错误热力矩阵（错误类型 × 队列）</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
-            颜色越深表示错误越集中，重点关注深红色区域
-          </p>
+      {/* 错误分布 */}
+      {overviewData.error_distribution && overviewData.error_distribution.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🎯 错误类型分布 Top 10</h3>
           
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875em' }}>
+          <div style={{ overflowX: 'auto', marginTop: 'var(--spacing-md)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr style={{ background: 'var(--card-bg)' }}>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left', position: 'sticky', left: 0, background: 'var(--card-bg)', zIndex: 1 }}>错误类型</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>队列A</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>队列B</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>队列C</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>公众号</th>
-                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>合计</th>
+                <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>排名</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>错误类型</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>数量</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>占比</th>
+                  <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left' }}>趋势</th>
                 </tr>
               </thead>
               <tbody>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600, position: 'sticky', left: 0, background: 'white', zIndex: 1 }}>评论引流判定</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fee2e2', fontWeight: 600 }}>186</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fecaca', fontWeight: 600 }}>98</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>42</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>16</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', fontWeight: 700 }}>342</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600, position: 'sticky', left: 0, background: 'white', zIndex: 1 }}>低质内容判定</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>45</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fecaca', fontWeight: 600 }}>112</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fecaca' }}>61</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>0</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', fontWeight: 700 }}>218</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600, position: 'sticky', left: 0, background: 'white', zIndex: 1 }}>广告识别</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>8</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>23</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>19</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fecaca', fontWeight: 600 }}>106</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', fontWeight: 700 }}>156</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600, position: 'sticky', left: 0, background: 'white', zIndex: 1 }}>违规内容</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>34</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>28</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fecaca', fontWeight: 600 }}>52</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>10</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', fontWeight: 700 }}>124</td>
-                </tr>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600, position: 'sticky', left: 0, background: 'white', zIndex: 1 }}>其他</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>67</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>89</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>95</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', background: '#fef2f2' }}>154</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', fontWeight: 700 }}>405</td>
-                </tr>
-                <tr style={{ background: 'var(--card-bg)', fontWeight: 700 }}>
-                  <td style={{ padding: 'var(--spacing-sm)', position: 'sticky', left: 0, background: 'var(--card-bg)', zIndex: 1 }}>合计</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>340</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>350</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>269</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>286</td>
-                  <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center', color: 'var(--danger)' }}>1,245</td>
-                </tr>
+                {overviewData.error_distribution.slice(0, 10).map((item: any, index: number) => (
+                  <tr key={index} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: 'var(--spacing-sm)' }}>{index + 1}</td>
+                    <td style={{ padding: 'var(--spacing-sm)', fontWeight: 'bold' }}>{item.error_type || '-'}</td>
+                    <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>{(item.count || 0).toLocaleString()}</td>
+                    <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>{((item.percentage || 0)).toFixed(2)}%</td>
+                    <td style={{ padding: 'var(--spacing-sm)' }}>
+                      <span style={{ 
+                        padding: '2px 8px', 
+                        borderRadius: '4px',
+                        fontSize: '0.875em',
+                        background: item.trend === 'up' ? 'var(--danger-bg)' : item.trend === 'down' ? 'var(--success-bg)' : 'var(--card-bg)',
+                        color: item.trend === 'up' ? 'var(--danger)' : item.trend === 'down' ? 'var(--success)' : 'var(--text-muted)'
+                      }}>
+                        {item.trend === 'up' ? '↑ 上升' : item.trend === 'down' ? '↓ 下降' : '→ 稳定'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* 问题根因分析 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">🔍 问题根因分析</h3>
-        
-        <div className="grid-3" style={{ marginTop: 'var(--spacing-lg)', gap: 'var(--spacing-md)' }}>
-          {/* 培训问题 */}
-          <div style={{ padding: 'var(--spacing-md)', background: 'var(--danger-bg)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--danger)' }}>
-            <h4 style={{ color: 'var(--danger)', marginBottom: 'var(--spacing-sm)' }}>🎓 培训问题（42%）</h4>
-            <div style={{ fontSize: '0.875em', lineHeight: 1.8 }}>
-              <p style={{ margin: '8px 0' }}><strong>表现：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>特定审核人反复出错</li>
-                <li>新人错误率高</li>
-                <li>同类问题持续发生</li>
-              </ul>
-              <p style={{ margin: '8px 0' }}><strong>典型案例：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>引流判定标准不清晰</li>
-                <li>低质内容边界模糊</li>
-              </ul>
-              <p style={{ margin: '8px 0' }}><strong>改进建议：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>针对性培训（引流/低质）</li>
-                <li>案例库补充</li>
-                <li>定期复训考核</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* 标准问题 */}
-          <div style={{ padding: 'var(--spacing-md)', background: 'var(--warning-bg)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--warning)' }}>
-            <h4 style={{ color: 'var(--warning)', marginBottom: 'var(--spacing-sm)' }}>📋 标准问题（35%）</h4>
-            <div style={{ fontSize: '0.875em', lineHeight: 1.8 }}>
-              <p style={{ margin: '8px 0' }}><strong>表现：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>不同审核人判定不一致</li>
-                <li>申诉翻案率高</li>
-                <li>标准文档模糊</li>
-              </ul>
-              <p style={{ margin: '8px 0' }}><strong>典型案例：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>引流vs导流边界不清</li>
-                <li>广告vs正常推广</li>
-              </ul>
-              <p style={{ margin: '8px 0' }}><strong>改进建议：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>优化审核标准文档</li>
-                <li>增加边界case</li>
-                <li>统一判定口径</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* 系统问题 */}
-          <div style={{ padding: 'var(--spacing-md)', background: 'var(--info-bg)', borderRadius: 'var(--radius)', borderLeft: '4px solid var(--info)' }}>
-            <h4 style={{ color: 'var(--info)', marginBottom: 'var(--spacing-sm)' }}>⚙️ 系统问题（23%）</h4>
-            <div style={{ fontSize: '0.875em', lineHeight: 1.8 }}>
-              <p style={{ margin: '8px 0' }}><strong>表现：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>数据展示不全</li>
-                <li>上下文信息缺失</li>
-                <li>标注工具限制</li>
-              </ul>
-              <p style={{ margin: '8px 0' }}><strong>典型案例：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>评论内容截断</li>
-                <li>引用信息不完整</li>
-              </ul>
-              <p style={{ margin: '8px 0' }}><strong>改进建议：</strong></p>
-              <ul style={{ marginLeft: 'var(--spacing-lg)' }}>
-                <li>优化数据展示</li>
-                <li>补充上下文</li>
-                <li>改进工具功能</li>
-              </ul>
+      {/* 错误热力图 */}
+      {heatmapData?.matrix && heatmapData.matrix.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🔥 错误热力图（队列×错误类型）</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.875em', marginBottom: 'var(--spacing-md)' }}>
+              {heatmapData.summary?.message || `共${heatmapData.queues?.length || 0}个队列，${heatmapData.error_types?.length || 0}种错误类型`}
+            </p>
+            
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875em' }}>
+                <thead>
+                  <tr style={{ background: 'var(--card-bg)' }}>
+                    <th style={{ padding: 'var(--spacing-xs)', textAlign: 'left', position: 'sticky', left: 0, background: 'var(--card-bg)', zIndex: 1 }}>队列</th>
+                    {heatmapData.error_types?.slice(0, 8).map((type: string, i: number) => (
+                      <th key={i} style={{ padding: 'var(--spacing-xs)', textAlign: 'center', minWidth: '80px' }}>
+                        {type.length > 8 ? type.substring(0, 8) + '...' : type}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {heatmapData.matrix?.slice(0, 10).map((row: any, i: number) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: 'var(--spacing-xs)', fontWeight: 'bold', position: 'sticky', left: 0, background: 'var(--bg)', zIndex: 1 }}>
+                        {row.queue_name?.length > 15 ? row.queue_name.substring(0, 15) + '...' : row.queue_name}
+                      </td>
+                      {row.error_counts?.slice(0, 8).map((count: number, j: number) => (
+                        <td key={j} style={{ 
+                          padding: 'var(--spacing-xs)', 
+                          textAlign: 'center',
+                          background: count > 0 ? `rgba(239, 68, 68, ${Math.min(count / 100, 0.8)})` : 'transparent',
+                          color: count > 20 ? 'white' : 'inherit'
+                        }}>
+                          {count > 0 ? count : '-'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
+      )}
+
+      {/* 根因分析 */}
+      {rootCauseData?.related_errors && rootCauseData.related_errors.length > 0 && (
+        <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
+          <h3 className="panel-title">🔍 根因分析</h3>
+          
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <h4 style={{ color: 'var(--primary)', marginBottom: 'var(--spacing-sm)' }}>相关错误</h4>
+            <ul style={{ paddingLeft: '20px', lineHeight: 1.8 }}>
+              {rootCauseData.related_errors.slice(0, 5).map((item: any, index: number) => (
+                <li key={index}>
+                  <strong>{item.error_type}</strong>: {item.count}次 ({item.percentage?.toFixed(1)}%)
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {rootCauseData.top_reviewers && rootCauseData.top_reviewers.length > 0 && (
+            <div style={{ marginTop: 'var(--spacing-md)' }}>
+              <h4 style={{ color: 'var(--primary)', marginBottom: 'var(--spacing-sm)' }}>重点关注审核人</h4>
+              <ul style={{ paddingLeft: '20px', lineHeight: 1.8 }}>
+                {rootCauseData.top_reviewers.slice(0, 5).map((item: any, index: number) => (
+                  <li key={index}>
+                    {item.reviewer_name || item.reviewer_id}: {item.error_count}次错误
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 使用提示 */}
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)', background: 'var(--card-bg)' }}>
+        <h3 className="panel-title">💡 使用提示</h3>
+        <ul style={{ marginTop: 'var(--spacing-md)', paddingLeft: '20px', color: 'var(--text-muted)', lineHeight: 1.8 }}>
+          <li>错误热力图颜色越深表示该队列该错误类型越多</li>
+          <li>趋势分析基于时间序列数据，显示上升/下降/稳定状态</li>
+          <li>根因分析帮助定位系统性问题</li>
+          <li>当前数据基于2026-04-01的测试数据</li>
+        </ul>
       </div>
 
-      {/* 重点改进行动计划 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">📋 重点改进行动计划</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-md)' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'var(--card-bg)', borderBottom: '2px solid var(--border)' }}>
-                <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left', width: '5%' }}>优先级</th>
-                <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left', width: '20%' }}>问题</th>
-                <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left', width: '25%' }}>改进措施</th>
-                <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left', width: '15%' }}>责任人</th>
-                <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left', width: '10%' }}>完成时间</th>
-                <th style={{ padding: 'var(--spacing-sm)', textAlign: 'left', width: '15%' }}>预期效果</th>
-                <th style={{ padding: 'var(--spacing-sm)', textAlign: 'center', width: '10%' }}>状态</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: 'var(--spacing-sm)' }}>
-                  <span style={{ padding: '2px 8px', background: 'var(--danger)', color: 'white', borderRadius: 'var(--radius-sm)', fontSize: '0.75em', fontWeight: 600 }}>P0</span>
-                </td>
-                <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>队列A引流判定错误率高（186次）</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>
-                  1. 组织专项培训（引流标准）<br/>
-                  2. 补充典型案例20个<br/>
-                  3. 每日复盘机制
-                </td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>培训负责人A</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>2026-04-25</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>错误降至 &lt;50次/周</td>
-                <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                  <span style={{ padding: '4px 8px', background: 'var(--warning-bg)', color: 'var(--warning)', borderRadius: 'var(--radius-sm)', fontSize: '0.75em' }}>进行中</span>
-                </td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: 'var(--spacing-sm)' }}>
-                  <span style={{ padding: '2px 8px', background: 'var(--danger)', color: 'white', borderRadius: 'var(--radius-sm)', fontSize: '0.75em', fontWeight: 600 }}>P0</span>
-                </td>
-                <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>队列B低质内容判定不一致（112次）</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>
-                  1. 优化低质判定标准<br/>
-                  2. 统一判定口径<br/>
-                  3. 增加边界case
-                </td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>标准负责人B</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>2026-04-28</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>判定一致性 &gt;90%</td>
-                <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                  <span style={{ padding: '4px 8px', background: 'var(--info-bg)', color: 'var(--info)', borderRadius: 'var(--radius-sm)', fontSize: '0.75em' }}>计划中</span>
-                </td>
-              </tr>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                <td style={{ padding: 'var(--spacing-sm)' }}>
-                  <span style={{ padding: '2px 8px', background: 'var(--warning)', color: 'white', borderRadius: 'var(--radius-sm)', fontSize: '0.75em', fontWeight: 600 }}>P1</span>
-                </td>
-                <td style={{ padding: 'var(--spacing-sm)', fontWeight: 600 }}>公众号广告识别错误（106次）</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>
-                  1. 补充广告识别培训<br/>
-                  2. 优化数据展示<br/>
-                  3. 增加辅助判断工具
-                </td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>产品负责人C</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>2026-05-05</td>
-                <td style={{ padding: 'var(--spacing-sm)' }}>错误降至 &lt;30次/周</td>
-                <td style={{ padding: 'var(--spacing-sm)', textAlign: 'center' }}>
-                  <span style={{ padding: '4px 8px', background: 'var(--info-bg)', color: 'var(--info)', borderRadius: 'var(--radius-sm)', fontSize: '0.75em' }}>计划中</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+      {/* JSON数据查看器 */}
+      <details style={{ marginTop: 'var(--spacing-lg)' }}>
+        <summary style={{ cursor: 'pointer', color: 'var(--primary)', fontWeight: 'bold' }}>
+          📋 查看完整API响应数据
+        </summary>
+        <div style={{ marginTop: 'var(--spacing-md)', display: 'grid', gap: 'var(--spacing-md)' }}>
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Error Overview</summary>
+            <pre style={{ 
+              marginTop: 'var(--spacing-sm)', 
+              padding: 'var(--spacing-md)', 
+              background: '#1e1e1e', 
+              color: '#d4d4d4',
+              borderRadius: '8px',
+              overflow: 'auto',
+              fontSize: '12px'
+            }}>
+              {JSON.stringify(overviewData, null, 2)}
+            </pre>
+          </details>
+          
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Heatmap Data</summary>
+            <pre style={{ 
+              marginTop: 'var(--spacing-sm)', 
+              padding: 'var(--spacing-md)', 
+              background: '#1e1e1e', 
+              color: '#d4d4d4',
+              borderRadius: '8px',
+              overflow: 'auto',
+              fontSize: '12px'
+            }}>
+              {JSON.stringify(heatmapData, null, 2)}
+            </pre>
+          </details>
+          
+          <details>
+            <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Root Cause Data</summary>
+            <pre style={{ 
+              marginTop: 'var(--spacing-sm)', 
+              padding: 'var(--spacing-md)', 
+              background: '#1e1e1e', 
+              color: '#d4d4d4',
+              borderRadius: '8px',
+              overflow: 'auto',
+              fontSize: '12px'
+            }}>
+              {JSON.stringify(rootCauseData, null, 2)}
+            </pre>
+          </details>
         </div>
-      </div>
-
-      {/* 快速操作 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">⚡ 快速操作</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-md)', display: 'flex', gap: 'var(--spacing-sm)', flexWrap: 'wrap' }}>
-          <a href="/details?error_type=评论引流判定" className="button button-primary" style={{ textDecoration: 'none' }}>
-            查看引流错误明细
-          </a>
-          <a href="/details?error_type=低质内容判定" className="button" style={{ textDecoration: 'none' }}>
-            查看低质错误明细
-          </a>
-          <a href="/details?queue_name=视频号评论队列A" className="button" style={{ textDecoration: 'none' }}>
-            查看队列A明细
-          </a>
-          <a href="/monitor" className="button" style={{ textDecoration: 'none' }}>
-            返回实时监控
-          </a>
-        </div>
-      </div>
+      </details>
     </PageTemplate>
   );
 }
