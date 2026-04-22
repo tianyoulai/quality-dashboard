@@ -12,16 +12,10 @@ export const NAV_ITEMS = [
     description: "内部团队质检、队列排名、审核人分析",
   },
   {
-    key: "reviewer",
-    label: "审核人视图",
-    href: "/reviewer",
-    description: "个人表现、团队对比、成长趋势",
-  },
-  {
     key: "details",
     label: "明细查询",
     href: "/details",
-    description: "多维筛选、问题样本、导出前核对",
+    description: "明细记录、审核人分析、队列分析",
   },
   {
     key: "newcomers",
