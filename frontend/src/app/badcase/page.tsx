@@ -143,38 +143,80 @@ export default function BadCasePage() {
 
   return (
     <PageTemplate title="Bad Case 库" subtitle="外部投诉反馈复盘案例">
-      {/* 统计摘要 */}
+
+      {/* ── 统计数字卡片 ── */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-white rounded-lg border p-3 text-center">
-            <div className="text-2xl font-bold text-gray-800">{stats.total}</div>
-            <div className="text-xs text-gray-500 mt-0.5">案例总数</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {/* 总量 */}
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: '18px 20px 14px',
+            border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>案例总数</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#6366f1', lineHeight: 1.1 }}>{stats.total}</div>
+            <div style={{ fontSize: 12, color: '#9ca3af' }}>外部投诉反馈</div>
           </div>
-          {stats.error_type_dist.map((e) => (
-            <div key={e.label} className="bg-white rounded-lg border p-3 text-center">
-              <div className={`text-2xl font-bold ${e.label === "漏判" ? "text-orange-600" : "text-red-600"}`}>
-                {e.cnt}
-              </div>
-              <div className="text-xs text-gray-500 mt-0.5">{e.label}</div>
+
+          {/* 漏判 */}
+          <div style={{
+            background: '#fff7ed', borderRadius: 12, padding: '18px 20px 14px',
+            border: '2px solid #fed7aa', boxShadow: '0 1px 4px rgba(249,115,22,.08)',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>漏判</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#ea580c', lineHeight: 1.1 }}>
+              {stats.error_type_dist.find(e => e.label === '漏判')?.cnt ?? 0}
             </div>
-          ))}
+            <div style={{ fontSize: 12, color: '#f97316' }}>
+              {stats.total > 0
+                ? `占比 ${((stats.error_type_dist.find(e => e.label === '漏判')?.cnt ?? 0) / stats.total * 100).toFixed(0)}%`
+                : '—'}
+            </div>
+          </div>
+
+          {/* 错判 */}
+          <div style={{
+            background: '#fff1f2', borderRadius: 12, padding: '18px 20px 14px',
+            border: '2px solid #fecdd3', boxShadow: '0 1px 4px rgba(239,68,68,.08)',
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>错判</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: '#dc2626', lineHeight: 1.1 }}>
+              {stats.error_type_dist.find(e => e.label === '错判')?.cnt ?? 0}
+            </div>
+            <div style={{ fontSize: 12, color: '#ef4444' }}>
+              {stats.total > 0
+                ? `占比 ${((stats.error_type_dist.find(e => e.label === '错判')?.cnt ?? 0) / stats.total * 100).toFixed(0)}%`
+                : '—'}
+            </div>
+          </div>
+
+          {/* 时间范围 */}
           {stats.date_range?.min && (
-            <div className="bg-white rounded-lg border p-3 text-center">
-              <div className="text-sm font-semibold text-gray-700">
+            <div style={{
+              background: '#f8fafc', borderRadius: 12, padding: '18px 20px 14px',
+              border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,.04)',
+              display: 'flex', flexDirection: 'column', gap: 4,
+            }}>
+              <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>时间范围</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: '#374151', lineHeight: 1.2 }}>
                 {stats.date_range.min?.slice(0, 7)}
               </div>
-              <div className="text-xs text-gray-400">~</div>
-              <div className="text-sm font-semibold text-gray-700">
-                {stats.date_range.max?.slice(0, 7)}
+              <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                ～ {stats.date_range.max?.slice(0, 7)}
               </div>
-              <div className="text-xs text-gray-500 mt-0.5">时间范围</div>
             </div>
           )}
         </div>
       )}
 
-      {/* 筛选栏 */}
-      <div className="bg-white rounded-lg border p-3 mb-4 flex flex-wrap gap-2 items-end">
+      {/* ── 筛选栏 ── */}
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '14px 16px', marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          🔍 筛选条件
+        </div>
+        <div className="flex flex-wrap gap-3 items-end">
         <div className="flex flex-col gap-1 min-w-[120px]">
           <label className="text-xs text-gray-500">错误类型</label>
           <select
@@ -232,21 +274,35 @@ export default function BadCasePage() {
         >
           重置
         </button>
+        </div>
       </div>
 
-      {/* 列表 */}
-      <div className="bg-white rounded-lg border overflow-hidden">
-        <div className="px-4 py-2 border-b bg-gray-50 flex justify-between items-center">
-          <span className="text-sm text-gray-600">共 <span className="font-semibold text-gray-800">{total}</span> 条</span>
-          {loading && <span className="text-xs text-gray-400">加载中…</span>}
+      {/* ── 案例列表 ── */}
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        <div style={{ padding: '10px 16px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>
+            📋 案例列表
+            <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af', marginLeft: 8 }}>共 {total} 条</span>
+          </span>
+          {loading && <span style={{ fontSize: 12, color: '#9ca3af' }}>加载中…</span>}
         </div>
 
         {items.length === 0 && !loading ? (
-          <div className="py-12 text-center text-gray-400 text-sm">暂无数据</div>
+          <div style={{ padding: '48px 0', textAlign: 'center', color: '#9ca3af', fontSize: 14 }}>暂无数据</div>
         ) : (
-          <div className="divide-y">
+          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {items.map((item, idx) => (
-              <div key={idx} className="p-4 hover:bg-gray-50 transition-colors">
+              <div key={idx} style={{
+                border: '1px solid #e5e7eb',
+                borderLeft: `4px solid ${item.error_type === '漏判' ? '#f97316' : '#ef4444'}`,
+                borderRadius: 8,
+                padding: '14px 16px',
+                background: '#fafafa',
+                transition: 'box-shadow 0.15s',
+              }}
+                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,.08)')}
+                onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+              >
                 {/* ── 头部：日期 + 标签行 ── */}
                 <div className="flex flex-wrap gap-2 items-center mb-3">
                   <span className="text-xs text-gray-400">{item.complaint_date ?? "—"}</span>
