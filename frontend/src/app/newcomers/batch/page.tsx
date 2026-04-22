@@ -31,34 +31,19 @@ export default function BatchDetailPage() {
   const loadBatchData = async () => {
     setLoading(true);
     try {
-      // TODO: 替换为真实API
-      // const res = await fetch(`/api/v1/newcomers/batch/${batchId}`);
-      // const data = await res.json();
+      // 调用真实API
+      const res = await fetch(`http://localhost:8000/api/v1/newcomers/batch/${batchId}`);
+      const data = await res.json();
       
-      // 模拟数据
-      const mockData = {
-        id: batchId,
-        name: `${batchId} 批次`,
-        totalPeople: 60,
-        currentDay: 15,
-        totalDays: 21,
-        avgAccuracy: 95.3,
-        passedCount: 52,
-        passRate: 86.7
-      };
-      
-      const mockNewcomers = [
-        { name: '张三', queue: '评论_A组', auditCount: 1234, accuracy: 96.5, days: 15, status: 'normal' },
-        { name: '李四', queue: '弹幕_B组', auditCount: 987, accuracy: 94.2, days: 15, status: 'normal' },
-        { name: '王五', queue: '评论_C组', auditCount: 856, accuracy: 85.5, days: 15, status: 'problem' },
-        { name: '赵六', queue: '账号_A组', auditCount: 765, accuracy: 88.2, days: 15, status: 'warning' },
-        { name: '孙七', queue: '评论_B组', auditCount: 1123, accuracy: 97.8, days: 15, status: 'excellent' },
-      ];
-      
-      setBatchData(mockData);
-      setNewcomersList(mockNewcomers);
+      if (data.ok && data.data) {
+        setBatchData(data.data);
+        setNewcomersList(data.data.newcomers || []);
+      } else {
+        throw new Error('数据格式错误');
+      }
     } catch (error) {
       console.error('加载批次数据失败:', error);
+      alert('加载失败，请检查网络连接');
     } finally {
       setLoading(false);
     }
@@ -99,30 +84,30 @@ export default function BatchDetailPage() {
         <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
           <SummaryCard
             label="总人数"
-            value={batchData?.totalPeople?.toString() || '0'}
-            hint={`已达标: ${batchData?.passedCount}人`}
+            value={batchData?.total_people?.toString() || '0'}
+            hint={`已达标: ${batchData?.passed_count}人`}
             tone="neutral"
           />
 
           <SummaryCard
             label="平均正确率"
-            value={`${batchData?.avgAccuracy?.toFixed(1)}%`}
+            value={`${batchData?.avg_accuracy?.toFixed(1)}%`}
             hint="目标 ≥90%"
-            tone={batchData?.avgAccuracy >= 90 ? 'success' : 'danger'}
+            tone={batchData?.avg_accuracy >= 90 ? 'success' : 'danger'}
           />
 
           <SummaryCard
             label="培训进度"
-            value={`${batchData?.currentDay}/${batchData?.totalDays}天`}
-            hint={`完成度: ${((batchData?.currentDay / batchData?.totalDays) * 100).toFixed(0)}%`}
+            value={`${batchData?.current_day}/${batchData?.total_days}天`}
+            hint={`完成度: ${((batchData?.current_day / batchData?.total_days) * 100).toFixed(0)}%`}
             tone="neutral"
           />
 
           <SummaryCard
             label="达标率"
-            value={`${batchData?.passRate?.toFixed(1)}%`}
-            hint={`${batchData?.passedCount}人达标`}
-            tone={batchData?.passRate >= 85 ? 'success' : 'warning'}
+            value={`${batchData?.pass_rate?.toFixed(1)}%`}
+            hint={`${batchData?.passed_count}人达标`}
+            tone={batchData?.pass_rate >= 85 ? 'success' : 'warning'}
           />
         </div>
       </div>
@@ -158,7 +143,7 @@ export default function BatchDetailPage() {
                     {newcomer.accuracy.toFixed(1)}%
                   </span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.875em' }}>
-                    审核量: {newcomer.auditCount.toLocaleString()}
+                    审核量: {newcomer.audit_count.toLocaleString()}
                   </span>
                 </div>
               ))}
@@ -196,7 +181,7 @@ export default function BatchDetailPage() {
                   <td style={{ padding: 'var(--spacing-sm)', fontWeight: 500 }}>{newcomer.name}</td>
                   <td style={{ padding: 'var(--spacing-sm)' }}>{newcomer.queue}</td>
                   <td style={{ padding: 'var(--spacing-sm)', textAlign: 'right' }}>
-                    {newcomer.auditCount.toLocaleString()}
+                    {newcomer.audit_count.toLocaleString()}
                   </td>
                   <td style={{ 
                     padding: 'var(--spacing-sm)', 
