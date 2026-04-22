@@ -44,6 +44,50 @@ export default function InternalPage() {
   // 加载状态
   const [loading, setLoading] = useState<Record<string, boolean>>({});
 
+  // 导出表格数据
+  const exportTable = (tableName: string, data: any[]) => {
+    if (data.length === 0) {
+      alert('没有数据可导出');
+      return;
+    }
+
+    // 准备CSV数据
+    let csvContent = '';
+    
+    switch (tableName) {
+      case 'queue':
+        csvContent = '排名,队列名称,审核量,正确率,误判率\n';
+        data.forEach((item, index) => {
+          csvContent += `${index + 1},${item.queue_name},${item.qa_cnt},${item.raw_accuracy_rate?.toFixed(2)}%,${((100 - (item.raw_accuracy_rate || 0))).toFixed(2)}%\n`;
+        });
+        break;
+      case 'reviewer':
+        csvContent = '排名,审核人,审核量,正确率,误判数\n';
+        data.forEach((item, index) => {
+          csvContent += `${index + 1},${item.reviewer_name},${item.qa_cnt},${item.raw_accuracy_rate?.toFixed(2)}%,${item.misjudge_cnt || 0}\n`;
+        });
+        break;
+      case 'error':
+        csvContent = '排名,错误类型,错误数,占比\n';
+        data.forEach((item, index) => {
+          csvContent += `${index + 1},${item.label_name},${item.cnt},${item.pct?.toFixed(2)}%\n`;
+        });
+        break;
+    }
+
+    // 创建Blob并触发下载
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${tableName}_${selectedDate}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // 页面加载时自动加载所有模块数据（用于问题汇总）
   useEffect(() => {
     loadAllModulesData();
@@ -395,6 +439,17 @@ export default function InternalPage() {
             
             {expandedModule === 'queue' && (
               <div className="drill-content">
+                {/* 导出按钮 */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--spacing-sm)' }}>
+                  <button
+                    onClick={() => exportTable('queue', queueData)}
+                    className="button button-sm"
+                    disabled={queueData.length === 0}
+                  >
+                    导出队列数据 ⬇
+                  </button>
+                </div>
+
                 {loading.queue ? (
                   <p style={{ textAlign: 'center', padding: 'var(--spacing-lg)', color: 'var(--text-muted)' }}>
                     加载中...
@@ -457,6 +512,17 @@ export default function InternalPage() {
             
             {expandedModule === 'reviewer' && (
               <div className="drill-content">
+                {/* 导出按钮 */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--spacing-sm)' }}>
+                  <button
+                    onClick={() => exportTable('reviewer', reviewerData)}
+                    className="button button-sm"
+                    disabled={reviewerData.length === 0}
+                  >
+                    导出审核人数据 ⬇
+                  </button>
+                </div>
+
                 {loading.reviewer ? (
                   <p style={{ textAlign: 'center', padding: 'var(--spacing-lg)', color: 'var(--text-muted)' }}>
                     加载中...
@@ -519,6 +585,17 @@ export default function InternalPage() {
             
             {expandedModule === 'error' && (
               <div className="drill-content">
+                {/* 导出按钮 */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 'var(--spacing-sm)' }}>
+                  <button
+                    onClick={() => exportTable('error', errorTypeData)}
+                    className="button button-sm"
+                    disabled={errorTypeData.length === 0}
+                  >
+                    导出错误类型数据 ⬇
+                  </button>
+                </div>
+
                 {loading.error ? (
                   <p style={{ textAlign: 'center', padding: 'var(--spacing-lg)', color: 'var(--text-muted)' }}>
                     加载中...
@@ -562,10 +639,11 @@ export default function InternalPage() {
         <h3 className="panel-title" style={{ color: 'var(--info)' }}>💡 使用提示</h3>
         
         <ul style={{ marginLeft: 'var(--spacing-lg)', marginTop: 'var(--spacing-md)', lineHeight: 2 }}>
+          <li>点击"展开筛选器"可按队列/审核人/错误类型筛选数据</li>
           <li>点击下钻模块标题展开查看明细数据</li>
-          <li>再次点击可收起模块</li>
-          <li>切换日期会自动重新加载展开的模块</li>
-          <li>正确率低于阈值会以红色标注</li>
+          <li>每个表格右上角有"导出"按钮，可下载CSV文件</li>
+          <li>切换日期或筛选条件会自动重新加载数据</li>
+          <li>正确率低于阈值会以红色标注（队列≥90%，审核人≥85%）</li>
         </ul>
       </div>
 
