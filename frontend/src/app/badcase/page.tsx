@@ -322,10 +322,14 @@ export default function BadCasePage() {
                     </span>
                   )}
                   {item.reviewer_name && (
-                    <span className="text-xs text-gray-500">👤 {item.reviewer_name}</span>
+                    <span className="text-xs font-bold text-gray-600">👤 {item.reviewer_name}</span>
                   )}
                   {item.queue_name && (
-                    <span className="text-xs text-gray-400 truncate max-w-[160px]" title={item.queue_name}>
+                    <span 
+                      className="text-xs text-gray-400"
+                      style={{ maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={item.queue_name}
+                    >
                       📋 {item.queue_name}
                     </span>
                   )}
@@ -338,14 +342,25 @@ export default function BadCasePage() {
 
                 {/* ── 评论内容 ── */}
                 {item.comment_text && (
-                  <div className="text-sm text-gray-800 mb-3 bg-gray-50 rounded-md px-3 py-2 border-l-3 border-gray-400 leading-relaxed">
+                  <div 
+                    style={{
+                      background: '#f8fafc',
+                      borderLeft: '3px solid #e2e8f0',
+                      borderRadius: '6px',
+                      padding: '10px 12px',
+                      fontSize: '14px',
+                      lineHeight: '1.6',
+                      color: '#374151',
+                      marginBottom: '12px'
+                    }}
+                  >
                     <ExpandableText text={item.comment_text} maxLen={120} />
                   </div>
                 )}
 
-                {/* ── 复盘区：一审思路 + 正确思路 ── */}
+                {/* ── 复盘区：一审思路 + 正确思路（垂直排列）── */}
                 {(item.review_thinking || item.correct_thinking) && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2 text-xs">
+                  <div className="flex flex-col gap-2 mb-2 text-xs">
                     {item.review_thinking && (
                       <div className="bg-orange-50 border border-orange-100 rounded px-3 py-2">
                         <div className="font-semibold text-orange-700 mb-1">💭 一审思路</div>
@@ -370,7 +385,18 @@ export default function BadCasePage() {
                   <>
                     <button
                       onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
-                      className="text-xs text-blue-500 hover:text-blue-700 hover:underline mt-1"
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '6px',
+                        padding: '3px 10px',
+                        fontSize: '12px',
+                        color: '#3b82f6',
+                        background: '#fff',
+                        marginTop: '4px',
+                        cursor: 'pointer'
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f9ff')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
                     >
                       {expandedRow === idx ? "▲ 收起" : "▼ 展开后续措施 & 质培分析"}
                     </button>

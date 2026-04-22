@@ -4,7 +4,6 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 
 import { PageTemplate } from '@/components/page-template';
 import { DateFilterClient } from '@/components/date-filter-client';
-import { SummaryCard } from '@/components/summary-card';
 import { MultiFilter } from '@/components/multi-filter';
 import { ExcelExporter } from '@/lib/excel-exporter';
 import { useState, useEffect } from 'react';
@@ -35,6 +34,9 @@ export default function InternalPage() {
     reviewers: [],
     errorTypes: []
   });
+
+  // 核心指标数据
+  const [summaryData, setSummaryData] = useState<any>(null);
 
   // 下钻模块展开状态
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
@@ -155,19 +157,22 @@ export default function InternalPage() {
     const queryParams = buildQueryParams();
     
     try {
-      // 并发加载所有数据
-      const [queueRes, reviewerRes, errorRes] = await Promise.all([
+      // 并发加载所有数据（包括 summary）
+      const [summaryRes, queueRes, reviewerRes, errorRes] = await Promise.all([
+        fetch(`${baseUrl}/internal/summary?${queryParams}`),
         fetch(`${baseUrl}/internal/queues?${queryParams}`),
         fetch(`${baseUrl}/internal/reviewers?${queryParams}&limit=20`),
         fetch(`${baseUrl}/internal/error-types?${queryParams}&top_n=10`)
       ]);
 
-      const [queueJson, reviewerJson, errorJson] = await Promise.all([
+      const [summaryJson, queueJson, reviewerJson, errorJson] = await Promise.all([
+        summaryRes.json(),
         queueRes.json(),
         reviewerRes.json(),
         errorRes.json()
       ]);
 
+      setSummaryData(summaryJson.data);
       setQueueData(queueJson.data?.items || []);
       setReviewerData(reviewerJson.data?.items || []);
       setErrorTypeData(errorJson.data?.items || []);
@@ -304,35 +309,91 @@ export default function InternalPage() {
       <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
         <h3 className="panel-title">📊 核心指标</h3>
         
-        <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
-          <SummaryCard
-            label="审核量"
-            value="39,140"
-            hint={`日期: ${selectedDate}`}
-            tone="neutral"
-          />
+        {summaryData ? (
+          <div style={{ marginTop: 'var(--spacing-lg)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+            {/* 审核量 */}
+            <div style={{
+              background: '#fff',
+              borderRadius: '12px',
+              padding: '18px 20px 14px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px'
+            }}>
+              <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>审核量</div>
+              <div style={{ fontSize: '30px', fontWeight: '700', color: '#6366f1', lineHeight: '1' }}>
+                {summaryData.metrics?.qa_cnt?.toLocaleString() || '0'}
+              </div>
+              <div style={{ fontSize: '12px', color: '#9ca3af' }}>日期: {selectedDate}</div>
+            </div>
 
-          <SummaryCard
-            label="正确率"
-            value="99.35%"
-            hint="目标 ≥90%"
-            tone="success"
-          />
+            {/* 正确率 */}
+            <div style={{
+              background: '#fff',
+              borderRadius: '12px',
+              padding: '18px 20px 14px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px'
+            }}>
+              <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>正确率</div>
+              <div style={{ fontSize: '30px', fontWeight: '700', color: '#10b981', lineHeight: '1' }}>
+                {summaryData.metrics?.raw_accuracy_rate?.toFixed(2) || '0'}%
+              </div>
+              <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                目标 ≥{summaryData.target_rate || 99.5}%
+              </div>
+            </div>
 
-          <SummaryCard
-            label="误判率"
-            value="0.27%"
-            hint="目标 ≤5%"
-            tone="success"
-          />
+            {/* 错误数 */}
+            <div style={{
+              background: '#fff',
+              borderRadius: '12px',
+              padding: '18px 20px 14px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px'
+            }}>
+              <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>错误数</div>
+              <div style={{ fontSize: '30px', fontWeight: '700', color: '#ef4444', lineHeight: '1' }}>
+                {summaryData.metrics?.error_count?.toLocaleString() || '0'}
+              </div>
+              <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                漏判 {summaryData.metrics?.missjudge_count || 0} / 错判 {summaryData.metrics?.misjudge_count || 0}
+              </div>
+            </div>
 
-          <SummaryCard
-            label="参与人数"
-            value="42"
-            hint="在线 38 人"
-            tone="neutral"
-          />
-        </div>
+            {/* 参与人数 */}
+            <div style={{
+              background: '#fff',
+              borderRadius: '12px',
+              padding: '18px 20px 14px',
+              border: '1px solid #e5e7eb',
+              boxShadow: '0 1px 4px rgba(0,0,0,.06)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '4px'
+            }}>
+              <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: '500' }}>参与人数</div>
+              <div style={{ fontSize: '30px', fontWeight: '700', color: '#8b5cf6', lineHeight: '1' }}>
+                {summaryData.metrics?.owner_count?.toLocaleString() || '0'}
+              </div>
+              <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                队列数 {summaryData.metrics?.queue_count || 0}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: 'var(--spacing-lg)', textAlign: 'center', padding: '48px 0', color: '#9ca3af' }}>
+            加载中...
+          </div>
+        )}
       </div>
 
       {/* 问题汇总 - 新增模块 */}
