@@ -41,49 +41,70 @@ COL_MAP = {
 import re as _re
 
 def _extract_review_reason(raw: str | None) -> dict:
-    """从复盘原因字段中提取结构化信息
+    """从复盘原因字段提取结构化字段，兼容两种格式：
     
-    典型格式：
-    一审标注时间：04月14日 23:42:32 一审姓名：康坚 一审选项：正常 正常选项：低俗 一审思路:...思路内容
-    正确思路：...正确思路内容
-    后续措施：...
+    格式A（老格式）：
+      一审标注时间：xxx 一审姓名：xxx 一审选项：xxx
+      一审思路：xxx（一段，无"正确思路"分节）
+      后续待跟进内容：xxx
+    
+    格式B（新格式）：
+      一审标注时间：xxx 一审姓名：xxx 一审选项：正常 正常选项：低俗
+      一审思路:xxx
+      正确思路：xxx
+      后续措施：xxx
     """
+    empty = {"reviewer_time": None, "reviewer_name_parsed": None,
+             "reviewer_choice": None, "correct_choice": None,
+             "thinking": None, "correct_thinking": None, "action": None}
+
     if not raw or str(raw).strip() in ("", "nan", "None"):
-        return {"reviewer_time": None, "reviewer_choice": None, "correct_choice": None,
-                "thinking": None, "correct_thinking": None, "action": None}
+        return empty
 
     text = str(raw).strip()
 
-    # 一审标注时间
-    m_time = _re.search(r"一审标注时间[：:]?\s*([^\s一审姓名]{4,30})", text)
-    reviewer_time = m_time.group(1).strip() if m_time else None
+    # 一审时间（格式：12月10日 / 2026-04-15 / 04月14日）
+    m = _re.search(r"一审标注时间[：:]\s*([^\n\s一]{4,25})", text)
+    reviewer_time = m.group(1).strip() if m else None
+
+    # 一审姓名
+    m = _re.search(r"一审姓名[：:]\s*(\S+)", text)
+    reviewer_name_parsed = m.group(1).strip() if m else None
 
     # 一审选项
-    m_choice = _re.search(r"一审选项[：:]\s*([^\s一正后]{1,10})", text)
-    reviewer_choice = m_choice.group(1).strip() if m_choice else None
+    m = _re.search(r"一审选项[：:]\s*(\S+)", text)
+    reviewer_choice = m.group(1).strip() if m else None
 
-    # 正常选项（正确答案）
-    m_correct = _re.search(r"(?:正常选项|正确选项)[：:]\s*([^\s一正后]{1,10})", text)
-    correct_choice = m_correct.group(1).strip() if m_correct else None
+    # 正确选项（格式B 特有）
+    m = _re.search(r"(?:正常选项|正确选项)[：:]\s*(\S+)", text)
+    correct_choice = m.group(1).strip() if m else None
 
-    # 一审思路（到「正确思路」或「后续措施」结束）
-    m_thinking = _re.search(r"一审思路[：:](.*?)(?=正确思路[：:]|后续措施[：:]|后续待跟进|$)", text, _re.DOTALL)
-    thinking = m_thinking.group(1).strip() if m_thinking else None
-    # 去掉开头可能残留的标题信息
+    # 一审思路：一直到「正确思路」或「后续」结束
+    m = _re.search(
+        r"一审思路[：:]\s*(.*?)(?=正确思路[：:]|后续(?:措施|待跟进)[内容]*[：:]|$)",
+        text, _re.DOTALL
+    )
+    thinking = m.group(1).strip() if m else None
     if thinking:
-        thinking = _re.sub(r'^.*?一审(?:思路|选项)[：:][^：:]{1,20}[：:]', '', thinking).strip()
-        thinking = thinking[:200]  # 截断
+        thinking = thinking[:250]
 
-    # 正确思路（到「后续措施」或结束）
-    m_correct_t = _re.search(r"正确思路[：:](.*?)(?=后续措施[：:]|后续待跟进|$)", text, _re.DOTALL)
-    correct_thinking = m_correct_t.group(1).strip()[:200] if m_correct_t else None
+    # 正确思路（格式B）
+    m = _re.search(
+        r"正确思路[：:]\s*(.*?)(?=后续(?:措施|待跟进)|$)",
+        text, _re.DOTALL
+    )
+    correct_thinking = m.group(1).strip()[:250] if m else None
 
-    # 后续措施/待跟进
-    m_action = _re.search(r"(?:后续措施|后续待跟进)[内容]*[：:](.*?)$", text, _re.DOTALL)
-    action = m_action.group(1).strip()[:300] if m_action else None
+    # 后续措施 / 后续待跟进内容
+    m = _re.search(
+        r"(?:后续措施|后续待跟进[内容]*)[：:]\s*(.*?)$",
+        text, _re.DOTALL
+    )
+    action = m.group(1).strip()[:400] if m else None
 
     return {
         "reviewer_time": reviewer_time,
+        "reviewer_name_parsed": reviewer_name_parsed,
         "reviewer_choice": reviewer_choice,
         "correct_choice": correct_choice,
         "thinking": thinking,
@@ -179,6 +200,7 @@ def list_badcases(
     for row in raw_items:
         parsed = _extract_review_reason(row.get("review_reason"))
         row["reviewer_time"] = parsed["reviewer_time"]
+        row["reviewer_name_parsed"] = parsed["reviewer_name_parsed"]
         row["reviewer_choice"] = parsed["reviewer_choice"]
         row["correct_choice"] = parsed["correct_choice"]
         row["review_thinking"] = parsed["thinking"]
