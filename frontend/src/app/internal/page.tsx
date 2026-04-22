@@ -4,6 +4,7 @@ import { PageTemplate } from '@/components/page-template';
 import { DateFilterClient } from '@/components/date-filter-client';
 import { SummaryCard } from '@/components/summary-card';
 import { MultiFilter } from '@/components/multi-filter';
+import { ExcelExporter } from '@/lib/excel-exporter';
 import { useState, useEffect } from 'react';
 
 /**
@@ -44,48 +45,83 @@ export default function InternalPage() {
   // 加载状态
   const [loading, setLoading] = useState<Record<string, boolean>>({});
 
-  // 导出表格数据
+  // 导出表格数据（使用Excel工具类）
   const exportTable = (tableName: string, data: any[]) => {
     if (data.length === 0) {
       alert('没有数据可导出');
       return;
     }
 
-    // 准备CSV数据
-    let csvContent = '';
-    
+    // 构建筛选条件描述
+    const filterDesc = [];
+    if (filters.queues.length > 0) filterDesc.push(`队列: ${filters.queues.join(', ')}`);
+    if (filters.reviewers.length > 0) filterDesc.push(`审核人: ${filters.reviewers.join(', ')}`);
+    if (filters.errorTypes.length > 0) filterDesc.push(`错误类型: ${filters.errorTypes.join(', ')}`);
+    const filterInfo = filterDesc.length > 0 ? filterDesc.join(' | ') : undefined;
+
+    // 准备列定义和数据
+    let columns: any[] = [];
+    let exportData: any[] = [];
+
     switch (tableName) {
       case 'queue':
-        csvContent = '排名,队列名称,审核量,正确率,误判率\n';
-        data.forEach((item, index) => {
-          csvContent += `${index + 1},${item.queue_name},${item.qa_cnt},${item.raw_accuracy_rate?.toFixed(2)}%,${((100 - (item.raw_accuracy_rate || 0))).toFixed(2)}%\n`;
-        });
+        columns = [
+          { key: 'rank', label: '排名' },
+          { key: 'queue_name', label: '队列名称', width: 20 },
+          { key: 'qa_cnt', label: '审核量', width: 12 },
+          { key: 'raw_accuracy_rate', label: '正确率（%）', width: 15 },
+          { key: 'misjudge_rate', label: '误判率（%）', width: 15 }
+        ];
+        exportData = data.map((item, index) => ({
+          rank: index + 1,
+          queue_name: item.queue_name,
+          qa_cnt: item.qa_cnt,
+          raw_accuracy_rate: item.raw_accuracy_rate?.toFixed(2),
+          misjudge_rate: (100 - (item.raw_accuracy_rate || 0)).toFixed(2)
+        }));
         break;
+
       case 'reviewer':
-        csvContent = '排名,审核人,审核量,正确率,误判数\n';
-        data.forEach((item, index) => {
-          csvContent += `${index + 1},${item.reviewer_name},${item.qa_cnt},${item.raw_accuracy_rate?.toFixed(2)}%,${item.misjudge_cnt || 0}\n`;
-        });
+        columns = [
+          { key: 'rank', label: '排名' },
+          { key: 'reviewer_name', label: '审核人', width: 15 },
+          { key: 'qa_cnt', label: '审核量', width: 12 },
+          { key: 'raw_accuracy_rate', label: '正确率（%）', width: 15 },
+          { key: 'misjudge_cnt', label: '误判数', width: 12 }
+        ];
+        exportData = data.map((item, index) => ({
+          rank: index + 1,
+          reviewer_name: item.reviewer_name,
+          qa_cnt: item.qa_cnt,
+          raw_accuracy_rate: item.raw_accuracy_rate?.toFixed(2),
+          misjudge_cnt: item.misjudge_cnt || 0
+        }));
         break;
+
       case 'error':
-        csvContent = '排名,错误类型,错误数,占比\n';
-        data.forEach((item, index) => {
-          csvContent += `${index + 1},${item.label_name},${item.cnt},${item.pct?.toFixed(2)}%\n`;
-        });
+        columns = [
+          { key: 'rank', label: '排名' },
+          { key: 'label_name', label: '错误类型', width: 20 },
+          { key: 'cnt', label: '错误数', width: 12 },
+          { key: 'pct', label: '占比（%）', width: 12 }
+        ];
+        exportData = data.map((item, index) => ({
+          rank: index + 1,
+          label_name: item.label_name,
+          cnt: item.cnt,
+          pct: item.pct?.toFixed(2)
+        }));
         break;
     }
 
-    // 创建Blob并触发下载
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${tableName}_${selectedDate}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // 导出
+    ExcelExporter.exportSingleSheet(
+      exportData,
+      columns,
+      tableName,
+      `${tableName}_${selectedDate}.csv`,
+      filterInfo
+    );
   };
 
   // 页面加载时自动加载所有模块数据（用于问题汇总）
