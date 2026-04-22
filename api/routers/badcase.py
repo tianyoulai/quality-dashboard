@@ -38,6 +38,34 @@ COL_MAP = {
 }
 
 
+def _extract_review_reason(raw: str | None) -> dict:
+    """从复盘原因字段中提取结构化信息"""
+    if not raw or str(raw).strip() in ("", "nan", "None"):
+        return {"summary": None, "thinking": None, "todo": None}
+
+    text = str(raw).strip()
+    # 提取一审思路
+    thinking = None
+    todo = None
+    summary = None
+
+    import re
+    # 一审思路
+    m = re.search(r"一审思路[：:](.*?)(?=后续待跟进|$)", text, re.DOTALL)
+    if m:
+        thinking = m.group(1).strip()
+
+    # 后续待跟进
+    m2 = re.search(r"后续待跟进[内容]*[：:](.*?)$", text, re.DOTALL)
+    if m2:
+        todo = m2.group(1).strip()
+
+    # summary：取前100字，去换行
+    summary = re.sub(r'\s+', ' ', text)[:150].strip()
+
+    return {"summary": summary, "thinking": thinking, "todo": todo}
+
+
 def _load_all() -> pd.DataFrame:
     """加载所有 bad case 文件，合并返回"""
     frames = []
@@ -118,7 +146,16 @@ def list_badcases(
         "has_internal_check", "check_data", "error_analysis",
     ]
     out_cols = [c for c in keep_cols if c in page_df.columns]
-    items = page_df[out_cols].where(pd.notna(page_df[out_cols]), None).to_dict(orient="records")
+    raw_items = page_df[out_cols].where(pd.notna(page_df[out_cols]), None).to_dict(orient="records")
+
+    # 对 review_reason 做结构化拆解
+    items = []
+    for row in raw_items:
+        parsed = _extract_review_reason(row.get("review_reason"))
+        row["review_summary"] = parsed["summary"]
+        row["review_thinking"] = parsed["thinking"]
+        row["review_todo"] = parsed["todo"]
+        items.append(row)
 
     return {
         "ok": True,

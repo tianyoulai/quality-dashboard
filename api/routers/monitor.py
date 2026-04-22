@@ -74,58 +74,81 @@ async def get_monitor_dashboard(
 @router.get("/queue-ranking")
 async def get_queue_ranking(
     date: Optional[str] = Query(None, description="查询日期"),
-    threshold: float = Query(90.0, description="正确率阈值", ge=0, le=100),
-    limit: int = Query(10, description="返回数量", ge=1, le=50)
+    threshold: float = Query(99.0, description="正确率阈值，低于此值显示（默认99%）", ge=0, le=100),
+    group_name: Optional[str] = Query(None, description="组别筛选"),
+    limit: int = Query(50, description="返回数量", ge=1, le=200)
 ) -> List[Dict[str, Any]]:
     """
-    获取重点关注队列排行
-    
-    返回正确率低于阈值的队列，按正确率升序排列
+    获取队列排行（来自 mart_day_queue，含错判率/漏判率/申诉改判率）
+    返回全部队列（含正常达标的），按正确率升序排列；threshold 用于标记哪些需关注
     """
     db = TiDBManager()
-    
     try:
         target_date = _parse_date(date)
-        
-        query = """
-        SELECT 
+        params: list = [str(target_date)]
+        group_filter = ""
+        if group_name:
+            if group_name.startswith("B组"):
+                group_filter = " AND group_name LIKE %s"
+                params.append("B组%")
+            else:
+                group_filter = " AND group_name = %s"
+                params.append(group_name)
+        params.append(limit)
+
+        query = f"""
+        SELECT
+            group_name,
             queue_name,
-            COUNT(*) as total_count,
-            SUM(CASE WHEN is_final_correct = 1 THEN 1 ELSE 0 END) as correct_count,
-            ROUND(AVG(CASE WHEN is_final_correct = 1 THEN 100.0 ELSE 0 END), 2) as correct_rate,
-            ROUND(AVG(CASE WHEN is_misjudge = 1 THEN 100.0 ELSE 0 END), 2) as misjudge_rate,
-            ROUND(AVG(CASE WHEN is_missjudge = 1 THEN 100.0 ELSE 0 END), 2) as missjudge_rate,
-            GROUP_CONCAT(DISTINCT error_type ORDER BY error_type SEPARATOR ', ') as main_errors
-        FROM fact_qa_event
-        WHERE biz_date = %s
-          AND queue_name IS NOT NULL
-        GROUP BY queue_name
-        HAVING correct_rate < %s
-        ORDER BY correct_rate ASC
+            qa_cnt,
+            raw_correct_cnt,
+            final_correct_cnt,
+            raw_error_cnt,
+            final_error_cnt,
+            misjudge_cnt,
+            missjudge_cnt,
+            raw_accuracy_rate,
+            final_accuracy_rate,
+            misjudge_rate,
+            missjudge_rate,
+            appeal_cnt,
+            appeal_reversed_cnt,
+            appeal_reverse_rate,
+            reviewer_cnt
+        FROM mart_day_queue
+        WHERE biz_date = %s{group_filter}
+        ORDER BY final_accuracy_rate ASC
         LIMIT %s
         """
-        
-        results = db.execute_query(query, (str(target_date), threshold, limit))
-        
+        results = db.execute_query(query, tuple(params))
         if not results:
             return []
-        
-        # 格式化结果
+
         ranking = []
         for idx, row in enumerate(results, start=1):
+            acc = float(row[10]) if row[10] is not None else 0.0
             ranking.append({
                 "rank": idx,
-                "queue_name": row[0],
-                "total_count": row[1],
-                "correct_count": row[2],
-                "correct_rate": float(row[3]),
-                "misjudge_rate": float(row[4]) if row[4] else 0.0,
-                "missjudge_rate": float(row[5]) if row[5] else 0.0,
-                "main_errors": row[6] or ""
+                "group_name": row[0] or "",
+                "queue_name": row[1] or "",
+                "total_count": int(row[2]) if row[2] else 0,
+                "raw_correct_cnt": int(row[3]) if row[3] else 0,
+                "final_correct_cnt": int(row[4]) if row[4] else 0,
+                "raw_error_cnt": int(row[5]) if row[5] else 0,
+                "final_error_cnt": int(row[6]) if row[6] else 0,
+                "misjudge_cnt": int(row[7]) if row[7] else 0,
+                "missjudge_cnt": int(row[8]) if row[8] else 0,
+                "raw_accuracy_rate": float(row[9]) if row[9] is not None else 0.0,
+                "correct_rate": acc,
+                "misjudge_rate": float(row[11]) if row[11] is not None else 0.0,
+                "missjudge_rate": float(row[12]) if row[12] is not None else 0.0,
+                "appeal_cnt": int(row[13]) if row[13] else 0,
+                "appeal_reversed_cnt": int(row[14]) if row[14] else 0,
+                "appeal_reverse_rate": float(row[15]) if row[15] is not None else 0.0,
+                "reviewer_cnt": int(row[16]) if row[16] else 0,
+                "needs_attention": acc < threshold,
             })
-        
         return ranking
-        
     except Exception as e:
         logger.error(f"获取队列排行失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
@@ -193,64 +216,103 @@ async def get_error_ranking(
 @router.get("/reviewer-ranking")
 async def get_reviewer_ranking(
     date: Optional[str] = Query(None, description="查询日期"),
-    threshold: float = Query(85.0, description="正确率阈值", ge=0, le=100),
-    limit: int = Query(10, description="返回数量", ge=1, le=50)
+    threshold: float = Query(95.0, description="正确率阈值，低于此值显示（默认95%）", ge=0, le=100),
+    group_name: Optional[str] = Query(None, description="组别筛选"),
+    queue_name: Optional[str] = Query(None, description="队列筛选"),
+    limit: int = Query(50, description="返回数量", ge=1, le=200)
 ) -> List[Dict[str, Any]]:
     """
-    获取重点关注审核人排行
-    
-    返回正确率低于阈值的审核人，按正确率升序排列
+    获取审核人排行（来自 mart_day_auditor，含错判/漏判数据）
+    返回全部审核人，threshold 用于标记需关注的人；按正确率升序
     """
     db = TiDBManager()
-    
     try:
         target_date = _parse_date(date)
-        
-        query = """
-        SELECT 
+        params: list = [str(target_date)]
+        filters = ""
+        if group_name:
+            if group_name.startswith("B组"):
+                filters += " AND group_name LIKE %s"
+                params.append("B组%")
+            else:
+                filters += " AND group_name = %s"
+                params.append(group_name)
+        if queue_name:
+            filters += " AND queue_name = %s"
+            params.append(queue_name)
+        params.append(limit)
+
+        query = f"""
+        SELECT
             reviewer_name,
+            group_name,
             queue_name,
-            COUNT(*) as review_count,
-            SUM(CASE WHEN is_final_correct = 1 THEN 1 ELSE 0 END) as correct_count,
-            ROUND(AVG(CASE WHEN is_final_correct = 1 THEN 100.0 ELSE 0 END), 2) as correct_rate,
-            ROUND(AVG(CASE WHEN is_misjudge = 1 THEN 100.0 ELSE 0 END), 2) as misjudge_rate,
-            ROUND(AVG(CASE WHEN is_missjudge = 1 THEN 100.0 ELSE 0 END), 2) as missjudge_rate,
-            GROUP_CONCAT(DISTINCT error_type ORDER BY error_type SEPARATOR ', ') as main_errors
-        FROM fact_qa_event
-        WHERE biz_date = %s
-          AND reviewer_name IS NOT NULL
-        GROUP BY reviewer_name, queue_name
-        HAVING correct_rate < %s
-        ORDER BY correct_rate ASC
+            qa_cnt,
+            raw_correct_cnt,
+            final_correct_cnt,
+            misjudge_cnt,
+            missjudge_cnt,
+            raw_accuracy_rate,
+            final_accuracy_rate,
+            misjudge_rate,
+            missjudge_rate
+        FROM mart_day_auditor
+        WHERE biz_date = %s{filters}
+        ORDER BY raw_accuracy_rate ASC
         LIMIT %s
         """
-        
-        results = db.execute_query(query, (str(target_date), threshold, limit))
-        
+        results = db.execute_query(query, tuple(params))
         if not results:
             return []
-        
-        # 格式化结果
+
         ranking = []
         for idx, row in enumerate(results, start=1):
+            acc = float(row[8]) if row[8] is not None else 0.0
             ranking.append({
                 "rank": idx,
-                "reviewer_name": row[0],
-                "queue_name": row[1],
-                "review_count": row[2],
-                "correct_count": row[3],
-                "correct_rate": float(row[4]),
-                "misjudge_rate": float(row[5]) if row[5] else 0.0,
-                "missjudge_rate": float(row[6]) if row[6] else 0.0,
-                "main_errors": row[7] or ""
+                "reviewer_name": row[0] or "",
+                "group_name": row[1] or "",
+                "queue_name": row[2] or "",
+                "review_count": int(row[3]) if row[3] else 0,
+                "raw_correct_cnt": int(row[4]) if row[4] else 0,
+                "final_correct_cnt": int(row[5]) if row[5] else 0,
+                "misjudge_cnt": int(row[6]) if row[6] else 0,
+                "missjudge_cnt": int(row[7]) if row[7] else 0,
+                "correct_rate": acc,
+                "final_accuracy_rate": float(row[9]) if row[9] is not None else 0.0,
+                "misjudge_rate": float(row[10]) if row[10] is not None else 0.0,
+                "missjudge_rate": float(row[11]) if row[11] is not None else 0.0,
+                "needs_attention": acc < threshold,
             })
-        
         return ranking
-        
     except Exception as e:
         logger.error(f"获取审核人排行失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
 # ==================== 辅助函数 ====================
+
+@router.get("/meta")
+async def get_monitor_meta(
+    date: Optional[str] = Query(None, description="查询日期"),
+) -> Dict[str, Any]:
+    """获取筛选用的组别/队列列表"""
+    db = TiDBManager()
+    try:
+        target_date = _parse_date(date)
+        groups = db.execute_query(
+            "SELECT DISTINCT group_name FROM mart_day_queue WHERE biz_date=%s ORDER BY group_name",
+            (str(target_date),)
+        )
+        queues = db.execute_query(
+            "SELECT DISTINCT queue_name FROM mart_day_queue WHERE biz_date=%s ORDER BY queue_name",
+            (str(target_date),)
+        )
+        return {
+            "groups": [r[0] for r in groups if r[0]],
+            "queues": [r[0] for r in queues if r[0]],
+        }
+    except Exception as e:
+        logger.error(f"获取 meta 失败: {e}", exc_info=True)
+        return {"groups": [], "queues": []}
 
 async def _get_daily_stats(db: TiDBManager, date) -> Dict[str, Any]:
     """获取单日统计数据"""

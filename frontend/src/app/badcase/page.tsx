@@ -14,6 +14,9 @@ interface BadCase {
   queue_name: string | null;
   comment_text: string | null;
   review_reason: string | null;
+  review_summary: string | null;
+  review_thinking: string | null;
+  review_todo: string | null;
   qa_analysis: string | null;
   follow_up_action: string | null;
   repeated_complaint_cnt: string | null;
@@ -268,11 +271,19 @@ export default function BadCasePage() {
                   </div>
                 )}
 
-                {/* 复盘原因摘要 */}
-                {item.review_reason && (
-                  <div className="text-xs text-gray-600 mb-1">
-                    <span className="font-medium text-gray-700">复盘：</span>
-                    <ExpandableText text={item.review_reason} maxLen={120} />
+                {/* 复盘原因 — 结构化展示 */}
+                {(item.review_thinking || item.review_summary) && (
+                  <div className="text-xs text-gray-600 mb-1 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+                    <span className="font-medium text-amber-800">💭 一审思路：</span>
+                    <span className="text-gray-700">
+                      <ExpandableText text={item.review_thinking || item.review_summary || ""} maxLen={100} />
+                    </span>
+                    {item.review_todo && (
+                      <div className="mt-1">
+                        <span className="font-medium text-amber-800">📌 待跟进：</span>
+                        <ExpandableText text={item.review_todo} maxLen={80} />
+                      </div>
+                    )}
                   </div>
                 )}
 
