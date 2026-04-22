@@ -1,5 +1,7 @@
 'use client';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 import { PageTemplate } from '@/components/page-template';
 import { SummaryCard } from '@/components/summary-card';
 import { useState, useEffect } from 'react';
@@ -36,7 +38,7 @@ export default function ErrorAnalysisPage() {
       const startDateStr = startDate.toISOString().split('T')[0];
       const endDateStr = endDate.toISOString().split('T')[0];
       
-      const baseUrl = 'http://localhost:8000/api/v1/analysis';
+      const baseUrl = '${API_BASE}/api/v1/analysis';
       
       // 并行请求
       const [overview, heatmap, rootCause] = await Promise.all([

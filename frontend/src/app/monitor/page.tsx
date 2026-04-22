@@ -1,5 +1,7 @@
 'use client';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 import { PageTemplate } from '@/components/page-template';
 import { SummaryCard } from '@/components/summary-card';
 import { useState, useEffect } from 'react';
@@ -24,7 +26,7 @@ export default function MonitorPage() {
     setError(null);
     
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/monitor/dashboard?date=${date}`);
+      const response = await fetch(`${API_BASE}/api/v1/monitor/dashboard?date=${date}`);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }

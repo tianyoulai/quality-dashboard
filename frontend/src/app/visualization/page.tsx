@@ -1,5 +1,7 @@
 'use client';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 import { PageTemplate } from '@/components/page-template';
 import { SummaryCard } from '@/components/summary-card';
 import { useState, useEffect } from 'react';
@@ -35,7 +37,7 @@ export default function VisualizationPage() {
       const startDateStr = startDate.toISOString().split('T')[0];
       const endDateStr = endDate.toISOString().split('T')[0];
       
-      const baseUrl = 'http://localhost:8000/api/v1/visualization';
+      const baseUrl = '${API_BASE}/api/v1/visualization';
       
       // 暂时只加载performance-trend，其他2个端点待后端实现
       const performance = await fetch(`${baseUrl}/performance-trend?days=${days}`).then(r => r.json());

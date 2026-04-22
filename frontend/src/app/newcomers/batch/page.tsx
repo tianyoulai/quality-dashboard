@@ -1,5 +1,7 @@
 'use client';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 import { PageTemplate } from '@/components/page-template';
 import { SummaryCard } from '@/components/summary-card';
 import { useSearchParams } from 'next/navigation';
@@ -32,7 +34,7 @@ export default function BatchDetailPage() {
     setLoading(true);
     try {
       // 调用真实API
-      const res = await fetch(`http://localhost:8000/api/v1/newcomers/batch/${batchId}`);
+      const res = await fetch(`${API_BASE}/api/v1/newcomers/batch/${batchId}`);
       const data = await res.json();
       
       if (data.ok && data.data) {

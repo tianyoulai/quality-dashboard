@@ -1,5 +1,7 @@
 'use client';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 import { PageTemplate } from '@/components/page-template';
 import { DateFilterClient } from '@/components/date-filter-client';
 import { SummaryCard } from '@/components/summary-card';
@@ -149,7 +151,7 @@ export default function InternalPage() {
 
   // 加载所有模块数据
   const loadAllModulesData = async () => {
-    const baseUrl = 'http://localhost:8000/api/v1';
+    const baseUrl = '${API_BASE}/api/v1';
     const queryParams = buildQueryParams();
     
     try {
@@ -190,7 +192,7 @@ export default function InternalPage() {
     setLoading({ ...loading, [moduleName]: true });
     
     try {
-      const baseUrl = 'http://localhost:8000/api/v1';
+      const baseUrl = '${API_BASE}/api/v1';
       
       switch (moduleName) {
         case 'queue':

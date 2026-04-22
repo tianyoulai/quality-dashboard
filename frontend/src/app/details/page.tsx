@@ -1,5 +1,7 @@
 'use client';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
 import { PageTemplate } from '@/components/page-template';
 import { SummaryCard } from '@/components/summary-card';
 import { ExcelExporter } from '@/lib/excel-exporter';
@@ -52,17 +54,17 @@ function DetailsPageInner() {
 
   // 加载筛选选项
   useEffect(() => {
-    fetch('http://localhost:8000/api/v1/internal/queues?selected_date=2026-04-01')
+    fetch('${API_BASE}/api/v1/internal/queues?selected_date=2026-04-01')
       .then(r => r.json())
       .then(d => setQueues((d.data?.queues || []).map((q: any) => q.queue_name || q)))
       .catch(() => {});
 
-    fetch('http://localhost:8000/api/v1/internal/reviewers?selected_date=2026-04-01&limit=200')
+    fetch('${API_BASE}/api/v1/internal/reviewers?selected_date=2026-04-01&limit=200')
       .then(r => r.json())
       .then(d => setReviewers((d.data?.reviewers || []).map((r: any) => r.reviewer_name || r)))
       .catch(() => {});
 
-    fetch('http://localhost:8000/api/v1/internal/error-types?selected_date=2026-04-01')
+    fetch('${API_BASE}/api/v1/internal/error-types?selected_date=2026-04-01')
       .then(r => r.json())
       .then(d => setErrorTypes((d.data?.error_types || []).map((e: any) => e.label_name || e)))
       .catch(() => {});
@@ -80,7 +82,7 @@ function DetailsPageInner() {
         ...(filterError && { error_type: filterError }),
         limit: '100',
       });
-      const res = await fetch(`http://localhost:8000/api/v1/details/records?${params}`);
+      const res = await fetch(`${API_BASE}/api/v1/details/records?${params}`);
       const data = await res.json();
       setDetailResults(data.data?.records || data.data || []);
     } catch {
@@ -165,7 +167,7 @@ function DetailsPageInner() {
     setQueueLoading(true);
     try {
       const res = await fetch(
-        `http://localhost:8000/api/v1/internal/reviewers?selected_date=${queueDate}&queue_name=${encodeURIComponent(selectedQueue)}&limit=50`
+        `${API_BASE}/api/v1/internal/reviewers?selected_date=${queueDate}&queue_name=${encodeURIComponent(selectedQueue)}&limit=50`
       );
       const data = await res.json();
       const reviewerList = data.data?.reviewers || [];
