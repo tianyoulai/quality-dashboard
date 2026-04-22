@@ -71,7 +71,7 @@ export default function NewcomersPage() {
               </p>
             </div>
             <div>
-              <Link href="/details?batch=2024Q1-01" className="button button-sm">
+              <Link href="/newcomers/batch?id=2024Q1-01" className="button button-sm">
                 查看详情
               </Link>
             </div>
@@ -85,7 +85,7 @@ export default function NewcomersPage() {
               </p>
             </div>
             <div>
-              <Link href="/details?batch=2024Q1-02" className="button button-sm">
+              <Link href="/newcomers/batch?id=2024Q1-02" className="button button-sm">
                 查看详情
               </Link>
             </div>
@@ -99,7 +99,7 @@ export default function NewcomersPage() {
               </p>
             </div>
             <div>
-              <Link href="/details?batch=2024Q1-03" className="button button-sm">
+              <Link href="/newcomers/batch?id=2024Q1-03" className="button button-sm">
                 查看详情
               </Link>
             </div>
