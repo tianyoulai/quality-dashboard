@@ -188,15 +188,53 @@ def get_internal_error_types(
     selected_date: date = Query(..., description="业务日期"),
     top_n: int = Query(default=10, ge=1, le=50, description="TOP N"),
 ) -> dict:
-    """错误标签分布，含占比%，供饼图+柱状图使用。"""
+    """错误标签分布，含占比%，供饼图+柱状图使用。
+    
+    优先用 error_type 字段；若全为空则回退到 training_topic；
+    均为空时返回错误总量汇总（无细分标签）。
+    """
+    # 先尝试 error_type
     df = repo.fetch_df(f"""
-        SELECT COALESCE(NULLIF(TRIM(error_type),''), '无标签') AS label_name, COUNT(*) AS cnt
+        SELECT NULLIF(TRIM(error_type),'') AS label_name, COUNT(*) AS cnt
         FROM fact_qa_event
         WHERE biz_date = %s AND qc_module = '{MODULE}' AND is_raw_correct = 0
+          AND error_type IS NOT NULL AND TRIM(error_type) != ''
         GROUP BY label_name ORDER BY cnt DESC LIMIT %s
     """, [selected_date, top_n])
 
-    total = int(df["cnt"].sum()) if not df.empty else 0
+    label_source = "error_type"
+
+    # 回退到 training_topic
+    if df.empty:
+        df = repo.fetch_df(f"""
+            SELECT NULLIF(TRIM(training_topic),'') AS label_name, COUNT(*) AS cnt
+            FROM fact_qa_event
+            WHERE biz_date = %s AND qc_module = '{MODULE}' AND is_raw_correct = 0
+              AND training_topic IS NOT NULL AND TRIM(training_topic) != ''
+            GROUP BY label_name ORDER BY cnt DESC LIMIT %s
+        """, [selected_date, top_n])
+        label_source = "training_topic"
+
+    # 两者均空：返回汇总（只有总数，无细分）
+    if df.empty:
+        total_row = repo.fetch_one(f"""
+            SELECT COUNT(*) AS total_errors
+            FROM fact_qa_event
+            WHERE biz_date = %s AND qc_module = '{MODULE}' AND is_raw_correct = 0
+        """, [selected_date])
+        total_errors = int(total_row["total_errors"] or 0) if total_row else 0
+        return {
+            "ok": True,
+            "data": normalize_payload({
+                "items": [],
+                "total_errors": total_errors,
+                "label_source": "none",
+                "note": "当日数据暂无错误标签，仅统计错误总量",
+            }),
+        }
+
+    total = int(df["cnt"].sum())
+    df = df.dropna(subset=["label_name"])
     if not df.empty:
         df["pct"] = (df["cnt"] / total * 100).round(1)
 
@@ -205,6 +243,7 @@ def get_internal_error_types(
         "data": normalize_payload({
             "items": dataframe_to_records(df),
             "total_errors": total,
+            "label_source": label_source,
         }),
     }
 

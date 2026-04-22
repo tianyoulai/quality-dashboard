@@ -346,7 +346,7 @@ def get_filter_options() -> dict[str, object]:
     groups = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name FROM fact_qa_event WHERE sub_biz IS NOT NULL ORDER BY 1")
     queues = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name, queue_name FROM fact_qa_event WHERE queue_name IS NOT NULL ORDER BY 1, 2")
     reviewers_df = repo.fetch_df(
-        "SELECT DISTINCT group_name, reviewer_name FROM mart_day_auditor WHERE reviewer_name IS NOT NULL AND reviewer_name <> '未知' ORDER BY 1, 2"
+        "SELECT DISTINCT group_name, reviewer_name FROM fact_qa_event WHERE reviewer_name IS NOT NULL AND reviewer_name <> '' ORDER BY 1, 2"
     )
     error_types = repo.fetch_df("SELECT DISTINCT error_type FROM fact_qa_event WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
     date_range = repo.fetch_one("SELECT MIN(biz_date) AS min_date, MAX(biz_date) AS max_date FROM fact_qa_event")
