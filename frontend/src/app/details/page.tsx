@@ -54,17 +54,17 @@ function DetailsPageInner() {
 
   // 加载筛选选项
   useEffect(() => {
-    fetch('${API_BASE}/api/v1/internal/queues?selected_date=2026-04-01')
+    fetch(`${API_BASE}/api/v1/internal/queues?selected_date=2026-04-01`)
       .then(r => r.json())
       .then(d => setQueues((d.data?.queues || []).map((q: any) => q.queue_name || q)))
       .catch(() => {});
 
-    fetch('${API_BASE}/api/v1/internal/reviewers?selected_date=2026-04-01&limit=200')
+    fetch(`${API_BASE}/api/v1/internal/reviewers?selected_date=2026-04-01&limit=200`)
       .then(r => r.json())
       .then(d => setReviewers((d.data?.reviewers || []).map((r: any) => r.reviewer_name || r)))
       .catch(() => {});
 
-    fetch('${API_BASE}/api/v1/internal/error-types?selected_date=2026-04-01')
+    fetch(`${API_BASE}/api/v1/internal/error-types?selected_date=2026-04-01`)
       .then(r => r.json())
       .then(d => setErrorTypes((d.data?.error_types || []).map((e: any) => e.label_name || e)))
       .catch(() => {});

@@ -38,7 +38,7 @@ export default function ErrorAnalysisPage() {
       const startDateStr = startDate.toISOString().split('T')[0];
       const endDateStr = endDate.toISOString().split('T')[0];
       
-      const baseUrl = '${API_BASE}/api/v1/analysis';
+      const baseUrl = `${API_BASE}/api/v1/analysis`;
       
       // 并行请求
       const [overview, heatmap, rootCause] = await Promise.all([

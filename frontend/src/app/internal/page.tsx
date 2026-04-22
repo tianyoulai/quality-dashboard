@@ -151,7 +151,7 @@ export default function InternalPage() {
 
   // 加载所有模块数据
   const loadAllModulesData = async () => {
-    const baseUrl = '${API_BASE}/api/v1';
+    const baseUrl = `${API_BASE}/api/v1`;
     const queryParams = buildQueryParams();
     
     try {
@@ -192,7 +192,7 @@ export default function InternalPage() {
     setLoading({ ...loading, [moduleName]: true });
     
     try {
-      const baseUrl = '${API_BASE}/api/v1';
+      const baseUrl = `${API_BASE}/api/v1`;
       
       switch (moduleName) {
         case 'queue':
