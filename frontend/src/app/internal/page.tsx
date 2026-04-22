@@ -31,6 +31,37 @@ export default function InternalPage() {
   // 加载状态
   const [loading, setLoading] = useState<Record<string, boolean>>({});
 
+  // 页面加载时自动加载所有模块数据（用于问题汇总）
+  useEffect(() => {
+    loadAllModulesData();
+  }, [selectedDate]);
+
+  // 加载所有模块数据
+  const loadAllModulesData = async () => {
+    const baseUrl = 'http://localhost:8000/api/v1';
+    
+    try {
+      // 并发加载所有数据
+      const [queueRes, reviewerRes, errorRes] = await Promise.all([
+        fetch(`${baseUrl}/internal/queues?selected_date=${selectedDate}`),
+        fetch(`${baseUrl}/internal/reviewers?selected_date=${selectedDate}&limit=20`),
+        fetch(`${baseUrl}/internal/error-types?selected_date=${selectedDate}&top_n=10`)
+      ]);
+
+      const [queueJson, reviewerJson, errorJson] = await Promise.all([
+        queueRes.json(),
+        reviewerRes.json(),
+        errorRes.json()
+      ]);
+
+      setQueueData(queueJson.data?.items || []);
+      setReviewerData(reviewerJson.data?.items || []);
+      setErrorTypeData(errorJson.data?.items || []);
+    } catch (error) {
+      console.error('加载数据失败:', error);
+    }
+  };
+
   // 切换展开/收起
   const toggleModule = async (moduleName: string) => {
     if (expandedModule === moduleName) {
@@ -125,6 +156,123 @@ export default function InternalPage() {
             hint="在线 38 人"
             tone="neutral"
           />
+        </div>
+      </div>
+
+      {/* 问题汇总 - 新增模块 */}
+      <div className="panel" style={{ marginTop: 'var(--spacing-lg)', borderColor: 'var(--danger)', borderWidth: '2px' }}>
+        <h3 className="panel-title" style={{ color: 'var(--danger)' }}>📌 重点关注问题</h3>
+        
+        <div style={{ marginTop: 'var(--spacing-lg)' }}>
+          {/* 问题队列 */}
+          <div className="problem-section">
+            <div className="problem-header">
+              <span className="problem-icon">🔴</span>
+              <span className="problem-title">问题队列（正确率 &lt; 90%）</span>
+              <button 
+                className="problem-jump"
+                onClick={() => {
+                  setExpandedModule('queue');
+                  loadModuleData('queue');
+                }}
+              >
+                查看详情 →
+              </button>
+            </div>
+            <div className="problem-list">
+              {queueData.length === 0 && (
+                <div style={{ padding: 'var(--spacing-sm)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  暂无数据，点击"查看详情"加载队列信息
+                </div>
+              )}
+              {queueData.filter(q => q.raw_accuracy_rate < 90).length === 0 && queueData.length > 0 && (
+                <div style={{ padding: 'var(--spacing-sm)', color: 'var(--success)' }}>
+                  ✅ 太棒了！所有队列正确率都 ≥ 90%
+                </div>
+              )}
+              {queueData.filter(q => q.raw_accuracy_rate < 90).map((queue, index) => (
+                <div key={index} className="problem-item">
+                  <span className="problem-name">{queue.queue_name}</span>
+                  <span className="problem-value danger">{queue.raw_accuracy_rate?.toFixed(2)}%</span>
+                  <span className="problem-meta">审核量: {queue.qa_cnt?.toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 问题审核人 */}
+          <div className="problem-section" style={{ marginTop: 'var(--spacing-md)' }}>
+            <div className="problem-header">
+              <span className="problem-icon">🟡</span>
+              <span className="problem-title">问题审核人（正确率 &lt; 85%）</span>
+              <button 
+                className="problem-jump"
+                onClick={() => {
+                  setExpandedModule('reviewer');
+                  loadModuleData('reviewer');
+                }}
+              >
+                查看详情 →
+              </button>
+            </div>
+            <div className="problem-list">
+              {reviewerData.length === 0 && (
+                <div style={{ padding: 'var(--spacing-sm)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  暂无数据，点击"查看详情"加载审核人信息
+                </div>
+              )}
+              {reviewerData.filter(r => r.raw_accuracy_rate < 85).length === 0 && reviewerData.length > 0 && (
+                <div style={{ padding: 'var(--spacing-sm)', color: 'var(--success)' }}>
+                  ✅ 太棒了！所有审核人正确率都 ≥ 85%
+                </div>
+              )}
+              {reviewerData.filter(r => r.raw_accuracy_rate < 85).map((reviewer, index) => (
+                <div key={index} className="problem-item">
+                  <span className="problem-name">{reviewer.reviewer_name}</span>
+                  <span className="problem-value warning">{reviewer.raw_accuracy_rate?.toFixed(2)}%</span>
+                  <span className="problem-meta">审核量: {reviewer.qa_cnt?.toLocaleString()} | 误判: {reviewer.misjudge_cnt || 0}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 高频错误 */}
+          <div className="problem-section" style={{ marginTop: 'var(--spacing-md)' }}>
+            <div className="problem-header">
+              <span className="problem-icon">🎯</span>
+              <span className="problem-title">高频错误类型（Top 3）</span>
+              <button 
+                className="problem-jump"
+                onClick={() => {
+                  setExpandedModule('error');
+                  loadModuleData('error');
+                }}
+              >
+                查看详情 →
+              </button>
+            </div>
+            <div className="problem-list">
+              {errorTypeData.length === 0 && (
+                <div style={{ padding: 'var(--spacing-sm)', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  暂无数据，点击"查看详情"加载错误类型信息
+                </div>
+              )}
+              {errorTypeData.slice(0, 3).map((error, index) => (
+                <div key={index} className="problem-item">
+                  <span className="problem-name">#{index + 1} {error.label_name}</span>
+                  <span className="problem-value neutral">{error.cnt?.toLocaleString()} 次</span>
+                  <span className="problem-meta">占比: {error.pct?.toFixed(1)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 使用提示 */}
+        <div style={{ marginTop: 'var(--spacing-lg)', padding: 'var(--spacing-sm)', background: 'var(--info-bg)', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--info)' }}>
+          <p style={{ margin: 0, fontSize: '0.875em', color: 'var(--text)' }}>
+            💡 <strong>提示：</strong>点击"查看详情"按钮可跳转到对应下钻模块，查看完整明细数据
+          </p>
         </div>
       </div>
 
@@ -328,6 +476,7 @@ export default function InternalPage() {
       </div>
 
       <style jsx>{`
+        /* 下钻模块样式 */
         .drill-module {
           border: 1px solid var(--border);
           border-radius: var(--radius);
@@ -392,6 +541,96 @@ export default function InternalPage() {
             opacity: 1;
             transform: translateY(0);
           }
+        }
+
+        /* 问题汇总模块样式 */
+        .problem-section {
+          background: var(--bg-primary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          padding: var(--spacing-md);
+        }
+
+        .problem-header {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-sm);
+          margin-bottom: var(--spacing-md);
+          padding-bottom: var(--spacing-sm);
+          border-bottom: 2px solid var(--border);
+        }
+
+        .problem-icon {
+          font-size: 1.2em;
+        }
+
+        .problem-title {
+          font-weight: 600;
+          font-size: 1em;
+          flex: 1;
+        }
+
+        .problem-jump {
+          padding: 4px 12px;
+          background: var(--primary);
+          color: white;
+          border: none;
+          border-radius: var(--radius);
+          font-size: 0.875em;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .problem-jump:hover {
+          background: var(--primary-dark);
+          transform: translateX(2px);
+        }
+
+        .problem-list {
+          display: flex;
+          flex-direction: column;
+          gap: var(--spacing-sm);
+        }
+
+        .problem-item {
+          display: flex;
+          align-items: center;
+          gap: var(--spacing-md);
+          padding: var(--spacing-sm);
+          background: var(--bg-secondary);
+          border-radius: var(--radius);
+          border-left: 3px solid var(--border);
+        }
+
+        .problem-name {
+          font-weight: 500;
+          flex: 1;
+        }
+
+        .problem-value {
+          font-weight: 600;
+          font-size: 1.1em;
+          min-width: 80px;
+          text-align: right;
+        }
+
+        .problem-value.danger {
+          color: var(--danger);
+        }
+
+        .problem-value.warning {
+          color: var(--warning);
+        }
+
+        .problem-value.neutral {
+          color: var(--primary);
+        }
+
+        .problem-meta {
+          font-size: 0.875em;
+          color: var(--text-muted);
+          min-width: 150px;
+          text-align: right;
         }
       `}</style>
     </PageTemplate>
