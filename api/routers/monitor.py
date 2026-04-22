@@ -288,9 +288,66 @@ async def get_reviewer_ranking(
     except Exception as e:
         logger.error(f"获取审核人排行失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
-# ==================== 辅助函数 ====================
+@router.get("/summary")
+async def get_summary(
+    date: Optional[str] = Query(None, description="查询日期"),
+    group_name: Optional[str] = Query(None, description="组别筛选"),
+) -> Dict[str, Any]:
+    """获取指定日期的汇总核心指标（来自 mart_day_queue 聚合）"""
+    db = TiDBManager()
+    try:
+        target_date = _parse_date(date)
+        params: list = [str(target_date)]
+        group_filter = ""
+        if group_name:
+            if group_name.startswith("B组"):
+                group_filter = " AND group_name LIKE %s"
+                params.append("B组%")
+            else:
+                group_filter = " AND group_name = %s"
+                params.append(group_name)
 
-@router.get("/meta")
+        query = f"""
+        SELECT
+            SUM(qa_cnt),
+            SUM(final_correct_cnt),
+            SUM(misjudge_cnt),
+            SUM(missjudge_cnt),
+            ROUND(SUM(final_correct_cnt)*100.0/NULLIF(SUM(qa_cnt),0), 2),
+            ROUND(SUM(misjudge_cnt)*100.0/NULLIF(SUM(qa_cnt),0), 2),
+            ROUND(SUM(missjudge_cnt)*100.0/NULLIF(SUM(qa_cnt),0), 2),
+            SUM(appeal_reversed_cnt),
+            ROUND(SUM(appeal_reversed_cnt)*100.0/NULLIF(SUM(qa_cnt),0), 2),
+            COUNT(DISTINCT queue_name),
+            MAX(reviewer_cnt)
+        FROM mart_day_queue
+        WHERE biz_date = %s{group_filter}
+        """
+        rows = db.execute_query(query, tuple(params))
+        if not rows or not rows[0][0]:
+            return {"date": str(target_date), "has_data": False}
+
+        r = rows[0]
+        return {
+            "date": str(target_date),
+            "has_data": True,
+            "total_count": int(r[0]),
+            "correct_count": int(r[1]) if r[1] else 0,
+            "misjudge_cnt": int(r[2]) if r[2] else 0,
+            "missjudge_cnt": int(r[3]) if r[3] else 0,
+            "correct_rate": float(r[4]) if r[4] is not None else 0.0,
+            "misjudge_rate": float(r[5]) if r[5] is not None else 0.0,
+            "missjudge_rate": float(r[6]) if r[6] is not None else 0.0,
+            "appeal_reversed_cnt": int(r[7]) if r[7] else 0,
+            "appeal_reverse_rate": float(r[8]) if r[8] is not None else 0.0,
+            "queue_count": int(r[9]) if r[9] else 0,
+        }
+    except Exception as e:
+        logger.error(f"获取汇总数据失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
+
+
+
 async def get_monitor_meta(
     date: Optional[str] = Query(None, description="查询日期"),
 ) -> Dict[str, Any]:
