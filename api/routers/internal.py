@@ -193,7 +193,7 @@ def get_internal_error_types(
     优先用 error_type 字段；若全为空则回退到 training_topic；
     均为空时返回错误总量汇总（无细分标签）。
     """
-    # 先尝试 error_type
+    # 优先用 error_type 字段
     df = repo.fetch_df(f"""
         SELECT NULLIF(TRIM(error_type),'') AS label_name, COUNT(*) AS cnt
         FROM fact_qa_event
@@ -201,10 +201,9 @@ def get_internal_error_types(
           AND error_type IS NOT NULL AND TRIM(error_type) != ''
         GROUP BY label_name ORDER BY cnt DESC LIMIT %s
     """, [selected_date, top_n])
-
     label_source = "error_type"
 
-    # 回退到 training_topic
+    # 回退1: training_topic
     if df.empty:
         df = repo.fetch_df(f"""
             SELECT NULLIF(TRIM(training_topic),'') AS label_name, COUNT(*) AS cnt
@@ -215,7 +214,30 @@ def get_internal_error_types(
         """, [selected_date, top_n])
         label_source = "training_topic"
 
-    # 两者均空：返回汇总（只有总数，无细分）
+    # 回退2: 从 judgement 字段推导
+    # - 有 final_judgement → 用 final_judgement（质检复核结论，即正确答案）
+    # - 无 final_judgement + is_missjudge=1（漏判）→ 标注「漏判」
+    # - 无 final_judgement + is_misjudge=1（误判）→ 用 raw_judgement（审核员错误判断的类别）
+    if df.empty:
+        df = repo.fetch_df(f"""
+            SELECT
+                CASE
+                    WHEN final_judgement IS NOT NULL AND TRIM(final_judgement) != ''
+                        THEN TRIM(final_judgement)
+                    WHEN is_missjudge = 1
+                        THEN '漏判（应判违规）'
+                    WHEN is_misjudge = 1
+                        THEN CONCAT('误判-', COALESCE(NULLIF(TRIM(raw_judgement),''), '未知'))
+                    ELSE COALESCE(NULLIF(TRIM(raw_judgement),''), '未分类')
+                END AS label_name,
+                COUNT(*) AS cnt
+            FROM fact_qa_event
+            WHERE biz_date = %s AND qc_module = '{MODULE}' AND is_raw_correct = 0
+            GROUP BY label_name ORDER BY cnt DESC LIMIT %s
+        """, [selected_date, top_n])
+        label_source = "judgement_derived"
+
+    # 三者均无数据时：返回错误总量
     if df.empty:
         total_row = repo.fetch_one(f"""
             SELECT COUNT(*) AS total_errors
