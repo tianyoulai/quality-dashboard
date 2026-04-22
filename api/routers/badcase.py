@@ -38,32 +38,58 @@ COL_MAP = {
 }
 
 
+import re as _re
+
 def _extract_review_reason(raw: str | None) -> dict:
-    """从复盘原因字段中提取结构化信息"""
+    """从复盘原因字段中提取结构化信息
+    
+    典型格式：
+    一审标注时间：04月14日 23:42:32 一审姓名：康坚 一审选项：正常 正常选项：低俗 一审思路:...思路内容
+    正确思路：...正确思路内容
+    后续措施：...
+    """
     if not raw or str(raw).strip() in ("", "nan", "None"):
-        return {"summary": None, "thinking": None, "todo": None}
+        return {"reviewer_time": None, "reviewer_choice": None, "correct_choice": None,
+                "thinking": None, "correct_thinking": None, "action": None}
 
     text = str(raw).strip()
-    # 提取一审思路
-    thinking = None
-    todo = None
-    summary = None
 
-    import re
-    # 一审思路
-    m = re.search(r"一审思路[：:](.*?)(?=后续待跟进|$)", text, re.DOTALL)
-    if m:
-        thinking = m.group(1).strip()
+    # 一审标注时间
+    m_time = _re.search(r"一审标注时间[：:]?\s*([^\s一审姓名]{4,30})", text)
+    reviewer_time = m_time.group(1).strip() if m_time else None
 
-    # 后续待跟进
-    m2 = re.search(r"后续待跟进[内容]*[：:](.*?)$", text, re.DOTALL)
-    if m2:
-        todo = m2.group(1).strip()
+    # 一审选项
+    m_choice = _re.search(r"一审选项[：:]\s*([^\s一正后]{1,10})", text)
+    reviewer_choice = m_choice.group(1).strip() if m_choice else None
 
-    # summary：取前100字，去换行
-    summary = re.sub(r'\s+', ' ', text)[:150].strip()
+    # 正常选项（正确答案）
+    m_correct = _re.search(r"(?:正常选项|正确选项)[：:]\s*([^\s一正后]{1,10})", text)
+    correct_choice = m_correct.group(1).strip() if m_correct else None
 
-    return {"summary": summary, "thinking": thinking, "todo": todo}
+    # 一审思路（到「正确思路」或「后续措施」结束）
+    m_thinking = _re.search(r"一审思路[：:](.*?)(?=正确思路[：:]|后续措施[：:]|后续待跟进|$)", text, _re.DOTALL)
+    thinking = m_thinking.group(1).strip() if m_thinking else None
+    # 去掉开头可能残留的标题信息
+    if thinking:
+        thinking = _re.sub(r'^.*?一审(?:思路|选项)[：:][^：:]{1,20}[：:]', '', thinking).strip()
+        thinking = thinking[:200]  # 截断
+
+    # 正确思路（到「后续措施」或结束）
+    m_correct_t = _re.search(r"正确思路[：:](.*?)(?=后续措施[：:]|后续待跟进|$)", text, _re.DOTALL)
+    correct_thinking = m_correct_t.group(1).strip()[:200] if m_correct_t else None
+
+    # 后续措施/待跟进
+    m_action = _re.search(r"(?:后续措施|后续待跟进)[内容]*[：:](.*?)$", text, _re.DOTALL)
+    action = m_action.group(1).strip()[:300] if m_action else None
+
+    return {
+        "reviewer_time": reviewer_time,
+        "reviewer_choice": reviewer_choice,
+        "correct_choice": correct_choice,
+        "thinking": thinking,
+        "correct_thinking": correct_thinking,
+        "action": action,
+    }
 
 
 def _load_all() -> pd.DataFrame:
@@ -152,9 +178,12 @@ def list_badcases(
     items = []
     for row in raw_items:
         parsed = _extract_review_reason(row.get("review_reason"))
-        row["review_summary"] = parsed["summary"]
+        row["reviewer_time"] = parsed["reviewer_time"]
+        row["reviewer_choice"] = parsed["reviewer_choice"]
+        row["correct_choice"] = parsed["correct_choice"]
         row["review_thinking"] = parsed["thinking"]
-        row["review_todo"] = parsed["todo"]
+        row["correct_thinking"] = parsed["correct_thinking"]
+        row["review_action"] = parsed["action"]
         items.append(row)
 
     return {

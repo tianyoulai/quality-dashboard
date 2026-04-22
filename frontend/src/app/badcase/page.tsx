@@ -14,9 +14,14 @@ interface BadCase {
   queue_name: string | null;
   comment_text: string | null;
   review_reason: string | null;
-  review_summary: string | null;
+  // 结构化字段
+  reviewer_time: string | null;
+  reviewer_choice: string | null;
+  correct_choice: string | null;
   review_thinking: string | null;
-  review_todo: string | null;
+  correct_thinking: string | null;
+  review_action: string | null;
+  // 质培侧
   qa_analysis: string | null;
   follow_up_action: string | null;
   repeated_complaint_cnt: string | null;
@@ -242,89 +247,107 @@ export default function BadCasePage() {
           <div className="divide-y">
             {items.map((item, idx) => (
               <div key={idx} className="p-4 hover:bg-gray-50 transition-colors">
-                {/* 头部行 */}
-                <div className="flex flex-wrap gap-2 items-center mb-2">
+                {/* ── 头部：日期 + 标签行 ── */}
+                <div className="flex flex-wrap gap-2 items-center mb-3">
                   <span className="text-xs text-gray-400">{item.complaint_date ?? "—"}</span>
                   {item.error_type && <Badge text={item.error_type} type={item.error_type} />}
-                  {item.correct_answer && (
-                    <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded">
-                      正确答案: {item.correct_answer}
+                  {/* 一审选项 → 正确答案 */}
+                  {(item.reviewer_choice || item.correct_choice || item.correct_answer) && (
+                    <span className="text-xs flex items-center gap-1">
+                      {item.reviewer_choice && (
+                        <span className="bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded">
+                          一审：{item.reviewer_choice}
+                        </span>
+                      )}
+                      <span className="text-gray-400">→</span>
+                      <span className="bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded">
+                        正确：{item.correct_choice || item.correct_answer}
+                      </span>
                     </span>
                   )}
                   {item.reviewer_name && (
-                    <span className="text-xs text-gray-600">👤 {item.reviewer_name}</span>
+                    <span className="text-xs text-gray-500">👤 {item.reviewer_name}</span>
                   )}
                   {item.queue_name && (
-                    <span className="text-xs text-gray-500">📋 {item.queue_name}</span>
+                    <span className="text-xs text-gray-400 truncate max-w-[160px]" title={item.queue_name}>
+                      📋 {item.queue_name}
+                    </span>
                   )}
                   {item.repeated_complaint_cnt && Number(item.repeated_complaint_cnt) > 1 && (
                     <span className="text-xs bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded">
-                      连续被投诉 {item.repeated_complaint_cnt} 次
+                      ⚠️ 连续被投诉 {item.repeated_complaint_cnt} 次
                     </span>
                   )}
                 </div>
 
-                {/* 评论内容 */}
+                {/* ── 评论内容 ── */}
                 {item.comment_text && (
-                  <div className="text-sm text-gray-700 mb-2 bg-gray-50 rounded px-3 py-2 border-l-2 border-gray-300">
-                    <ExpandableText text={item.comment_text} maxLen={100} />
+                  <div className="text-sm text-gray-800 mb-3 bg-gray-50 rounded-md px-3 py-2 border-l-3 border-gray-400 leading-relaxed">
+                    <ExpandableText text={item.comment_text} maxLen={120} />
                   </div>
                 )}
 
-                {/* 复盘原因 — 结构化展示 */}
-                {(item.review_thinking || item.review_summary) && (
-                  <div className="text-xs text-gray-600 mb-1 bg-amber-50 border border-amber-100 rounded px-3 py-2">
-                    <span className="font-medium text-amber-800">💭 一审思路：</span>
-                    <span className="text-gray-700">
-                      <ExpandableText text={item.review_thinking || item.review_summary || ""} maxLen={100} />
-                    </span>
-                    {item.review_todo && (
-                      <div className="mt-1">
-                        <span className="font-medium text-amber-800">📌 待跟进：</span>
-                        <ExpandableText text={item.review_todo} maxLen={80} />
+                {/* ── 复盘区：一审思路 + 正确思路 ── */}
+                {(item.review_thinking || item.correct_thinking) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2 text-xs">
+                    {item.review_thinking && (
+                      <div className="bg-orange-50 border border-orange-100 rounded px-3 py-2">
+                        <div className="font-semibold text-orange-700 mb-1">💭 一审思路</div>
+                        <div className="text-gray-700 leading-relaxed">
+                          <ExpandableText text={item.review_thinking} maxLen={120} />
+                        </div>
+                      </div>
+                    )}
+                    {item.correct_thinking && (
+                      <div className="bg-green-50 border border-green-100 rounded px-3 py-2">
+                        <div className="font-semibold text-green-700 mb-1">✅ 正确思路</div>
+                        <div className="text-gray-700 leading-relaxed">
+                          <ExpandableText text={item.correct_thinking} maxLen={120} />
+                        </div>
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* 展开详情按钮 */}
-                {(item.qa_analysis || item.follow_up_action || item.check_data) && (
-                  <button
-                    onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
-                    className="mt-1 text-xs text-blue-500 hover:underline"
-                  >
-                    {expandedRow === idx ? "▲ 收起" : "▼ 展开质培分析 & 跟进动作"}
-                  </button>
-                )}
+                {/* ── 展开：后续措施 + 质培分析 ── */}
+                {(item.review_action || item.qa_analysis || item.follow_up_action || item.check_data) && (
+                  <>
+                    <button
+                      onClick={() => setExpandedRow(expandedRow === idx ? null : idx)}
+                      className="text-xs text-blue-500 hover:text-blue-700 hover:underline mt-1"
+                    >
+                      {expandedRow === idx ? "▲ 收起" : "▼ 展开后续措施 & 质培分析"}
+                    </button>
 
-                {/* 展开区 */}
-                {expandedRow === idx && (
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-gray-600">
-                    {item.qa_analysis && (
-                      <div className="bg-blue-50 rounded p-3">
-                        <div className="font-medium text-blue-800 mb-1">📋 质培侧分析</div>
-                        <div className="whitespace-pre-line">{item.qa_analysis}</div>
+                    {expandedRow === idx && (
+                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                        {item.review_action && (
+                          <div className="bg-amber-50 border border-amber-100 rounded px-3 py-2 col-span-full">
+                            <div className="font-semibold text-amber-800 mb-1">📌 后续措施</div>
+                            <div className="text-gray-700 whitespace-pre-line leading-relaxed">{item.review_action}</div>
+                          </div>
+                        )}
+                        {item.qa_analysis && (
+                          <div className="bg-blue-50 border border-blue-100 rounded px-3 py-2">
+                            <div className="font-semibold text-blue-800 mb-1">📋 质培侧分析</div>
+                            <div className="text-gray-700 whitespace-pre-line">{item.qa_analysis}</div>
+                          </div>
+                        )}
+                        {item.follow_up_action && (
+                          <div className="bg-purple-50 border border-purple-100 rounded px-3 py-2">
+                            <div className="font-semibold text-purple-800 mb-1">🎯 跟进动作</div>
+                            <div className="text-gray-700 whitespace-pre-line">{item.follow_up_action}</div>
+                          </div>
+                        )}
+                        {item.check_data && (
+                          <div className="bg-yellow-50 border border-yellow-100 rounded px-3 py-2">
+                            <div className="font-semibold text-yellow-800 mb-1">📊 抽检数据</div>
+                            <div className="text-gray-700 whitespace-pre-line">{item.check_data}</div>
+                          </div>
+                        )}
                       </div>
                     )}
-                    {item.follow_up_action && (
-                      <div className="bg-green-50 rounded p-3">
-                        <div className="font-medium text-green-800 mb-1">✅ 跟进动作</div>
-                        <div className="whitespace-pre-line">{item.follow_up_action}</div>
-                      </div>
-                    )}
-                    {item.check_data && (
-                      <div className="bg-yellow-50 rounded p-3">
-                        <div className="font-medium text-yellow-800 mb-1">📊 抽检数据</div>
-                        <div className="whitespace-pre-line">{item.check_data}</div>
-                      </div>
-                    )}
-                    {item.error_analysis && (
-                      <div className="bg-orange-50 rounded p-3">
-                        <div className="font-medium text-orange-800 mb-1">🔍 出错分析</div>
-                        <div className="whitespace-pre-line">{item.error_analysis}</div>
-                      </div>
-                    )}
-                  </div>
+                  </>
                 )}
               </div>
             ))}
