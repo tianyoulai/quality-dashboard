@@ -3,6 +3,7 @@
 import { PageTemplate } from '@/components/page-template';
 import { DateFilterClient } from '@/components/date-filter-client';
 import { SummaryCard } from '@/components/summary-card';
+import { MultiFilter } from '@/components/multi-filter';
 import { useState, useEffect } from 'react';
 
 /**
@@ -20,6 +21,18 @@ export default function InternalPage() {
   const [selectedDate, setSelectedDate] = useState<string>('2026-04-01');
   const maxDate = '2026-04-22';
 
+  // 筛选器状态
+  const [showFilter, setShowFilter] = useState(false);
+  const [filters, setFilters] = useState<{
+    queues: string[];
+    reviewers: string[];
+    errorTypes: string[];
+  }>({
+    queues: [],
+    reviewers: [],
+    errorTypes: []
+  });
+
   // 下钻模块展开状态
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
   
@@ -34,18 +47,37 @@ export default function InternalPage() {
   // 页面加载时自动加载所有模块数据（用于问题汇总）
   useEffect(() => {
     loadAllModulesData();
-  }, [selectedDate]);
+  }, [selectedDate, filters]);
+
+  // 构建查询参数
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    params.set('selected_date', selectedDate);
+    
+    if (filters.queues.length > 0) {
+      params.set('queues', filters.queues.join(','));
+    }
+    if (filters.reviewers.length > 0) {
+      params.set('reviewers', filters.reviewers.join(','));
+    }
+    if (filters.errorTypes.length > 0) {
+      params.set('error_types', filters.errorTypes.join(','));
+    }
+    
+    return params.toString();
+  };
 
   // 加载所有模块数据
   const loadAllModulesData = async () => {
     const baseUrl = 'http://localhost:8000/api/v1';
+    const queryParams = buildQueryParams();
     
     try {
       // 并发加载所有数据
       const [queueRes, reviewerRes, errorRes] = await Promise.all([
-        fetch(`${baseUrl}/internal/queues?selected_date=${selectedDate}`),
-        fetch(`${baseUrl}/internal/reviewers?selected_date=${selectedDate}&limit=20`),
-        fetch(`${baseUrl}/internal/error-types?selected_date=${selectedDate}&top_n=10`)
+        fetch(`${baseUrl}/internal/queues?${queryParams}`),
+        fetch(`${baseUrl}/internal/reviewers?${queryParams}&limit=20`),
+        fetch(`${baseUrl}/internal/error-types?${queryParams}&top_n=10`)
       ]);
 
       const [queueJson, reviewerJson, errorJson] = await Promise.all([
@@ -116,12 +148,74 @@ export default function InternalPage() {
     >
       {/* 日期筛选 */}
       <div className="panel">
-        <h3 className="panel-title">📅 日期筛选</h3>
-        <DateFilterClient
-          initialDate={selectedDate}
-          maxDate={maxDate}
-          onDateChange={setSelectedDate}
-        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 className="panel-title">📅 筛选条件</h3>
+          <button
+            onClick={() => setShowFilter(!showFilter)}
+            className="button button-sm"
+            style={{ background: showFilter ? 'var(--primary)' : 'var(--bg-secondary)', color: showFilter ? 'white' : 'var(--text)' }}
+          >
+            {showFilter ? '收起筛选器' : '展开筛选器'} {showFilter ? '▲' : '▼'}
+          </button>
+        </div>
+        
+        <div style={{ marginTop: 'var(--spacing-md)' }}>
+          <DateFilterClient
+            initialDate={selectedDate}
+            maxDate={maxDate}
+            onDateChange={setSelectedDate}
+          />
+        </div>
+
+        {/* 多维度筛选器（可折叠） */}
+        {showFilter && (
+          <div style={{ marginTop: 'var(--spacing-md)' }}>
+            <MultiFilter
+              queues={[
+                { value: '评论_A组', label: '评论_A组', checked: filters.queues.includes('评论_A组') },
+                { value: '评论_B组', label: '评论_B组', checked: filters.queues.includes('评论_B组') },
+                { value: '评论_C组', label: '评论_C组', checked: filters.queues.includes('评论_C组') },
+                { value: '弹幕_A组', label: '弹幕_A组', checked: filters.queues.includes('弹幕_A组') },
+                { value: '弹幕_B组', label: '弹幕_B组', checked: filters.queues.includes('弹幕_B组') },
+                { value: '账号_A组', label: '账号_A组', checked: filters.queues.includes('账号_A组') },
+              ]}
+              reviewers={[
+                ...reviewerData.map(r => ({
+                  value: r.reviewer_name,
+                  label: r.reviewer_name,
+                  checked: filters.reviewers.includes(r.reviewer_name)
+                }))
+              ]}
+              errorTypes={[
+                ...errorTypeData.map(e => ({
+                  value: e.label_name,
+                  label: e.label_name,
+                  checked: filters.errorTypes.includes(e.label_name)
+                }))
+              ]}
+              onApply={(newFilters) => setFilters(newFilters)}
+              onReset={() => setFilters({ queues: [], reviewers: [], errorTypes: [] })}
+            />
+          </div>
+        )}
+
+        {/* 当前筛选条件显示 */}
+        {(filters.queues.length > 0 || filters.reviewers.length > 0 || filters.errorTypes.length > 0) && (
+          <div style={{ marginTop: 'var(--spacing-md)', padding: 'var(--spacing-sm)', background: 'var(--info-bg)', borderRadius: 'var(--radius)', borderLeft: '3px solid var(--info)' }}>
+            <strong style={{ fontSize: '0.875em' }}>🔍 当前筛选：</strong>
+            <div style={{ marginTop: '4px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {filters.queues.map(q => (
+                <span key={q} className="filter-tag">队列: {q}</span>
+              ))}
+              {filters.reviewers.map(r => (
+                <span key={r} className="filter-tag">审核人: {r}</span>
+              ))}
+              {filters.errorTypes.map(e => (
+                <span key={e} className="filter-tag">错误: {e}</span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 核心指标 */}
@@ -631,6 +725,17 @@ export default function InternalPage() {
           color: var(--text-muted);
           min-width: 150px;
           text-align: right;
+        }
+
+        /* 筛选标签样式 */
+        .filter-tag {
+          display: inline-block;
+          padding: 2px 8px;
+          background: var(--primary);
+          color: white;
+          border-radius: 12px;
+          font-size: 0.75em;
+          font-weight: 500;
         }
       `}</style>
     </PageTemplate>
