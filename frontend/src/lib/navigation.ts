@@ -24,6 +24,12 @@ export const NAV_ITEMS = [
     description: "批次、成员、阶段走势",
   },
   {
+    key: "badcase",
+    label: "Bad Case 库",
+    href: "/badcase",
+    description: "外部投诉反馈复盘案例",
+  },
+  {
     key: "smoke",
     label: "在线冒烟",
     href: "/smoke",

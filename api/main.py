@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.routers import dashboard, details, meta, monitor, analysis, visualization, agent
+from api.routers import dashboard, details, meta, monitor, analysis, visualization, agent, badcase
 # 内检路由 —— 6 个端点（summary/queues/trend/reviewers/error-types/qa-owners）
 from api.routers import internal as _internal_mod  # noqa: F401
 # 前端日志收集路由
@@ -148,6 +148,7 @@ if _newcomers_router is not None:
     app.include_router(_newcomers_router)
 app.include_router(_internal_mod.router)  # 内检看板路由
 app.include_router(frontend_logging.router)  # 前端日志收集路由
+app.include_router(badcase.router)           # Bad Case 库路由
 
 
 @app.get("/api/health", tags=["system"])
