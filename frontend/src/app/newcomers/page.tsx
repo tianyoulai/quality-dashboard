@@ -1,154 +1,401 @@
-import { PageTemplate } from '@/components/page-template';
-import { SummaryCard } from '@/components/summary-card';
-import Link from 'next/link';
+'use client';
 
-export const metadata = {
-  title: '新人追踪',
-};
+import { PageTemplate } from '@/components/page-template';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, BarChart, Bar,
+} from 'recharts';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+// ── 阈值常量（全站统一） ──
+const REVIEWER_THRESHOLD = 95;
+
+// ── 类型 ──
+interface NewcomerSummary {
+  active_count: number;
+  avg_accuracy: number;
+  avg_training_days: number;
+  graduated_count: number;
+  estimated_days_to_standard: number;
+}
+
+interface BatchItem {
+  batch_id: string;
+  batch_name: string;
+  status: string;
+  join_date: string | null;
+  total_people: number;
+  active_people: number;
+  avg_accuracy: number;
+  passed_count: number;
+  pass_rate: number;
+  qa_cnt: number;
+  current_day: number;
+  last_date: string | null;
+}
+
+interface BatchDetail {
+  id: string;
+  name: string;
+  total_people: number;
+  active_people: number;
+  avg_accuracy: number;
+  passed_count: number;
+  pass_rate: number;
+  newcomers: {
+    name: string;
+    team: string;
+    qa_cnt: number;
+    accuracy: number;
+    error_cnt: number;
+    days: number;
+    status: string;
+  }[];
+}
+
+// ── 工具 ──
+function fmt(n: number | undefined | null, digits = 1) {
+  if (n == null) return '—';
+  return n.toFixed(digits);
+}
+function rateColor(rate: number): string {
+  if (rate >= 97) return '#10b981';
+  if (rate >= REVIEWER_THRESHOLD) return '#f59e0b';
+  if (rate >= 85) return '#f97316';
+  return '#ef4444';
+}
+function statusLabel(s: string) {
+  switch (s) {
+    case 'excellent': return '🌟 优秀';
+    case 'normal': return '✅ 达标';
+    case 'warning': return '⚠️ 预警';
+    case 'problem': return '🔴 不达标';
+    case 'no_data': return '⬜ 无数据';
+    default: return s;
+  }
+}
 
 /**
- * 🚀 新人追踪 - 客户端优化版本（简化）
- * 
- * 优化要点：
- * 1. 使用 PageTemplate 实现 Sidebar 持久化
- * 2. 简化数据展示，突出核心功能
- * 3. 保持快速响应的用户体验
- * 
- * 注意：这是一个简化演示版本
- * 完整功能请参考原版 page.tsx.backup
+ * 🚀 新人追踪 v3.0
+ *
+ * 变更：
+ * - v3: 对接 /api/v1/newcomers/overview + /batches + /batch/{id}
+ * - 批次列表 + 批次详情 + 未达标新人高亮
+ * - 点击批次展开成员列表
  */
 export default function NewcomersPage() {
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<NewcomerSummary | null>(null);
+  const [hasApi, setHasApi] = useState(true);
+
+  // 批次列表
+  const [batches, setBatches] = useState<BatchItem[]>([]);
+  const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
+  const [batchDetail, setBatchDetail] = useState<BatchDetail | null>(null);
+  const [batchLoading, setBatchLoading] = useState(false);
+
+  const selectedBatchMeta = batches.find(b => b.batch_id === selectedBatch) || null;
+  const problemCount = batchDetail ? batchDetail.newcomers.filter(n => n.accuracy < REVIEWER_THRESHOLD).length : 0;
+  const noDataBatchCount = batches.filter(b => b.total_people > 0 && b.qa_cnt === 0).length;
+  const totalTrackedPeople = batches.reduce((sum, b) => sum + (b.total_people || 0), 0);
+  const totalActivePeople = batches.reduce((sum, b) => sum + (b.active_people || 0), 0);
+
+  // 加载总览 + 批次列表
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API_BASE}/api/v1/newcomers/overview`)
+        .then(r => { if (!r.ok) throw new Error('no api'); return r.json(); })
+        .then(d => { setSummary(d.data || d); setHasApi(true); })
+        .catch(() => { setHasApi(false); setSummary(null); }),
+      fetch(`${API_BASE}/api/v1/newcomers/batches?status=all`)
+        .then(r => r.json())
+        .then(d => {
+          const list = (d.data?.batches || d.batches || []) as BatchItem[];
+          setBatches(list);
+          if (!selectedBatch && list.length > 0) {
+            const preferred = list.find((b) => (b.qa_cnt || 0) > 0) || list[0];
+            setSelectedBatch(preferred.batch_id);
+          }
+        })
+        .catch(() => {}),
+    ]).finally(() => setLoading(false));
+  }, []);
+
+  // 加载批次详情
+  useEffect(() => {
+    if (!selectedBatch) { setBatchDetail(null); return; }
+    setBatchLoading(true);
+    fetch(`${API_BASE}/api/v1/newcomers/batch/${encodeURIComponent(selectedBatch)}`)
+      .then(r => r.json())
+      .then(d => { setBatchDetail(d.data || d); })
+      .catch(() => setBatchDetail(null))
+      .finally(() => setBatchLoading(false));
+  }, [selectedBatch]);
+
   return (
     <PageTemplate
       title="新人追踪"
       subtitle="追踪新人成长轨迹，分析培训效果和质量趋势"
     >
-      {/* 批次概览 */}
-      <div className="panel">
-        <h3 className="panel-title">📊 当前批次</h3>
-        
-        <div className="grid-4" style={{ marginTop: 'var(--spacing-lg)' }}>
-          <SummaryCard
-            label="在训新人"
-            value="156"
-            hint="3个批次"
-            tone="success"
-          />
-
-          <SummaryCard
-            label="平均正确率"
-            value="94.2%"
-            hint="较上周 +2.1%"
-            tone="success"
-          />
-
-          <SummaryCard
-            label="培训天数"
-            value="12"
-            hint="平均进度"
-            tone="neutral"
-          />
-
-          <SummaryCard
-            label="结业人数"
-            value="45"
-            hint="本月累计"
-            tone="success"
-          />
-        </div>
+      {/* ═══ 指标卡 ═══ */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 24,
+      }}>
+        <NewcomerCard label="在训人数" value={summary?.active_count ?? '—'}
+          sub={hasApi ? (summary && summary.active_count > 0 ? `${summary.active_count}人未达标` : undefined) : '待对接'} />
+        <NewcomerCard label="综合正确率" value={summary ? `${fmt(summary.avg_accuracy)}%` : '—'}
+          sub={hasApi ? undefined : '待对接'}
+          color={summary ? rateColor(summary.avg_accuracy) : '#374151'} />
+        <NewcomerCard label="平均培训天数" value={summary?.avg_training_days ?? '—'}
+          sub={hasApi ? undefined : '待对接'} />
+        <NewcomerCard label="已结业人数" value={summary?.graduated_count ?? '—'}
+          sub={hasApi ? (summary && summary.graduated_count > 0 ? '✅' : undefined) : '待对接'}
+          color={summary && summary.graduated_count > 0 ? '#10b981' : '#374151'} />
+        <NewcomerCard label="距达标天数预估"
+          value={summary?.estimated_days_to_standard === -1 ? '↗ 需干预' : (summary?.estimated_days_to_standard ?? '—')}
+          sub={hasApi ? (summary?.estimated_days_to_standard === -1 ? '正确率下降趋势' : summary?.estimated_days_to_standard ? '天' : undefined) : '计算字段'}
+          color={summary ? (summary.estimated_days_to_standard === -1 ? '#ef4444' : summary.estimated_days_to_standard > 14 ? '#f59e0b' : '#10b981') : '#374151'} />
       </div>
 
-      {/* 批次列表 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">📋 批次列表</h3>
-        
-        <div style={{ marginTop: 'var(--spacing-lg)' }}>
-          <div className="alert-row" style={{ padding: 'var(--spacing-md)', marginBottom: 'var(--spacing-sm)' }}>
-            <div style={{ flex: 1 }}>
-              <strong>2024Q1-01 批次</strong>
-              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.875em', marginTop: 4 }}>
-                60人 · 正确率 95.3% · 进度 15/21天
-              </p>
-            </div>
-            <div>
-              <Link href="/newcomers/batch?id=2024Q1-01" className="button button-sm">
-                查看详情
-              </Link>
-            </div>
+      {!hasApi && (
+        <div style={{
+          background: '#fef3c7', border: '2px solid #f59e0b', borderRadius: 10,
+          padding: '20px 24px', marginBottom: 24, textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: '#92400e', marginBottom: 8 }}>
+            ⚠️ 新人追踪 API 不可用
           </div>
-
-          <div className="alert-row" style={{ padding: 'var(--spacing-md)', marginBottom: 'var(--spacing-sm)' }}>
-            <div style={{ flex: 1 }}>
-              <strong>2024Q1-02 批次</strong>
-              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.875em', marginTop: 4 }}>
-                52人 · 正确率 93.8% · 进度 8/21天
-              </p>
-            </div>
-            <div>
-              <Link href="/newcomers/batch?id=2024Q1-02" className="button button-sm">
-                查看详情
-              </Link>
-            </div>
-          </div>
-
-          <div className="alert-row" style={{ padding: 'var(--spacing-md)' }}>
-            <div style={{ flex: 1 }}>
-              <strong>2024Q1-03 批次</strong>
-              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.875em', marginTop: 4 }}>
-                44人 · 正确率 92.5% · 进度 3/21天
-              </p>
-            </div>
-            <div>
-              <Link href="/newcomers/batch?id=2024Q1-03" className="button button-sm">
-                查看详情
-              </Link>
-            </div>
+          <div style={{ fontSize: 13, color: '#78350f' }}>
+            当前页面依赖 <code style={{ background: '#fef9c3', padding: '2px 6px', borderRadius: 4 }}>/api/v1/newcomers/overview</code> 等接口。
           </div>
         </div>
-      </div>
+      )}
 
-      {/* 功能导航 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)' }}>
-        <h3 className="panel-title">🎯 快速功能</h3>
-        
-        <div className="grid-3" style={{ marginTop: 'var(--spacing-lg)' }}>
-          <Link href="/details" className="summary-card" style={{ textDecoration: 'none' }}>
-            <div className="card-label">成员明细</div>
-            <div className="card-value" style={{ fontSize: '2em' }}>👥</div>
-            <div className="card-hint">查看每个新人的表现</div>
-          </Link>
-
-          <Link href="/details" className="summary-card" style={{ textDecoration: 'none' }}>
-            <div className="card-label">培训计划</div>
-            <div className="card-value" style={{ fontSize: '2em' }}>📅</div>
-            <div className="card-hint">查看培训安排和进度</div>
-          </Link>
-
-          <Link href="/details" className="summary-card" style={{ textDecoration: 'none' }}>
-            <div className="card-label">质量趋势</div>
-            <div className="card-value" style={{ fontSize: '2em' }}>📈</div>
-            <div className="card-hint">查看质量变化趋势</div>
-          </Link>
+      {/* ═══ 数据健康提示 ═══ */}
+      {hasApi && noDataBatchCount > 0 && (
+        <div style={{
+          background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10,
+          padding: '14px 16px', marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#9a3412', marginBottom: 6 }}>
+            ⚠️ 数据健康提示
+          </div>
+          <div style={{ fontSize: 12, color: '#7c2d12', lineHeight: 1.7 }}>
+            当前共有 <strong>{noDataBatchCount}</strong> 个批次存在“名单已建但质检数据未匹配”的情况。
+            这会导致该批次在新人追踪页面显示为 <strong>0 质检量 / 0 正确率</strong>，不代表页面故障，通常是
+            <strong> dim_newcomer_batch 与 fact_newcomer_qa 的姓名还未对齐</strong>。
+          </div>
         </div>
+      )}
+
+      {/* ═══ 批次列表 ═══ */}
+      <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 24 }}>
+        <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 14, fontWeight: 600, color: '#374151' }}>📦 批次列表</span>
+          <span style={{ fontSize: 12, color: '#9ca3af' }}>共 {batches.length} 个批次</span>
+        </div>
+        {batches.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>
+            {loading ? '加载中...' : '暂无批次数据'}
+          </div>
+        ) : (
+          <div style={{ padding: '12px 16px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                  <th style={{ textAlign: 'left', padding: '8px 10px', color: '#6b7280' }}>批次</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', color: '#6b7280' }}>状态</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>人数</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>在训天数</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>正确率</th>
+                  <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>达标率</th>
+                  <th style={{ textAlign: 'center', padding: '8px 10px', color: '#6b7280' }}>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batches.map((b, i) => (
+                  <tr key={b.batch_id} style={{
+                    borderBottom: '1px solid #f3f4f6',
+                    background: selectedBatch === b.batch_id ? '#f0f9ff' : 'transparent',
+                  }}>
+                    <td style={{ padding: '8px 10px', fontWeight: 500 }}>{b.batch_name}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 10, fontSize: 12,
+                        background: b.status === 'training' ? '#fef3c7' : '#d1fae5',
+                        color: b.status === 'training' ? '#92400e' : '#065f46',
+                      }}>
+                        {b.status === 'training' ? '培训中' : '已结业'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{b.total_people}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>{b.current_day}天</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: rateColor(b.avg_accuracy) }}>
+                      {fmt(b.avg_accuracy)}%
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right' }}>
+                      {fmt(b.pass_rate)}%
+                      <span style={{ fontSize: 11, color: '#9ca3af' }}> ({b.passed_count}/{b.total_people})</span>
+                    </td>
+                    <td style={{ padding: '8px 10px', textAlign: 'center' }}>
+                      <button onClick={() => setSelectedBatch(selectedBatch === b.batch_id ? null : b.batch_id)}
+                        style={{
+                          padding: '4px 12px', borderRadius: 6, fontSize: 12,
+                          background: selectedBatch === b.batch_id ? '#8B5CF6' : '#f3f4f6',
+                          color: selectedBatch === b.batch_id ? '#fff' : '#374151',
+                          border: 'none', cursor: 'pointer', fontWeight: 500,
+                        }}>
+                        {selectedBatch === b.batch_id ? '收起' : '查看'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* 提示信息 */}
-      <div className="panel" style={{ marginTop: 'var(--spacing-lg)', background: 'var(--info-bg)', borderColor: 'var(--info)' }}>
-        <h3 className="panel-title" style={{ color: 'var(--info)' }}>💡 使用提示</h3>
-        
-        <ul style={{ marginLeft: 'var(--spacing-lg)', marginTop: 'var(--spacing-md)', lineHeight: 2 }}>
-          <li>点击"查看详情"按钮可查看批次的完整数据</li>
-          <li>点击功能卡片可快速跳转到相关分析页面</li>
-          <li>完整功能版本正在开发中，敬请期待</li>
-        </ul>
-      </div>
+      {/* ═══ 批次详情 ═══ */}
+      {selectedBatch && (
+        <div style={{ background: '#fff', borderRadius: 10, border: '2px solid #8B5CF6', marginBottom: 24 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '1px solid #e5e7eb', background: '#faf5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#6d28d9' }}>
+              👥 {batchDetail?.name || '加载中...'}
+            </span>
+            <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#6b7280' }}>
+              {batchDetail && (
+                <>
+                  <span>总人数: <strong>{batchDetail.total_people}</strong></span>
+                  <span>平均正确率: <strong style={{ color: rateColor(batchDetail.avg_accuracy) }}>{fmt(batchDetail.avg_accuracy)}%</strong></span>
+                  <span>达标率: <strong>{fmt(batchDetail.pass_rate)}%</strong></span>
+                </>
+              )}
+            </div>
+          </div>
+          {batchLoading ? (
+            <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>加载中...</div>
+          ) : batchDetail && batchDetail.newcomers.length > 0 ? (
+            <div style={{ padding: '12px 16px', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', color: '#6b7280' }}>姓名</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', color: '#6b7280' }}>状态</th>
+                    <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>质检量</th>
+                    <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>正确率</th>
+                    <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>错误数</th>
+                    <th style={{ textAlign: 'right', padding: '8px 10px', color: '#6b7280' }}>在训天数</th>
+                    <th style={{ width: 100, padding: '8px 10px' }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batchDetail.newcomers.map((n, i) => (
+                    <tr key={i} style={{
+                      borderBottom: '1px solid #f3f4f6',
+                      background: n.status === 'problem' ? '#fef2f2' : n.status === 'warning' ? '#fffbeb' : 'transparent',
+                    }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 500 }}>
+                        <Link href={`/details?reviewer=${encodeURIComponent(n.name)}`} style={{ color: '#374151', textDecoration: 'none' }}>
+                          {n.name}
+                        </Link>
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>{statusLabel(n.status)}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>{n.qa_cnt}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 600, color: rateColor(n.accuracy) }}>
+                        {fmt(n.accuracy)}%
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: n.error_cnt > 0 ? '#ef4444' : '#9ca3af' }}>
+                        {n.error_cnt}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right' }}>{n.days}天</td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <div style={{ height: 6, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ width: `${Math.max(n.accuracy, 0)}%`, height: '100%', background: rateColor(n.accuracy), borderRadius: 3 }} />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>暂无成员数据</div>
+          )}
+        </div>
+      )}
 
-      {/* 返回原版链接 */}
-      <div style={{ marginTop: 'var(--spacing-lg)', textAlign: 'center' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.875em' }}>
-          这是一个简化演示版本。如需查看完整功能，请联系管理员。
-        </p>
+      {/* ═══ 快速功能区（真实数据） ═══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 24 }}>
+        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '18px 16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>👥 当前选中批次</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#374151', lineHeight: 1.2 }}>
+            {selectedBatchMeta ? selectedBatchMeta.batch_name : '未选择'}
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>
+            {selectedBatchMeta ? `${selectedBatchMeta.total_people}人｜在训${selectedBatchMeta.current_day}天` : '先从上方批次列表选择一个批次'}
+          </div>
+        </div>
+
+        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '18px 16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>🔴 未达标人数</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: problemCount > 0 ? '#ef4444' : '#10b981', lineHeight: 1.1 }}>
+            {selectedBatchMeta ? problemCount : '—'}
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>
+            {selectedBatchMeta ? `正确率 < ${REVIEWER_THRESHOLD}%` : '选择批次后自动统计'}
+          </div>
+        </div>
+
+        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '18px 16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>📦 已追踪总人数</div>
+          <div style={{ fontSize: 28, fontWeight: 700, color: '#6366f1', lineHeight: 1.1 }}>
+            {totalTrackedPeople}
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>
+            活跃有数据 {totalActivePeople} 人
+          </div>
+        </div>
+
+        <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', padding: '18px 16px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', marginBottom: 8 }}>📊 进一步分析</div>
+          <div style={{ marginTop: 4 }}>
+            <Link href="/analysis?tab=dimension" style={{ color: '#8B5CF6', textDecoration: 'none', fontSize: 14, fontWeight: 600 }}>
+              前往维度交叉分析 →
+            </Link>
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 6 }}>
+            查看新人 × 队列 × 错误类型
+          </div>
+        </div>
       </div>
     </PageTemplate>
+  );
+}
+
+// ── 子组件 ──
+
+function NewcomerCard({
+  label, value, sub, color = '#374151',
+}: {
+  label: string; value: string | number; sub?: string; color?: string;
+}) {
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 12, padding: '16px 18px 12px',
+      border: `1px solid #e5e7eb`, boxShadow: '0 1px 4px rgba(0,0,0,.05)',
+      display: 'flex', flexDirection: 'column', gap: 3,
+    }}>
+      <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color, lineHeight: 1.1 }}>
+        {value}
+      </div>
+      {sub && <div style={{ fontSize: 12, color: '#f59e0b' }}>{sub}</div>}
+    </div>
   );
 }
