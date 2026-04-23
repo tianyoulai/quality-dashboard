@@ -99,12 +99,24 @@ export default function NewcomersPage() {
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [batchDetail, setBatchDetail] = useState<BatchDetail | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [memberFilter, setMemberFilter] = useState<'all' | 'problem' | 'no_data'>('all');
 
   const selectedBatchMeta = batches.find(b => b.batch_id === selectedBatch) || null;
   const problemCount = batchDetail ? batchDetail.newcomers.filter(n => n.accuracy < REVIEWER_THRESHOLD).length : 0;
   const noDataBatchCount = batches.filter(b => b.total_people > 0 && b.qa_cnt === 0).length;
   const totalTrackedPeople = batches.reduce((sum, b) => sum + (b.total_people || 0), 0);
   const totalActivePeople = batches.reduce((sum, b) => sum + (b.active_people || 0), 0);
+  const matchedPeople = totalActivePeople;
+  const pendingMappedPeople = Math.max(totalTrackedPeople - totalActivePeople, 0);
+  const readinessLabel = pendingMappedPeople === 0 ? '已接通' : matchedPeople > 0 ? '部分接通' : '待接通';
+
+  const displayedMembers = batchDetail
+    ? batchDetail.newcomers.filter((n) => {
+        if (memberFilter === 'problem') return n.accuracy < REVIEWER_THRESHOLD;
+        if (memberFilter === 'no_data') return n.qa_cnt === 0;
+        return true;
+      })
+    : [];
 
   // 加载总览 + 批次列表
   useEffect(() => {
@@ -117,9 +129,20 @@ export default function NewcomersPage() {
         .then(r => r.json())
         .then(d => {
           const list = (d.data?.batches || d.batches || []) as BatchItem[];
-          setBatches(list);
-          if (!selectedBatch && list.length > 0) {
-            const preferred = list.find((b) => (b.qa_cnt || 0) > 0) || list[0];
+          const sorted = [...list].sort((a, b) => {
+            const score = (x: BatchItem) => {
+              if (x.qa_cnt === 0) return 0;
+              if (x.pass_rate < 60) return 3;
+              if (x.pass_rate < 90) return 2;
+              return 1;
+            };
+            const diff = score(b) - score(a);
+            if (diff !== 0) return diff;
+            return String(b.last_date || '').localeCompare(String(a.last_date || ''));
+          });
+          setBatches(sorted);
+          if (!selectedBatch && sorted.length > 0) {
+            const preferred = sorted.find((b) => (b.qa_cnt || 0) > 0) || sorted[0];
             setSelectedBatch(preferred.batch_id);
           }
         })
@@ -193,6 +216,31 @@ export default function NewcomersPage() {
           </div>
         </div>
       )}
+
+      {/* ═══ 页面级综合评估 ═══ */}
+      <div style={{
+        background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
+        padding: '16px 18px', marginBottom: 20,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>页面级综合评估</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>新人追踪数据状态：{readinessLabel}</div>
+            <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6, lineHeight: 1.7 }}>
+              已接通 <strong>{matchedPeople}</strong> 人，待补映射 <strong>{pendingMappedPeople}</strong> 人。
+              当前页面适合做 <strong>功能展示 / 已接通批次分析</strong>，暂不适合做 <strong>完整批次经营判断</strong>。
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, color: '#1d4ed8', background: '#eff6ff' }}>
+              接口稳定
+            </span>
+            <span style={{ padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600, color: pendingMappedPeople > 0 ? '#9a3412' : '#065f46', background: pendingMappedPeople > 0 ? '#fff7ed' : '#ecfdf5' }}>
+              {pendingMappedPeople > 0 ? '数据待补齐' : '数据完整'}
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* ═══ 当前批次摘要 ═══ */}
       {selectedBatchMeta && (
@@ -331,6 +379,34 @@ export default function NewcomersPage() {
                   当前批次成员名单已存在，但暂未匹配到对应质检记录。成员会先展示为“无数据”，待后续姓名映射补齐后即可恢复真实表现。
                 </div>
               )}
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 12, color: '#6b7280' }}>
+                  当前展示 <strong>{displayedMembers.length}</strong> / {batchDetail.newcomers.length} 人
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {[
+                    { key: 'all', label: '全部成员' },
+                    { key: 'problem', label: '仅未达标' },
+                    { key: 'no_data', label: '仅无数据' },
+                  ].map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setMemberFilter(item.key as 'all' | 'problem' | 'no_data')}
+                      style={{
+                        padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                        border: '1px solid ' + (memberFilter === item.key ? '#8B5CF6' : '#e5e7eb'),
+                        background: memberFilter === item.key ? '#f5f3ff' : '#fff',
+                        color: memberFilter === item.key ? '#6d28d9' : '#6b7280',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
@@ -344,7 +420,7 @@ export default function NewcomersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {batchDetail.newcomers.map((n, i) => (
+                  {displayedMembers.map((n, i) => (
                     <tr key={i} style={{
                       borderBottom: '1px solid #f3f4f6',
                       background: n.status === 'problem' ? '#fef2f2' : n.status === 'warning' ? '#fffbeb' : 'transparent',
