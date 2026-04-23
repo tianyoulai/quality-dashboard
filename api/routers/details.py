@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 
 from api.serializers import dataframe_to_records, normalize_payload
 from storage.repository import DashboardRepository
+from utils.cache import ttl_cache
 
 router = APIRouter(prefix="/api/v1/details", tags=["details"])
 repo = DashboardRepository()
@@ -341,17 +342,17 @@ def _to_csv_response(df: pd.DataFrame, file_name: str) -> StreamingResponse:
     return response
 
 
-@router.get("/filters")
-def get_filter_options() -> dict[str, object]:
-    groups = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name FROM fact_qa_event WHERE sub_biz IS NOT NULL ORDER BY 1")
-    queues = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name, queue_name FROM fact_qa_event WHERE queue_name IS NOT NULL ORDER BY 1, 2")
+@ttl_cache(ttl_seconds=300, key_prefix="details_filters")
+def _get_filter_options_payload() -> dict[str, object]:
+    groups = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name FROM fact_qa_event WHERE sub_biz IS NOT NULL AND sub_biz <> '' ORDER BY 1")
+    queues = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name, queue_name FROM fact_qa_event WHERE sub_biz IS NOT NULL AND sub_biz <> '' AND queue_name IS NOT NULL AND queue_name <> '' ORDER BY 1, 2")
     reviewers_df = repo.fetch_df(
-        "SELECT DISTINCT group_name, reviewer_name FROM fact_qa_event WHERE reviewer_name IS NOT NULL AND reviewer_name <> '' ORDER BY 1, 2"
+        "SELECT DISTINCT sub_biz AS group_name, reviewer_name FROM fact_qa_event WHERE sub_biz IS NOT NULL AND sub_biz <> '' AND reviewer_name IS NOT NULL AND reviewer_name <> '' ORDER BY 1, 2"
     )
     error_types = repo.fetch_df("SELECT DISTINCT error_type FROM fact_qa_event WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
     date_range = repo.fetch_one("SELECT MIN(biz_date) AS min_date, MAX(biz_date) AS max_date FROM fact_qa_event")
 
-    payload = {
+    return {
         "groups": groups["group_name"].tolist() if not groups.empty else [],
         "queues": dataframe_to_records(queues),
         "reviewers": reviewers_df["reviewer_name"].tolist() if not reviewers_df.empty else [],
@@ -362,6 +363,11 @@ def get_filter_options() -> dict[str, object]:
         "limit_options": [2000, 5000, 10000, MAX_QUERY_LIMIT],
         "issue_filter_options": ["全部问题", "原始错误", "最终错误", "错判", "漏判", "申诉改判"],
     }
+
+
+@router.get("/filters")
+def get_filter_options() -> dict[str, object]:
+    payload = _get_filter_options_payload()
     return {
         "ok": True,
         "data": normalize_payload(payload),
