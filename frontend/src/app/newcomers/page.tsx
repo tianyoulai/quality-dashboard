@@ -3,10 +3,6 @@
 import { PageTemplate } from '@/components/page-template';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar,
-} from 'recharts';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -76,6 +72,13 @@ function statusLabel(s: string) {
     case 'no_data': return '⬜ 无数据';
     default: return s;
   }
+}
+
+function batchRiskLabel(batch: BatchItem) {
+  if (batch.qa_cnt === 0) return { text: '待接数', color: '#9a3412', bg: '#fff7ed' };
+  if (batch.pass_rate < 60) return { text: '高风险', color: '#991b1b', bg: '#fef2f2' };
+  if (batch.pass_rate < 90) return { text: '需关注', color: '#92400e', bg: '#fffbeb' };
+  return { text: '稳定', color: '#065f46', bg: '#ecfdf5' };
 }
 
 /**
@@ -191,6 +194,35 @@ export default function NewcomersPage() {
         </div>
       )}
 
+      {/* ═══ 当前批次摘要 ═══ */}
+      {selectedBatchMeta && (
+        <div style={{
+          background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb',
+          padding: '16px 18px', marginBottom: 20,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 12, color: '#9ca3af', marginBottom: 6 }}>当前批次概览</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>{selectedBatchMeta.batch_name}</div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginTop: 6 }}>
+                共 {selectedBatchMeta.total_people} 人｜活跃 {selectedBatchMeta.active_people} 人｜质检量 {selectedBatchMeta.qa_cnt}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{
+                padding: '6px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                color: batchRiskLabel(selectedBatchMeta).color, background: batchRiskLabel(selectedBatchMeta).bg,
+              }}>
+                {batchRiskLabel(selectedBatchMeta).text}
+              </span>
+              {selectedBatchMeta.last_date && (
+                <span style={{ fontSize: 12, color: '#6b7280' }}>最近数据日期：{selectedBatchMeta.last_date}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ 批次列表 ═══ */}
       <div style={{ background: '#fff', borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 24 }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #f3f4f6', background: '#f9fafb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -221,7 +253,17 @@ export default function NewcomersPage() {
                     borderBottom: '1px solid #f3f4f6',
                     background: selectedBatch === b.batch_id ? '#f0f9ff' : 'transparent',
                   }}>
-                    <td style={{ padding: '8px 10px', fontWeight: 500 }}>{b.batch_name}</td>
+                    <td style={{ padding: '8px 10px', fontWeight: 500 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span>{b.batch_name}</span>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+                          color: batchRiskLabel(b).color, background: batchRiskLabel(b).bg,
+                        }}>
+                          {batchRiskLabel(b).text}
+                        </span>
+                      </div>
+                    </td>
                     <td style={{ padding: '8px 10px', textAlign: 'center' }}>
                       <span style={{
                         padding: '2px 8px', borderRadius: 10, fontSize: 12,
@@ -280,6 +322,15 @@ export default function NewcomersPage() {
             <div style={{ padding: 32, textAlign: 'center', color: '#9ca3af' }}>加载中...</div>
           ) : batchDetail && batchDetail.newcomers.length > 0 ? (
             <div style={{ padding: '12px 16px', overflowX: 'auto' }}>
+              {selectedBatchMeta?.qa_cnt === 0 && (
+                <div style={{
+                  marginBottom: 12, padding: '10px 12px', borderRadius: 8,
+                  background: '#faf5ff', border: '1px solid #ddd6fe',
+                  fontSize: 12, color: '#6d28d9',
+                }}>
+                  当前批次成员名单已存在，但暂未匹配到对应质检记录。成员会先展示为“无数据”，待后续姓名映射补齐后即可恢复真实表现。
+                </div>
+              )}
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
