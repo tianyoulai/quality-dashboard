@@ -49,36 +49,57 @@ st.markdown("""
 
 
 @st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(show_spinner=False, ttl=600)
 def get_filter_options() -> dict:
     """获取筛选选项（缓存 10 分钟）。
     
-    优化：使用与 vw_qa_base 一致的 group_name 逻辑，
-    但从 fact_qa_event 直表查询 DISTINCT 避免扫描全量视图。
+    优化 v2：合并5次查询为2次，减少DB往返：
+    1. 一次查 DISTINCT group/queue/reviewer/error_type（利用 fact_qa_event 单表）
+    2. 一次查日期范围（MIN/MAX）
     """
-    groups = repo.fetch_df("""
-        SELECT DISTINCT COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) AS group_name 
-        FROM fact_qa_event 
-        WHERE COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) IS NOT NULL 
-        ORDER BY 1
+    # 查询1: 一次性获取所有维度选项
+    dims = repo.fetch_df("""
+        SELECT DISTINCT
+            COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) AS group_name,
+            COALESCE(NULLIF(TRIM(queue_name), ''), NULLIF(TRIM(sub_biz), '')) AS queue_name,
+            reviewer_name,
+            error_type
+        FROM fact_qa_event
+        WHERE COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) IS NOT NULL
     """)
-    queues = repo.fetch_df("""
-        SELECT DISTINCT 
-            COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) AS group_name, 
-            COALESCE(NULLIF(TRIM(queue_name), ''), NULLIF(TRIM(sub_biz), '')) AS queue_name 
-        FROM fact_qa_event 
-        WHERE queue_name IS NOT NULL 
-        ORDER BY 1, 2
-    """)
-    reviewers = repo.fetch_df("SELECT DISTINCT reviewer_name FROM fact_qa_event WHERE reviewer_name IS NOT NULL ORDER BY 1")
-    error_types = repo.fetch_df("SELECT DISTINCT error_type FROM fact_qa_event WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
-    dates = repo.fetch_df("SELECT DISTINCT biz_date FROM fact_qa_event ORDER BY 1")
+    
+    # 查询2: 日期范围（聚合查询，极快）
+    date_row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
+    
+    if dims.empty:
+        return {
+            "groups": [],
+            "queues": pd.DataFrame(columns=["group_name", "queue_name"]),
+            "reviewers": [],
+            "error_types": [],
+            "min_date": date.today(),
+            "max_date": date.today(),
+        }
+
+    groups = sorted(dims["group_name"].dropna().unique().tolist())
+    queues = dims[["group_name", "queue_name"]].dropna().drop_duplicates().sort_values(["group_name", "queue_name"])
+    reviewers = sorted(dims["reviewer_name"].dropna().unique().tolist())
+    error_types = sorted([e for e in dims["error_type"].dropna().unique().tolist() if e.strip()])
+
+    min_d = date_row.get("min_d") if date_row else None
+    max_d = date_row.get("max_d") if date_row else None
+    if hasattr(min_d, "date"):
+        min_d = min_d.date()
+    if hasattr(max_d, "date"):
+        max_d = max_d.date()
+
     return {
-        "groups": groups["group_name"].tolist() if not groups.empty else [],
-        "queues": queues if not queues.empty else pd.DataFrame(columns=["group_name", "queue_name"]),
-        "reviewers": reviewers["reviewer_name"].tolist() if not reviewers.empty else [],
-        "error_types": error_types["error_type"].tolist() if not error_types.empty else [],
-        "min_date": dates["biz_date"].min() if not dates.empty else date.today(),
-        "max_date": dates["biz_date"].max() if not dates.empty else date.today(),
+        "groups": groups,
+        "queues": queues,
+        "reviewers": reviewers,
+        "error_types": error_types,
+        "min_date": min_d or date.today(),
+        "max_date": max_d or date.today(),
     }
 
 
@@ -254,18 +275,18 @@ issue_mode = issue_filter if only_issues and issue_filter != "全部问题" else
 
 # 查询按钮 —— 点击后才触发数据查询，避免页面打开时自动加载全量数据
 # 如果从总览页带着筛选条件跳转过来，自动触发查询
-_auto_query = any(v is not None for v in [group_val, queue_val, reviewer_val])
+_has_preset = _default_group_idx > 0 or _default_queue_idx > 0 or _default_reviewer_idx > 0
 query_btn_col1, query_btn_col2 = st.columns([1, 3])
 with query_btn_col1:
     do_query = st.button("🔍 开始查询", type="primary", use_container_width=True)
 with query_btn_col2:
-    if _auto_query:
+    if _has_preset:
         st.caption("✅ 已从总览页带入筛选条件，自动查询中...")
     else:
         st.caption("💡 设定好筛选条件后，点击「开始查询」按钮加载数据")
 
 # 使用 session_state 记住是否已执行查询
-if do_query or _auto_query:
+if do_query or _has_preset:
     st.session_state["detail_queried"] = True
 
 if not st.session_state.get("detail_queried", False):

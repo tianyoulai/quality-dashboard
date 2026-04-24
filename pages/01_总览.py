@@ -25,14 +25,18 @@ import streamlit as st
 from services.dashboard_service import DashboardService
 
 # 从拆分后的模块导入数据加载函数和共享常量
-from views.dashboard import (
+from views.dashboard._data import (
     get_data_date_range,
+    load_dashboard_lite,
+    load_prev_group_df,
     load_group_overview,
     load_group_detail,
     load_queue_overview_data,
     load_alert_history,
     load_qa_label_distribution_cached,
     load_qa_owner_distribution_cached,
+)
+from views.dashboard._shared import (
     GRAIN_LABELS,
     ALERT_STATUS_OPTIONS,
     COLOR_P0, COLOR_P1, COLOR_P2,
@@ -157,8 +161,9 @@ if st.sidebar.button("🔄 刷新数据缓存", key="refresh_cache", use_contain
     st.rerun()
 
 # ==================== 加载数据 ====================
+# 💡 首屏轻量加载：只查 group_df + alerts_df（2次DB查询，原来7次）
 try:
-    payload = load_group_overview(grain, selected_date)
+    payload = load_dashboard_lite(grain, selected_date)
 except Exception as e:
     st.error(f"⚠️ 数据加载失败：{e}")
     st.info("请检查数据库连接是否正常，或尝试刷新缓存。")
@@ -192,8 +197,8 @@ elif grain == "week":
 else:
     prev_date = (selected_date.replace(day=1) - timedelta(days=1)).replace(day=1)
 
-prev_payload = load_group_overview(grain, prev_date)
-prev_group_df: pd.DataFrame = prev_payload["group_df"]
+# 💡 环比数据：只查上期 group_df（1次DB查询，原来7次）
+prev_group_df = load_prev_group_df(grain, prev_date)
 
 if group_df.empty:
     st.warning("当前还没有 fact 数据。请先导入质检数据。")

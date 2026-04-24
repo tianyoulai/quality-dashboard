@@ -85,7 +85,7 @@ class TiDBConfig:
     database: str
     charset: str = "utf8mb4"
     pool_name: str = "tidb_pool"
-    pool_size: int = 3  # 降低连接数，适配 TiDB Serverless 免费版限制
+    pool_size: int = 5  # TiDB Serverless 免费版限制为 ~10 并发，留余量
 
     @classmethod
     def from_settings(cls) -> "TiDBConfig":
@@ -166,26 +166,29 @@ class TiDBManager:
     def fetch_df(self, sql: str, params: Iterable[Any] | None = None) -> pd.DataFrame:
         """执行 SQL 并返回 DataFrame。
         
-        安全防护：对无 LIMIT 的纯 SELECT（非聚合/非 GROUP BY/非子查询）自动追加上限，
-        防止全表扫描 122 万行数据。
+        安全防护：对无 LIMIT 的纯行查询自动追加上限 50000，
+        防止全表扫描大量数据。排除聚合/分组/子查询/UNION 等情况。
         """
         safe_sql = sql.strip().rstrip(";")
         upper = safe_sql.upper()
-        # 只对无 LIMIT 的纯行查询追加限制
-        # 排除：聚合函数、GROUP BY、子查询（FROM 后有括号）、UNION
-        if (upper.startswith("SELECT") and " LIMIT " not in upper and "\nLIMIT " not in upper
-                and "OFFSET" not in upper
-                and "GROUP BY" not in upper
-                and "COUNT(" not in upper
-                and "SUM(" not in upper
-                and "AVG(" not in upper
-                and "MAX(" not in upper
-                and "MIN(" not in upper
-                and "UNION" not in upper
-                # 排除含子查询的 SQL：FROM 后面紧跟括号或嵌套 SELECT
-                and not re.search(r'\bFROM\s*\(', upper)
-                and not re.search(r'\bFROM\s+SELECT\b', upper)):
+        
+        # 只对满足全部条件的纯 SELECT 追加 LIMIT：
+        # ① 以 SELECT 开头 ② 无 LIMIT/OFFSET ③ 无聚合函数/GROUP BY/UNION
+        # ④ FROM 后无子查询（括号）  ⑤ 无 WITH 子句（CTE）
+        needs_limit = (
+            upper.startswith("SELECT")
+            and " LIMIT " not in upper
+            and "\nLIMIT " not in upper
+            and "OFFSET" not in upper
+            and not upper.startswith("WITH")
+            and "GROUP BY" not in upper
+            and "UNION" not in upper
+            and not any(fn in upper for fn in ("COUNT(", "SUM(", "AVG(", "MAX(", "MIN("))
+            and not re.search(r'\bFROM\s*\(', upper)
+        )
+        if needs_limit:
             safe_sql += " LIMIT 50000"
+        
         with self.get_connection() as conn:
             cursor = conn.cursor()
             try:

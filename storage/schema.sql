@@ -778,3 +778,32 @@ CREATE TABLE IF NOT EXISTS sys_audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sal_created_at ON sys_audit_log (created_at);
+
+-- ═══════════════════════════════════════════════════════════════
+--  性能优化索引（Phase 18）
+-- ═══════════════════════════════════════════════════════════════
+
+-- fact_qa_event: 审核人+日期联合查询（审核人下探链路常用）
+CREATE INDEX IF NOT EXISTS idx_fqe_reviewer_date ON fact_qa_event (reviewer_name, biz_date);
+-- fact_qa_event: 组别+日期联合查询（组别概览常用）
+CREATE INDEX IF NOT EXISTS idx_fqe_group_date ON fact_qa_event (group_name, biz_date);
+
+-- fact_newcomer_qa: 审核人+日期联合（新人趋势查询）
+CREATE INDEX IF NOT EXISTS idx_fnq_reviewer_date ON fact_newcomer_qa (reviewer_name, biz_date);
+-- fact_newcomer_qa: 批次+阶段联合（批次阶段过滤）
+CREATE INDEX IF NOT EXISTS idx_fnq_batch_stage ON fact_newcomer_qa (batch_name, stage);
+
+-- fact_alert_event: 粒度+日期联合（告警查询入口）
+CREATE INDEX IF NOT EXISTS idx_faev_grain_date ON fact_alert_event (grain, alert_date);
+
+-- mart_day_group: 组别+日期联合（环比查询优化）
+CREATE INDEX IF NOT EXISTS idx_mdg_group_date ON mart_day_group (group_name, biz_date);
+-- mart_week_group: 组别+日期联合
+CREATE INDEX IF NOT EXISTS idx_mwg_group_date ON mart_week_group (group_name, week_begin_date);
+-- mart_month_group: 组别+日期联合
+CREATE INDEX IF NOT EXISTS idx_mmg_group_date ON mart_month_group (group_name, month_begin_date);
+
+-- mart_day_queue: 组别+日期联合（队列下探）
+CREATE INDEX IF NOT EXISTS idx_mdq_group_date ON mart_day_queue (group_name, biz_date);
+-- mart_day_auditor: 组别+日期联合（审核人下探）
+CREATE INDEX IF NOT EXISTS idx_mda_group_date ON mart_day_auditor (group_name, biz_date);
