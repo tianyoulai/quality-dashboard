@@ -119,7 +119,7 @@ def _build_group_trend(df: pd.DataFrame, date_col: str, grain_label: str, key_su
     return sel_group
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载日期范围...", ttl=300)
 def get_date_range() -> tuple[date, date]:
     row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
     if not row or row.get("min_d") is None:
@@ -132,18 +132,15 @@ def get_date_range() -> tuple[date, date]:
         max_val = max_val.date()
     return min_val, max_val
 
-
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载日维度数据...", ttl=300)
 def load_all_group_daily() -> pd.DataFrame:
     return repo.fetch_df("SELECT * FROM mart_day_group ORDER BY biz_date, group_name")
 
-
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载周维度数据...", ttl=300)
 def load_all_group_weekly() -> pd.DataFrame:
     return repo.fetch_df("SELECT * FROM mart_week_group ORDER BY week_begin_date, group_name")
 
-
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载月维度数据...", ttl=300)
 def load_all_group_monthly() -> pd.DataFrame:
     return repo.fetch_df("SELECT * FROM mart_month_group ORDER BY month_begin_date, group_name")
 

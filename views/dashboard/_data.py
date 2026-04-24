@@ -17,7 +17,7 @@ service = DashboardService()
 repo = DashboardRepository()
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载日期范围...", ttl=300)
 def get_data_date_range() -> tuple[date, date]:
     """获取数据库中的日期范围, 用于设置默认日期。"""
     row = repo.fetch_one(
@@ -34,7 +34,7 @@ def get_data_date_range() -> tuple[date, date]:
     return min_val, max_val
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载看板数据...", ttl=300)
 def load_dashboard_lite(grain: str, selected_date: date) -> dict:
     """轻量首屏加载：只查 group_df + alerts_df（2次DB查询）。
     
@@ -43,7 +43,7 @@ def load_dashboard_lite(grain: str, selected_date: date) -> dict:
     return service.load_dashboard_lite(grain, selected_date)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载环比数据...", ttl=300)
 def load_prev_group_df(grain: str, prev_date: date) -> pd.DataFrame:
     """环比专用：只加载上期 group_df（1次DB查询）。
     
@@ -68,12 +68,12 @@ def _anchor_col(grain: str) -> str:
     return {"day": "biz_date", "week": "week_begin_date", "month": "month_begin_date"}[grain]
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载组别数据...", ttl=300)
 def load_group_overview(grain: str, selected_date: date) -> dict:
     return service.load_dashboard_payload(grain, selected_date)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载组别详情...", ttl=300)
 def load_group_detail(
     grain: str,
     selected_date: date,
@@ -90,7 +90,7 @@ def load_group_detail(
     )
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载队列数据...", ttl=300)
 def load_queue_overview_data(
     grain: str,
     start_date: date,

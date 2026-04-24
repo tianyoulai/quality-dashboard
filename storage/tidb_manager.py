@@ -114,9 +114,9 @@ def _create_pool(config: TiDBConfig) -> pooling.MySQLConnectionPool:
         charset=config.charset,
         ssl_ca=None,
         ssl_verify_cert=False,
-        connect_timeout=10,
-        connection_timeout=30,
-        pool_reset_session=False,  # 禁用 session reset，避免 TiDB 连接问题
+        connect_timeout=5,          # 缩短：原 10s → 5s，TiDB Serverless 通常 1-2s
+        connection_timeout=15,      # 缩短：原 30s → 15s
+        pool_reset_session=False,   # 禁用 session reset，避免 TiDB 连接问题
     )
 
 
@@ -143,7 +143,7 @@ class TiDBManager:
         pass
 
     def _ensure_pool(self) -> pooling.MySQLConnectionPool:
-        """延迟初始化连接池。"""
+        """延迟初始化连接池。首次创建后立即预热一个连接，减少首次查询等待。"""
         if self._pool is None:
             config = self.config or TiDBConfig.from_settings()
             if not config.host or not config.user or not config.password:
@@ -151,6 +151,12 @@ class TiDBManager:
                                  f"password={'已设置' if config.password else '未设置'}")
             self.config = config  # 回写，确保 table_exists 等方法能读取
             self._pool = _create_pool(config)
+            # 预热：立即建立并归还一个连接，让后续查询不用等 TCP 握手
+            try:
+                warmup_conn = self._pool.get_connection()
+                warmup_conn.close()
+            except Exception:
+                pass  # 预热失败不阻塞，第一次查询时自然会重试
         return self._pool
 
     @contextmanager

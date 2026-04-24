@@ -153,12 +153,8 @@ if not selected_group and not group_df.empty:
     selected_group = group_df.iloc[0]["group_name"]
     st.session_state["selected_group"] = selected_group
 
-# 加载队列概览数据（跟随选中的组别）
-# B组整体：展示所有 B组开头的队列
-# A组/B组-评论/B组-账号：仅展示该组数据
-queue_data = load_queue_overview_data(grain, date_start, date_end, selected_group)
-queue_df = queue_data["queue_df"]
-trend_df = queue_data["trend_df"]
+# 加载队列概览数据 → 延迟到第四行队列区域再加载（减少首屏阻塞）
+# queue_data = load_queue_overview_data(...)  # moved below
 
 # 加载前一天/上周/上月的数据用于环比对比
 if grain == "day":
@@ -382,6 +378,11 @@ for idx, (_, row) in enumerate(display_groups.iterrows()):
 st.markdown("---")
 
 # ==================== 第四行：队列概览 + 趋势 ====================
+# 💡 延迟加载队列数据（首屏只需 group_df + alerts_df + prev_group_df）
+queue_data = load_queue_overview_data(grain, date_start, date_end, selected_group)
+queue_df = queue_data["queue_df"]
+trend_df = queue_data["trend_df"]
+
 queue_col, trend_col = st.columns([1, 1.2])
 
 with queue_col:

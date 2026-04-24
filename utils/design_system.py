@@ -112,8 +112,13 @@ class DesignSystem:
 
     # ── 全局样式注入 ──────────────────────────────────────
     def inject_theme(self) -> None:
-        """注入全局CSS主题 + 侧边栏品牌 + 导航。"""
-        st.markdown(self._global_css(), unsafe_allow_html=True)
+        """注入全局CSS主题 + 侧边栏品牌 + 导航。
+        
+        使用 session_state 标记避免同一页面重复注入 CSS，减少 DOM 操作。
+        """
+        if not st.session_state.get("_ds_theme_injected"):
+            st.markdown(self._global_css(), unsafe_allow_html=True)
+            st.session_state["_ds_theme_injected"] = True
         self._render_sidebar()
 
     def _global_css(self) -> str:

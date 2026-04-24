@@ -107,7 +107,7 @@ def batch_effective_join_condition(fact_alias: str, dim_alias: str = "n", biz_da
     )
 
 
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_resource(show_spinner=False)
 def get_table_columns(table_name: str) -> set[str]:
     try:
         columns_df = repo.fetch_df(f"SHOW COLUMNS FROM {table_name}")
@@ -254,7 +254,7 @@ _loaders = create_data_loaders(repo, {
 })
 
 # 用 st.cache_data 包裹每个加载器（数据加载层本身不加装饰器）
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载批次数据...", ttl=300)
 def load_batch_list():
     return _loaders["load_batch_list"]()
 
@@ -262,7 +262,7 @@ def load_batch_list():
 def load_newcomer_members(batch_names=None, owner=None, team_name=None):
     return _loaders["load_newcomer_members"](batch_names, owner, team_name)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在加载质检数据...", ttl=300)
 def load_newcomer_qa_daily(batch_names=None, reviewer_aliases=None, stage=None):
     return _loaders["load_newcomer_qa_daily"](batch_names, reviewer_aliases, stage)
 
@@ -294,7 +294,7 @@ def load_newcomer_dimension_detail(batch_names=None, reviewer_aliases=None):
 def load_unmatched_newcomer_rows():
     return _loaders["load_unmatched_newcomer_rows"]()
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner="正在计算新人聚合指标...", ttl=300)
 def load_newcomer_aggregate_payload(batch_names=None, owner=None, team_name=None):
     return build_newcomer_aggregate_payload(batch_names=batch_names, owner=owner, team_name=team_name)
 

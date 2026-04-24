@@ -20,7 +20,7 @@ service = DashboardService()
 ds.hero("🔍", "明细查询", "多维度筛选 · 问题下钻 · 数据导出")
 
 
-@st.cache_data(show_spinner=False, ttl=600)
+@st.cache_data(show_spinner="正在加载筛选选项...", ttl=600)
 def get_filter_options() -> dict:
     """获取筛选选项（缓存 10 分钟）。
     
@@ -74,7 +74,7 @@ def get_filter_options() -> dict:
     }
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner="正在查询明细数据...")
 def query_detail(
     date_start: date,
     date_end: date,
