@@ -9,10 +9,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# 全宽CSS
-st.markdown("""<style>.block-container { max-width: 100% !important; }</style>""", unsafe_allow_html=True)
-
-# 自动跳转到总览页面
+# 自动跳转到总览页面（注意：跳转前不要注入任何 HTML/CSS，否则会导致前端 DOM removeChild 错误）
 try:
     st.switch_page("pages/01_总览.py")
 except Exception:
