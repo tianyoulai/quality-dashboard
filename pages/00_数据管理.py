@@ -544,6 +544,15 @@ with tab_import[6]:
     total_cnt = repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_qa_event")["cnt"]
     st.info(f"📊 当前质检数据总量：**{total_cnt:,}** 条")
 
+    # 显示新人数据量
+    try:
+        newcomer_cnt = repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_newcomer_qa")
+        newcomer_batch_cnt = repo.fetch_one("SELECT COUNT(*) AS cnt FROM dim_newcomer_batch")
+        if newcomer_cnt and newcomer_batch_cnt:
+            st.caption(f"📋 新人相关数据：fact_newcomer_qa {newcomer_cnt['cnt']:,} 条 · dim_newcomer_batch {newcomer_batch_cnt['cnt']:,} 条（清除操作不影响新人数据）")
+    except Exception:
+        pass
+
     # 清除方式选择
     clear_mode = st.radio("清除方式", ["按日期范围清除", "全部清除"], horizontal=True, key="clear_mode")
 

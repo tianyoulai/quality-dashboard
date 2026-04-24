@@ -90,6 +90,12 @@ st.markdown(f"""
 
 tab_grain = st.tabs(["日维度", "周维度", "月维度"])
 
+# 侧边栏筛选
+st.sidebar.markdown("### 🎯 内检筛选")
+inspect_type_options = {"全部": None, "内检": "internal", "外检": "external"}
+inspect_type_label = st.sidebar.selectbox("质检类型", options=list(inspect_type_options.keys()), key="inspect_type_filter")
+inspect_type_value = inspect_type_options[inspect_type_label]
+
 # ==================== 日维度 ====================
 with tab_grain[0]:
     df_daily = load_all_group_daily()
@@ -97,6 +103,10 @@ with tab_grain[0]:
     if df_daily.empty:
         st.warning("暂无日维度数据。请运行 `python jobs/refresh_warehouse.py` 刷新数仓。")
     else:
+        # 按质检类型过滤
+        if inspect_type_value and "inspect_type" in df_daily.columns:
+            df_daily = df_daily[df_daily["inspect_type"] == inspect_type_value]
+        
         # 日期筛选（优化样式）——默认最近7天，避免查询全量数据导致加载过慢
         st.markdown("#### 📅 日期筛选")
         col1, col2 = st.columns(2)
@@ -211,6 +221,10 @@ with tab_grain[1]:
     if df_weekly.empty:
         st.warning("暂无周维度数据。")
     else:
+        # 按质检类型过滤
+        if inspect_type_value and "inspect_type" in df_weekly.columns:
+            df_weekly = df_weekly[df_weekly["inspect_type"] == inspect_type_value]
+        
         # 全量组别周度排名（使用加权平均）
         st.markdown("### 🏆 全量组别周度排名")
         group_agg_w = df_weekly.groupby("group_name").agg(
@@ -285,6 +299,10 @@ with tab_grain[2]:
     if df_monthly.empty:
         st.warning("暂无月维度数据。")
     else:
+        # 按质检类型过滤
+        if inspect_type_value and "inspect_type" in df_monthly.columns:
+            df_monthly = df_monthly[df_monthly["inspect_type"] == inspect_type_value]
+        
         # 全量组别月度排名（使用加权平均）
         st.markdown("### 🏆 全量组别月度排名")
         group_agg_m = df_monthly.groupby("group_name").agg(

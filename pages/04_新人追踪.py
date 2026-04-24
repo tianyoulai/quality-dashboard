@@ -521,6 +521,49 @@ def load_newcomer_error_detail(reviewer_alias: str, limit: int = 100) -> pd.Data
 
 
 @st.cache_data(show_spinner=False, ttl=300)
+def load_person_all_qa_records(reviewer_alias: str, limit: int = 200) -> pd.DataFrame:
+    """加载某个新人的全量质检记录（包含正确和错误，内检+外检+正式上线）。
+    
+    优先从 fact_newcomer_qa 加载内检/外检记录，
+    再从 fact_qa_event（通过 vw_qa_base）补充正式上线阶段的记录。
+    """
+    # 1. 新人内检/外检记录
+    newcomer_df = repo.fetch_df("""
+        SELECT biz_date, stage, queue_name, content_type,
+               training_topic, risk_level, comment_text,
+               raw_judgement, final_judgement, error_type, qa_note,
+               is_correct
+        FROM fact_newcomer_qa
+        WHERE reviewer_name = %s
+        ORDER BY biz_date DESC, qa_time DESC
+        LIMIT %s
+    """, [reviewer_alias, limit])
+
+    # 2. 正式上线阶段记录（从 vw_qa_base 获取，包含申诉关联）
+    formal_df = repo.fetch_df("""
+        SELECT biz_date, 'formal' AS stage, queue_name, content_type,
+               training_topic, risk_level, comment_text,
+               raw_judgement,
+               COALESCE(final_review_result, raw_judgement) AS final_judgement,
+               error_type, qa_note,
+               is_final_correct AS is_correct
+        FROM vw_qa_base
+        WHERE reviewer_name = %s
+          AND workforce_type = 'formal'
+        ORDER BY biz_date DESC, qa_time DESC
+        LIMIT %s
+    """, [reviewer_alias, limit])
+
+    frames = [df for df in [newcomer_df, formal_df] if df is not None and not df.empty]
+    if not frames:
+        return pd.DataFrame()
+    
+    combined = pd.concat(frames, ignore_index=True)
+    combined = combined.sort_values("biz_date", ascending=False).head(limit)
+    return combined
+
+
+@st.cache_data(show_spinner=False, ttl=300)
 def load_newcomer_error_summary(
     batch_names: list[str] | None = None,
     reviewer_aliases: list[str] | None = None,
@@ -710,18 +753,39 @@ if not unmatched_df.empty:
         unmatched_count = int(true_unmatched_df["row_cnt"].sum())
         unmatched_names_list = true_unmatched_df["reviewer_name"].tolist()
         st.warning(f"当前仍有 {unmatched_count} 条新人质检记录未关联到批次（共 {len(unmatched_names_list)} 人）。建议补齐名单后再看批次汇总。")
-        if len(unmatched_names_list) > 5:
-            with st.expander(f"📋 查看 {len(unmatched_names_list)} 位未关联人员名单", expanded=False):
-                # 分列展示，提高可读性
-                _cols_per_row = 4
-                for i in range(0, len(unmatched_names_list), _cols_per_row):
-                    _row_names = unmatched_names_list[i:i + _cols_per_row]
-                    _exp_cols = st.columns(_cols_per_row)
-                    for j, name in enumerate(_row_names):
-                        with _exp_cols[j]:
-                            st.write(name)
-        else:
-            st.caption("涉及：" + "、".join(unmatched_names_list))
+
+        # --- 自动关联功能 ---
+        _unmatch_col1, _unmatch_col2 = st.columns([3, 1])
+        with _unmatch_col1:
+            if len(unmatched_names_list) > 5:
+                with st.expander(f"📋 查看 {len(unmatched_names_list)} 位未关联人员名单", expanded=False):
+                    _cols_per_row = 4
+                    for i in range(0, len(unmatched_names_list), _cols_per_row):
+                        _row_names = unmatched_names_list[i:i + _cols_per_row]
+                        _exp_cols = st.columns(_cols_per_row)
+                        for j, name in enumerate(_row_names):
+                            with _exp_cols[j]:
+                                st.write(name)
+            else:
+                st.caption("涉及：" + "、".join(unmatched_names_list))
+        with _unmatch_col2:
+            if st.button("🔗 自动关联到批次", key="auto_link_batch", use_container_width=True, type="primary",
+                         help="根据 reviewer_name 匹配 dim_newcomer_batch 名单，自动回填 batch_name"):
+                try:
+                    # 通过 reviewer_alias 匹配，同时验证日期区间
+                    link_sql = f"""
+                        UPDATE fact_newcomer_qa q
+                        JOIN dim_newcomer_batch n
+                          ON {batch_effective_join_condition("q", "n")}
+                        SET q.batch_name = n.batch_name
+                        WHERE (q.batch_name IS NULL OR q.batch_name = '')
+                    """
+                    repo.execute(link_sql)
+                    st.success("✅ 自动关联完成！请刷新页面查看结果。")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ 自动关联失败：{e}")
 
 # ==================== 页面模块切换 + 侧边栏筛选 ====================
 
@@ -1816,6 +1880,49 @@ if active_view == "person":
             with m4:
                 st.metric("📦 累计质检量", f"{total_person_qa:,}")
 
+            # --- 数据关联诊断（当质检量为0时自动展示） ---
+            if total_person_qa == 0:
+                with st.expander("🔍 数据关联诊断（质检量为 0，可能存在关联问题）", expanded=True):
+                    diag_alias = person_info["reviewer_alias"]
+                    diag_name = person_info["reviewer_name"]
+                    st.markdown(f"""
+                    **当前审核人信息**：
+                    - 姓名：`{diag_name}` → 系统映射名（reviewer_alias）：`{diag_alias}`
+                    - 批次：{person_info['batch_name']} · 生效日期：{person_info.get('effective_start_date', '—')} ~ {person_info.get('effective_end_date', '无限期')}
+                    """)
+                    # 检查 fact_newcomer_qa 中是否有匹配记录
+                    diag_newcomer = repo.fetch_df("""
+                        SELECT reviewer_name, stage, COUNT(*) AS cnt, MIN(biz_date) AS min_date, MAX(biz_date) AS max_date
+                        FROM fact_newcomer_qa
+                        WHERE reviewer_name = %s OR reviewer_name LIKE %s
+                        GROUP BY reviewer_name, stage
+                    """, [diag_alias, f"%{diag_name}%"])
+
+                    if diag_newcomer is not None and not diag_newcomer.empty:
+                        st.warning("⚠️ fact_newcomer_qa 中**存在**该审核人的记录，但未被关联到当前批次。可能原因：")
+                        st.dataframe(diag_newcomer, use_container_width=True, hide_index=True)
+                        st.markdown("""
+                        - **日期不在生效区间内**：质检数据日期早于 `effective_start_date`
+                        - **reviewer_name 不匹配**：fact表中的名称与 dim 表中的 `reviewer_alias` 不一致
+                        - **batch_name 未回填**：请点击页面顶部的「🔗 自动关联到批次」按钮
+                        """)
+                    else:
+                        # 检查 mart_day_auditor 中是否有记录
+                        diag_formal = repo.fetch_df("""
+                            SELECT reviewer_name, COUNT(*) AS cnt, MIN(biz_date) AS min_date, MAX(biz_date) AS max_date
+                            FROM mart_day_auditor
+                            WHERE reviewer_name = %s OR reviewer_name LIKE %s
+                            GROUP BY reviewer_name
+                        """, [diag_alias, f"%{diag_name}%"])
+
+                        if diag_formal is not None and not diag_formal.empty:
+                            st.info("📋 该审核人在 **正式质检数据**（mart_day_auditor）中存在记录，但可能尚未进入新人质检阶段。")
+                            st.dataframe(diag_formal, use_container_width=True, hide_index=True)
+                        else:
+                            st.error("❌ 该审核人在 fact_newcomer_qa 和 mart_day_auditor 中均**无记录**，请确认：\n"
+                                     "1. 数据是否已导入\n"
+                                     "2. reviewer_alias 映射名是否正确（当前为 `{}`）".format(diag_alias))
+
             if not person_qa.empty:
                 detail_col1, detail_col2 = st.columns([1.2, 1])
                 with detail_col1:
@@ -1868,6 +1975,38 @@ if active_view == "person":
                 st.download_button("📥 导出错误明细", csv, file_name=f"errors_{alias}.csv", mime="text/csv")
             else:
                 st.success("🎉 该新人暂无错误记录。")
+
+            # --- 全量质检记录明细 ---
+            with st.expander("📄 查看全量质检记录", expanded=False):
+                all_detail_df = load_person_all_qa_records(alias, 200)
+                if all_detail_df is not None and not all_detail_df.empty:
+                    display_all = all_detail_df.copy()
+                    # 重命名列
+                    col_rename = {
+                        "biz_date": "日期", "stage": "阶段", "queue_name": "队列",
+                        "content_type": "内容类型", "training_topic": "培训专题",
+                        "risk_level": "风险等级", "comment_text": "评论文本",
+                        "raw_judgement": "一审结果", "final_judgement": "质检结果",
+                        "error_type": "错误类型", "qa_note": "质检备注",
+                        "is_correct": "是否正确",
+                    }
+                    for old_name, new_name in col_rename.items():
+                        if old_name in display_all.columns:
+                            display_all = display_all.rename(columns={old_name: new_name})
+                    if "阶段" in display_all.columns:
+                        display_all["阶段"] = display_all["阶段"].map({"internal": "🏫 内检", "external": "🔍 外检", "formal": "✅ 正式上线"}).fillna("—")
+                    if "是否正确" in display_all.columns:
+                        display_all["是否正确"] = display_all["是否正确"].map({1: "✅ 正确", 0: "❌ 错误"}).fillna("—")
+
+                    _total_all = len(display_all)
+                    _correct_all = int((all_detail_df.get("is_correct", pd.Series(dtype=int)) == 1).sum())
+                    _error_all = _total_all - _correct_all
+                    st.caption(f"共 {_total_all} 条记录 · ✅ 正确 {_correct_all} · ❌ 错误 {_error_all} · 正确率 {_correct_all / _total_all * 100:.1f}%" if _total_all > 0 else "暂无记录")
+                    st.dataframe(display_all, use_container_width=True, hide_index=True, height=400)
+                    all_csv = display_all.to_csv(index=False).encode("utf-8-sig")
+                    st.download_button("📥 导出全量质检记录", all_csv, file_name=f"all_qa_{alias}.csv", mime="text/csv", key=f"dl_all_{alias}")
+                else:
+                    st.info("暂无该审核人的质检记录数据。")
 
 # ==================== 模块 5: 维度分析 ====================
 if active_view == "dimension":
