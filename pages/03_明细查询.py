@@ -215,6 +215,21 @@ reviewer_val = reviewer_sel if reviewer_sel != "(全部)" else None
 error_val = error_sel if error_sel != "(全部)" else None
 issue_mode = issue_filter if only_issues and issue_filter != "全部问题" else None
 
+# 查询按钮 —— 点击后才触发数据查询，避免页面打开时自动加载全量数据
+query_btn_col1, query_btn_col2 = st.columns([1, 3])
+with query_btn_col1:
+    do_query = st.button("🔍 开始查询", type="primary", use_container_width=True)
+with query_btn_col2:
+    st.caption("💡 设定好筛选条件后，点击「开始查询」按钮加载数据")
+
+# 使用 session_state 记住是否已执行查询
+if do_query:
+    st.session_state["detail_queried"] = True
+
+if not st.session_state.get("detail_queried", False):
+    st.info("👆 请设定筛选条件后，点击「🔍 开始查询」按钮查看数据。")
+    st.stop()
+
 df = query_detail(date_start, date_end, group_val, queue_val, reviewer_val, error_val, only_issues, issue_filter if issue_filter != "全部问题" else "", query_limit)
 
 if df.empty:

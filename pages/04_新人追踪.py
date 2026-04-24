@@ -1215,7 +1215,23 @@ if active_view == "overview":
         st.info("当前筛选条件下暂无新人成员。")
     else:
         st.markdown("#### 🏷️ 批次一览")
+        
+        # 分离有数据和无数据的批次
+        active_batches = []
+        pending_batches = []
         for _, batch_row in overview_batch_df.iterrows():
+            bn = batch_row["batch_name"]
+            batch_compare_row_check = batch_compare_df[batch_compare_df["batch_name"] == bn].iloc[0] if not batch_compare_df.empty and bn in batch_compare_df["batch_name"].values else None
+            total_qa_check = float(batch_compare_row_check["qa_cnt"]) if batch_compare_row_check is not None else 0
+            if total_qa_check > 0:
+                active_batches.append(batch_row)
+            else:
+                pending_batches.append(batch_row)
+        
+        if not active_batches:
+            st.info("当前所有批次暂无质检数据。")
+        
+        for batch_row in active_batches:
             bn = batch_row["batch_name"]
             join_d = batch_row["join_date"]
             days_since = (date.today() - join_d).days if pd.notna(join_d) and join_d else 0
@@ -1320,6 +1336,24 @@ if active_view == "overview":
                 </div>
             </div>
             """, unsafe_allow_html=True)
+
+        # 折叠展示空批次（待开始状态）
+        if pending_batches:
+            with st.expander(f"📭 待开始批次（{len(pending_batches)} 个，暂无质检数据）", expanded=False):
+                for batch_row in pending_batches:
+                    bn = batch_row["batch_name"]
+                    join_d = batch_row["join_date"]
+                    cnt = int(batch_row["total_cnt"])
+                    leader = display_text(batch_row.get("leader_names"))
+                    owner_names = display_text(batch_row.get("owners"))
+                    st.markdown(f"""
+                    <div style="padding: 0.75rem 1rem; border-radius: 0.5rem; background: #F9FAFB; border: 1px dashed #D1D5DB; margin-bottom: 0.5rem;">
+                        <span style="font-weight: 600; color: #6B7280;">📋 {bn}</span>
+                        <span style="font-size: 0.8rem; color: #9CA3AF; margin-left: 1rem;">
+                            人数 {cnt} · 入职 {join_d if pd.notna(join_d) else '—'} · 管理 {leader} · owner {owner_names}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
 
     if not stage_summary_df.empty:
         col_a, col_b = st.columns([1.2, 1])

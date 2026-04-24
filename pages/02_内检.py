@@ -98,13 +98,16 @@ with tab_grain[0]:
     if df_daily.empty:
         st.warning("暂无日维度数据。请运行 `python jobs/refresh_warehouse.py` 刷新数仓。")
     else:
-        # 日期筛选（优化样式）
+        # 日期筛选（优化样式）——默认最近7天，避免查询全量数据导致加载过慢
         st.markdown("#### 📅 日期筛选")
         col1, col2 = st.columns(2)
+        default_day_start = max(min_d, max_d - timedelta(days=6))
         with col1:
-            date_start = st.date_input("起始日期", value=min_d, key="day_start")
+            date_start = st.date_input("起始日期", value=default_day_start, key="day_start")
         with col2:
             date_end = st.date_input("截止日期", value=max_d, key="day_end")
+        
+        st.caption(f"💡 默认展示最近7天数据。完整数据范围：{min_d} ~ {max_d}")
         
         # 转换日期格式并过滤空值
         df_daily["biz_date"] = pd.to_datetime(df_daily["biz_date"]).dt.date

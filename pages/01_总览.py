@@ -1,4 +1,4 @@
-"""首页：告警驱动 + 组别经营 + 队列概览整合版。
+"""总览页：告警驱动 + 组别经营 + 队列概览整合版。
 
 设计原则：
 - 一页看全：核心指标、告警、队列分布、趋势，一个页面都能看到
@@ -421,24 +421,30 @@ with metric_col1:
         </div>
     """, unsafe_allow_html=True)
 with metric_col2:
-    # 环比变化
-    prev_total_qa = prev_group_df["qa_cnt"].sum() if not prev_group_df.empty else None
-    qa_change = f"↑{(total_qa - prev_total_qa):,}" if prev_total_qa and total_qa > prev_total_qa else (f"↓{(prev_total_qa - total_qa):,}" if prev_total_qa and total_qa < prev_total_qa else "")
+    # 环比变化：原始正确率
+    prev_total_qa = prev_group_df["qa_cnt"].sum() if not prev_group_df.empty else 0
+    prev_avg_raw_acc = (prev_group_df["raw_accuracy_rate"] * prev_group_df["qa_cnt"]).sum() / prev_total_qa if prev_total_qa > 0 else None
+    raw_acc_change_html = calc_change(avg_raw_acc, prev_avg_raw_acc)
+    grain_label = "日" if grain == "day" else ("周" if grain == "week" else "月")
+    prev_label = f"环比上{grain_label}" if raw_acc_change_html else "一审准确率"
     st.markdown(f"""
         <div style="background: #ffffff; 
                     padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
             <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; font-weight: 500;">✓ 原始正确率</div>
             <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; color: #2e7d32;">{avg_raw_acc:.2f}%</div>
-            <div style="font-size: 0.7rem; opacity: 0.8;">{qa_change if qa_change else '一审准确率'}</div>
+            <div style="font-size: 0.7rem; opacity: 0.8;">{prev_label} {raw_acc_change_html}</div>
         </div>
     """, unsafe_allow_html=True)
 with metric_col3:
+    prev_avg_final_acc = (prev_group_df["final_accuracy_rate"] * prev_group_df["qa_cnt"]).sum() / prev_total_qa if prev_total_qa > 0 else None
+    final_acc_change_html = calc_change(avg_final_acc, prev_avg_final_acc)
+    final_prev_label = f"环比上{grain_label}" if final_acc_change_html else "终审准确率"
     st.markdown(f"""
         <div style="background: #ffffff; 
                     padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
             <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; font-weight: 500;">✓✓ 最终正确率</div>
             <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; color: #2e7d32;">{avg_final_acc:.2f}%</div>
-            <div style="font-size: 0.7rem; opacity: 0.8;">终审准确率</div>
+            <div style="font-size: 0.7rem; opacity: 0.8;">{final_prev_label} {final_acc_change_html}</div>
         </div>
     """, unsafe_allow_html=True)
 with metric_col4:

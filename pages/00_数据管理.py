@@ -1,4 +1,4 @@
-"""数据导入页：上传质检 Excel / 申诉 CSV，一键刷新数仓和告警。"""
+"""数据管理页：上传质检 Excel / 申诉 CSV，一键刷新数仓和告警。"""
 from __future__ import annotations
 
 import hashlib
@@ -23,10 +23,10 @@ repo = DashboardRepository()
 st.markdown("""
 <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">📤 数据导入</h1>
+        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">⚙️ 数据管理</h1>
     </div>
     <div style="font-size: 0.9rem; color: #4b5563; line-height: 1.6;">
-        上传质检 Excel 或申诉 CSV · 自动入库并刷新数仓/告警 · 支持多文件批量上传
+        上传质检 Excel 或申诉 CSV · 自动入库并刷新数仓/告警 · 支持多文件批量上传 · 数据维护与清理
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -567,8 +567,14 @@ with tab_import[6]:
             st.warning(f"将删除 **{date_start}** 至 **{date_end}** 的质检数据，共 **{preview_cnt:,}** 条")
 
             confirm = st.checkbox(f"我确认要删除这 {preview_cnt:,} 条数据", key="confirm_range")
+            
+            # 二次确认：输入确认文字
+            confirm_text = ""
+            if confirm and preview_cnt > 0:
+                st.error("🔒 **安全验证**：请在下方输入 `DELETE` 来确认删除操作")
+                confirm_text = st.text_input("请输入 DELETE 确认删除", key="confirm_range_text", placeholder="输入 DELETE")
 
-            if st.button("删除选中日期的数据", key="delete_range", disabled=(not confirm or preview_cnt == 0)):
+            if st.button("删除选中日期的数据", key="delete_range", disabled=(not confirm or preview_cnt == 0 or confirm_text != "DELETE")):
                 with st.spinner("正在删除数据..."):
                     # 删除 fact 表数据
                     repo.execute(
@@ -612,7 +618,13 @@ with tab_import[6]:
 
         confirm_all = st.checkbox(f"我确认要删除全部 {total_cnt:,} 条数据", key="confirm_all")
 
-        if st.button("全部清空", key="delete_all", disabled=(not confirm_all or total_cnt == 0)):
+        # 二次确认：输入确认文字
+        confirm_all_text = ""
+        if confirm_all and total_cnt > 0:
+            st.error("🔒 **安全验证**：请在下方输入 `DELETE ALL` 来确认清空操作")
+            confirm_all_text = st.text_input("请输入 DELETE ALL 确认清空", key="confirm_all_text", placeholder="输入 DELETE ALL")
+
+        if st.button("全部清空", key="delete_all", disabled=(not confirm_all or total_cnt == 0 or confirm_all_text != "DELETE ALL")):
             with st.spinner("正在清空数据..."):
                 # 清空所有相关表（使用事务确保原子性）
                 tables = [
