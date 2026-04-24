@@ -495,29 +495,34 @@ st.markdown("")  # 轻量间距
 ds.section("🔍 数据下探分析")
 st.caption("💡 通过选择队列和审核人，逐层下探到具体问题样本")
 
-detail_payload = load_group_detail(grain, selected_date, selected_group, None, None, None, None)
-detail_queue_df: pd.DataFrame = detail_payload["queue_df"]
-detail_auditor_df: pd.DataFrame = detail_payload["auditor_df"]
+# 💡 性能优化：下探数据按需加载（点击"加载详情"后才查DB）
+# 原来这里直接调 load_group_detail 触发 8 次 DB 查询
+# 现在改为先用 queue_df（已加载）做队列选择，审核人等下探数据点击后加载
+_detail_loaded = st.session_state.get("_detail_loaded", False)
 
 # 队列和审核人选择器（优化布局）
 select_col1, select_col2, select_col3 = st.columns([1.5, 1.5, 2])
 with select_col1:
-    # 按错误量降序排序，需关注的队列优先
-    if not detail_queue_df.empty:
-        _sorted_queues = detail_queue_df.sort_values("error_cnt", ascending=False)["queue_name"].tolist() if "error_cnt" in detail_queue_df.columns else detail_queue_df["queue_name"].tolist()
+    # 用已有的 queue_df 构建队列选项，避免额外 DB 查询
+    if not queue_df.empty:
+        _sorted_queues = queue_df.sort_values("total_qa_cnt", ascending=False)["queue_name"].tolist()
         queue_options = ["(全部)"] + _sorted_queues
     else:
         queue_options = ["(全部)"]
-    selected_queue = st.selectbox("🎯 选择队列（按错误量排序）", options=queue_options, key="queue_selector", label_visibility="visible")
+    selected_queue = st.selectbox("🎯 选择队列（按质检量排序）", options=queue_options, key="queue_selector", label_visibility="visible")
 with select_col2:
-    # 如果选择了队列，过滤审核人列表
-    if selected_queue != "(全部)" and not detail_auditor_df.empty:
-        # 重新加载选定队列的审核人数据
-        filtered_auditor_payload = load_group_detail(grain, selected_date, selected_group, selected_queue, None, None, None)
-        filtered_auditor_df = filtered_auditor_payload["auditor_df"]
-        auditor_options = ["(全部)"] + filtered_auditor_df["reviewer_name"].tolist() if not filtered_auditor_df.empty else ["(全部)"]
-    else:
+    # 审核人需要 DB 查询，延迟到用户点击加载
+    if _detail_loaded:
+        detail_payload = load_group_detail(grain, selected_date, selected_group, 
+                                           selected_queue if selected_queue != "(全部)" else None, 
+                                           None, None, None)
+        detail_auditor_df = detail_payload["auditor_df"]
+        detail_queue_df = detail_payload["queue_df"]
         auditor_options = ["(全部)"] + detail_auditor_df["reviewer_name"].tolist() if not detail_auditor_df.empty else ["(全部)"]
+    else:
+        detail_auditor_df = pd.DataFrame()
+        detail_queue_df = pd.DataFrame()
+        auditor_options = ["(全部)"]
     selected_auditor = st.selectbox("👤 选择审核人", options=auditor_options, key="auditor_selector", label_visibility="visible")
 with select_col3:
     # 面包屑导航（设计系统 v3.0）
@@ -528,296 +533,308 @@ with select_col3:
         breadcrumb_items.append((selected_auditor, COLORS.warning))
     ds.breadcrumb(breadcrumb_items)
 
-# 快捷筛选按钮（带选中状态高亮）
-st.markdown("##### ⚡ 快捷筛选")
-_current_filter = st.session_state.get("quick_filter")
-quick_filter_col1, quick_filter_col2, quick_filter_col3, quick_filter_col4, _ = st.columns([1.2, 1.2, 1.2, 1.2, 0.8])
-with quick_filter_col1:
-    if st.button("🔴 错误量TOP5", use_container_width=True, help="筛选错误量最多的5个队列", type="primary" if _current_filter == "error_top5" else "secondary"):
-        st.session_state["quick_filter"] = "error_top5"
+# 加载下探数据按钮
+if not _detail_loaded:
+    if st.button("🔍 加载下探数据（队列排名 + 审核人 + 样本）", use_container_width=True, type="primary"):
+        st.session_state["_detail_loaded"] = True
         st.rerun()
-with quick_filter_col2:
-    if st.button("📉 正确率<99%", use_container_width=True, help="筛选正确率低于99%的队列", type="primary" if _current_filter == "low_rate" else "secondary"):
-        st.session_state["quick_filter"] = "low_rate"
-        st.rerun()
-with quick_filter_col3:
-    if st.button("⚠️ 有错判/漏判", use_container_width=True, help="筛选有错判或漏判的队列", type="primary" if _current_filter == "has_judge_error" else "secondary"):
-        st.session_state["quick_filter"] = "has_judge_error"
-        st.rerun()
-with quick_filter_col4:
-    if st.button("🔄 重置筛选", use_container_width=True, help="清除所有筛选条件"):
-        st.session_state["quick_filter"] = None
-        st.session_state["queue_selector"] = "(全部)"
-        st.session_state["auditor_selector"] = "(全部)"
-        st.rerun()
-
-# 快捷筛选当前状态提示
-if _current_filter:
-    filter_labels = {"error_top5": "错误量TOP5", "low_rate": "正确率<99%", "has_judge_error": "有错判/漏判"}
-    st.caption(f"🔸 当前筛选：**{filter_labels.get(_current_filter, _current_filter)}**")
-
-# 根据选择重新加载数据
-if selected_queue != "(全部)" or selected_auditor != "(全部)":
-    final_payload = load_group_detail(
-        grain, selected_date, selected_group,
-        selected_queue if selected_queue != "(全部)" else None,
-        selected_auditor if selected_auditor != "(全部)" else None,
-        None, None
-    )
-    final_auditor_df = final_payload["auditor_df"]
+    st.caption("💡 点击上方按钮加载详细数据，首屏仅展示核心指标和趋势，加载更快")
 else:
-    final_auditor_df = detail_auditor_df
+    # 快捷筛选按钮（带选中状态高亮）
+    st.markdown("##### ⚡ 快捷筛选")
+    _current_filter = st.session_state.get("quick_filter")
+    quick_filter_col1, quick_filter_col2, quick_filter_col3, quick_filter_col4, _ = st.columns([1.2, 1.2, 1.2, 1.2, 0.8])
+    with quick_filter_col1:
+        if st.button("🔴 错误量TOP5", use_container_width=True, help="筛选错误量最多的5个队列", type="primary" if _current_filter == "error_top5" else "secondary"):
+            st.session_state["quick_filter"] = "error_top5"
+            st.rerun()
+    with quick_filter_col2:
+        if st.button("📉 正确率<99%", use_container_width=True, help="筛选正确率低于99%的队列", type="primary" if _current_filter == "low_rate" else "secondary"):
+            st.session_state["quick_filter"] = "low_rate"
+            st.rerun()
+    with quick_filter_col3:
+        if st.button("⚠️ 有错判/漏判", use_container_width=True, help="筛选有错判或漏判的队列", type="primary" if _current_filter == "has_judge_error" else "secondary"):
+            st.session_state["quick_filter"] = "has_judge_error"
+            st.rerun()
+    with quick_filter_col4:
+        if st.button("🔄 重置筛选", use_container_width=True, help="清除所有筛选条件"):
+            st.session_state["quick_filter"] = None
+            st.session_state["queue_selector"] = "(全部)"
+            st.session_state["auditor_selector"] = "(全部)"
+            st.rerun()
 
-rank_col, auditor_col = st.columns([1.2, 1])
+    # 快捷筛选当前状态提示
+    if _current_filter:
+        filter_labels = {"error_top5": "错误量TOP5", "low_rate": "正确率<99%", "has_judge_error": "有错判/漏判"}
+        st.caption(f"🔸 当前筛选：**{filter_labels.get(_current_filter, _current_filter)}**")
 
-with rank_col:
-    st.markdown("#### 🏆 队列正确率排名")
-    if not detail_queue_df.empty:
-        # 添加提示信息
-        st.caption(f"共 {len(detail_queue_df)} 个队列，按最终正确率升序排列（问题队列优先展示）")
-        
-        queue_show = pd.DataFrame()
-        queue_show["队列"] = detail_queue_df["queue_name"]
-        queue_show["质检量"] = detail_queue_df["qa_cnt"]
-        queue_show["出错量"] = detail_queue_df["final_error_cnt"]
-        queue_show["原始正确率"] = detail_queue_df["raw_accuracy_rate"]
-        queue_show["最终正确率"] = detail_queue_df["final_accuracy_rate"]
-        queue_show["错判率"] = detail_queue_df["misjudge_rate"]
-        queue_show["漏判率"] = detail_queue_df["missjudge_rate"]
-
-        st.dataframe(
-            queue_show,
-            use_container_width=True,
-            hide_index=True,
-            height=320,
-            column_config={
-                "队列": st.column_config.TextColumn("队列", width="medium"),
-                "质检量": st.column_config.NumberColumn("质检量", width="small", format="d"),
-                "出错量": st.column_config.NumberColumn("出错量", width="small", format="d"),
-                "原始正确率": st.column_config.NumberColumn("原始正确率", width="small", format="%.2f%%"),
-                "最终正确率": st.column_config.NumberColumn("最终正确率", width="small", format="%.2f%%"),
-                "错判率": st.column_config.NumberColumn("错判率", width="small", format="%.2f%%"),
-                "漏判率": st.column_config.NumberColumn("漏判率", width="small", format="%.2f%%"),
-            }
+    # 根据选择重新加载数据
+    if selected_queue != "(全部)" or selected_auditor != "(全部)":
+        final_payload = load_group_detail(
+            grain, selected_date, selected_group,
+            selected_queue if selected_queue != "(全部)" else None,
+            selected_auditor if selected_auditor != "(全部)" else None,
+            None, None
         )
+        final_auditor_df = final_payload["auditor_df"]
     else:
-        st.info("暂无队列数据")
+        final_auditor_df = detail_auditor_df
 
-with auditor_col:
-    st.markdown("#### 👥 审核人视图")
-    if not final_auditor_df.empty:
-        total_auditors = len(final_auditor_df)
-        default_show = 20
-        
-        # 控制展示数量
-        show_all = st.session_state.get("show_all_auditors", False)
-        display_df = final_auditor_df if show_all else final_auditor_df.head(default_show)
-        
-        showing_count = len(display_df)
-        st.caption(f"共 {total_auditors} 位审核人，当前展示 {showing_count} 位，按最终正确率升序排列（需关注的审核人优先展示）")
-        
-        auditor_show = pd.DataFrame()
-        auditor_show["审核人"] = display_df["reviewer_name"]
-        auditor_show["质检量"] = display_df["qa_cnt"]
-        auditor_show["原始正确率"] = display_df["raw_accuracy_rate"]
-        auditor_show["最终正确率"] = display_df["final_accuracy_rate"]
-        auditor_show["错判量"] = display_df["misjudge_cnt"]
-        auditor_show["漏判量"] = display_df["missjudge_cnt"]
+    rank_col, auditor_col = st.columns([1.2, 1])
 
-        st.dataframe(
-            auditor_show,
-            use_container_width=True,
-            hide_index=True,
-            height=320,
-            column_config={
-                "审核人": st.column_config.TextColumn("审核人", width="medium"),
-                "质检量": st.column_config.NumberColumn("质检量", width="small", format="d"),
-                "原始正确率": st.column_config.NumberColumn("原始正确率", width="small", format="%.2f%%"),
-                "最终正确率": st.column_config.NumberColumn("最终正确率", width="small", format="%.2f%%"),
-                "错判量": st.column_config.NumberColumn("错判量", width="small", format="d"),
-                "漏判量": st.column_config.NumberColumn("漏判量", width="small", format="d"),
-            }
-        )
-        # 加载更多 / 收起
-        if total_auditors > default_show:
-            _btn_col1, _btn_col2 = st.columns(2)
-            with _btn_col1:
-                if not show_all:
-                    if st.button(f"📋 显示全部 {total_auditors} 位审核人", key="show_all_auditors_btn", use_container_width=True):
-                        st.session_state["show_all_auditors"] = True
-                        st.rerun()
-                else:
-                    if st.button("🔼 收起，只显示前20位", key="collapse_auditors_btn", use_container_width=True):
-                        st.session_state["show_all_auditors"] = False
-                        st.rerun()
-            with _btn_col2:
+    with rank_col:
+        st.markdown("#### 🏆 队列正确率排名")
+        if not detail_queue_df.empty:
+            # 添加提示信息
+            st.caption(f"共 {len(detail_queue_df)} 个队列，按最终正确率升序排列（问题队列优先展示）")
+            
+            queue_show = pd.DataFrame()
+            queue_show["队列"] = detail_queue_df["queue_name"]
+            queue_show["质检量"] = detail_queue_df["qa_cnt"]
+            queue_show["出错量"] = detail_queue_df["final_error_cnt"]
+            queue_show["原始正确率"] = detail_queue_df["raw_accuracy_rate"]
+            queue_show["最终正确率"] = detail_queue_df["final_accuracy_rate"]
+            queue_show["错判率"] = detail_queue_df["misjudge_rate"]
+            queue_show["漏判率"] = detail_queue_df["missjudge_rate"]
+
+            st.dataframe(
+                queue_show,
+                use_container_width=True,
+                hide_index=True,
+                height=320,
+                column_config={
+                    "队列": st.column_config.TextColumn("队列", width="medium"),
+                    "质检量": st.column_config.NumberColumn("质检量", width="small", format="d"),
+                    "出错量": st.column_config.NumberColumn("出错量", width="small", format="d"),
+                    "原始正确率": st.column_config.NumberColumn("原始正确率", width="small", format="%.2f%%"),
+                    "最终正确率": st.column_config.NumberColumn("最终正确率", width="small", format="%.2f%%"),
+                    "错判率": st.column_config.NumberColumn("错判率", width="small", format="%.2f%%"),
+                    "漏判率": st.column_config.NumberColumn("漏判率", width="small", format="%.2f%%"),
+                }
+            )
+        else:
+            st.info("暂无队列数据")
+
+    with auditor_col:
+        st.markdown("#### 👥 审核人视图")
+        if not final_auditor_df.empty:
+            total_auditors = len(final_auditor_df)
+            default_show = 20
+            
+            # 控制展示数量
+            show_all = st.session_state.get("show_all_auditors", False)
+            display_df = final_auditor_df if show_all else final_auditor_df.head(default_show)
+            
+            showing_count = len(display_df)
+            st.caption(f"共 {total_auditors} 位审核人，当前展示 {showing_count} 位，按最终正确率升序排列（需关注的审核人优先展示）")
+            
+            auditor_show = pd.DataFrame()
+            auditor_show["审核人"] = display_df["reviewer_name"]
+            auditor_show["质检量"] = display_df["qa_cnt"]
+            auditor_show["原始正确率"] = display_df["raw_accuracy_rate"]
+            auditor_show["最终正确率"] = display_df["final_accuracy_rate"]
+            auditor_show["错判量"] = display_df["misjudge_cnt"]
+            auditor_show["漏判量"] = display_df["missjudge_cnt"]
+
+            st.dataframe(
+                auditor_show,
+                use_container_width=True,
+                hide_index=True,
+                height=320,
+                column_config={
+                    "审核人": st.column_config.TextColumn("审核人", width="medium"),
+                    "质检量": st.column_config.NumberColumn("质检量", width="small", format="d"),
+                    "原始正确率": st.column_config.NumberColumn("原始正确率", width="small", format="%.2f%%"),
+                    "最终正确率": st.column_config.NumberColumn("最终正确率", width="small", format="%.2f%%"),
+                    "错判量": st.column_config.NumberColumn("错判量", width="small", format="d"),
+                    "漏判量": st.column_config.NumberColumn("漏判量", width="small", format="d"),
+                }
+            )
+            # 加载更多 / 收起
+            if total_auditors > default_show:
+                _btn_col1, _btn_col2 = st.columns(2)
+                with _btn_col1:
+                    if not show_all:
+                        if st.button(f"📋 显示全部 {total_auditors} 位审核人", key="show_all_auditors_btn", use_container_width=True):
+                            st.session_state["show_all_auditors"] = True
+                            st.rerun()
+                    else:
+                        if st.button("🔼 收起，只显示前20位", key="collapse_auditors_btn", use_container_width=True):
+                            st.session_state["show_all_auditors"] = False
+                            st.rerun()
+                with _btn_col2:
+                    if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
+                        _jump_to_detail(selected_group, selected_queue, selected_auditor)
+            else:
+                # 审核人不超过20位时只显示跳转按钮
                 if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
                     _jump_to_detail(selected_group, selected_queue, selected_auditor)
         else:
-            # 审核人不超过20位时只显示跳转按钮
-            if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
-                _jump_to_detail(selected_group, selected_queue, selected_auditor)
+            st.info("暂无审核人数据")
+
+    # ==================== 第五点五行：问题样本预览（下探闭环） ====================
+    st.markdown("---")
+    st.markdown("#### 🔬 问题样本预览")
+    st.caption("💡 选择队列和审核人后，自动展示对应的错误样本，完成下探闭环")
+
+    # 构建样本查询参数
+    _sample_group = selected_group
+    _sample_queue = selected_queue if selected_queue != "(全部)" else None
+    _sample_auditor = selected_auditor if selected_auditor != "(全部)" else None
+
+    # 只在选择了具体队列或审核人时展示样本
+    if _sample_queue or _sample_auditor:
+        _sample_payload = load_group_detail(
+            grain, selected_date, _sample_group,
+            _sample_queue, _sample_auditor, None, None
+        )
+        _sample_df = _sample_payload.get("sample_df", pd.DataFrame())
+        _error_df = _sample_payload.get("error_df", pd.DataFrame())
+
+        if not _sample_df.empty:
+            _sc1, _sc2, _sc3 = st.columns(3)
+            _sc1.metric("样本总量", f"{len(_sample_df):,}")
+            _raw_err_cnt = (_sample_df["is_raw_correct"] == 0).sum() if "is_raw_correct" in _sample_df.columns else 0
+            _sc2.metric("原始错误", f"{_raw_err_cnt:,}")
+            _appeal_rev = (_sample_df["is_appeal_reversed"] == 1).sum() if "is_appeal_reversed" in _sample_df.columns else 0
+            _sc3.metric("申诉改判", f"{_appeal_rev:,}")
+
+            # 错误类型 TOP5
+            if not _error_df.empty:
+                with st.expander("📊 错误类型分布", expanded=False):
+                    _err_show = pd.DataFrame()
+                    _err_show["错误类型"] = _error_df["error_type"]
+                    _err_show["数量"] = _error_df["issue_cnt"]
+                    st.dataframe(_err_show.head(10), use_container_width=True, hide_index=True)
+
+            # 样本明细表
+            with st.expander(f"📋 样本明细（共 {len(_sample_df)} 条）", expanded=True):
+                _cols_map = {
+                    "biz_date": "日期", "queue_name": "队列", "reviewer_name": "审核人",
+                    "raw_judgement": "审核人判定", "final_review_result": "质检判定",
+                    "error_type": "错误类型", "error_reason": "错误归因",
+                    "comment_text": "评论文本",
+                }
+                _avail_cols = [c for c in _cols_map if c in _sample_df.columns]
+                _show_df = _sample_df[_avail_cols].rename(columns=_cols_map).head(50)
+                st.dataframe(_show_df, use_container_width=True, hide_index=True, height=350)
+
+                if len(_sample_df) > 50:
+                    st.caption(f"💡 仅展示前 50 条，完整数据请前往「明细查询」页面")
+
+                # 跳转到明细查询的按钮
+                if st.button("🔍 在明细查询中查看完整数据", key="goto_detail_from_sample", use_container_width=True):
+                        _jump_to_detail(selected_group, _sample_queue, _sample_auditor)
+        else:
+            st.info("当前筛选条件下无样本数据")
     else:
-        st.info("暂无审核人数据")
+        st.info("👆 请在上方选择具体的队列或审核人，查看问题样本")
 
-# ==================== 第五点五行：问题样本预览（下探闭环） ====================
-st.markdown("---")
-st.markdown("#### 🔬 问题样本预览")
-st.caption("💡 选择队列和审核人后，自动展示对应的错误样本，完成下探闭环")
-
-# 构建样本查询参数
-_sample_group = selected_group
-_sample_queue = selected_queue if selected_queue != "(全部)" else None
-_sample_auditor = selected_auditor if selected_auditor != "(全部)" else None
-
-# 只在选择了具体队列或审核人时展示样本
-if _sample_queue or _sample_auditor:
-    _sample_payload = load_group_detail(
-        grain, selected_date, _sample_group,
-        _sample_queue, _sample_auditor, None, None
-    )
-    _sample_df = _sample_payload.get("sample_df", pd.DataFrame())
-    _error_df = _sample_payload.get("error_df", pd.DataFrame())
-
-    if not _sample_df.empty:
-        _sc1, _sc2, _sc3 = st.columns(3)
-        _sc1.metric("样本总量", f"{len(_sample_df):,}")
-        _raw_err_cnt = (_sample_df["is_raw_correct"] == 0).sum() if "is_raw_correct" in _sample_df.columns else 0
-        _sc2.metric("原始错误", f"{_raw_err_cnt:,}")
-        _appeal_rev = (_sample_df["is_appeal_reversed"] == 1).sum() if "is_appeal_reversed" in _sample_df.columns else 0
-        _sc3.metric("申诉改判", f"{_appeal_rev:,}")
-
-        # 错误类型 TOP5
-        if not _error_df.empty:
-            with st.expander("📊 错误类型分布", expanded=False):
-                _err_show = pd.DataFrame()
-                _err_show["错误类型"] = _error_df["error_type"]
-                _err_show["数量"] = _error_df["issue_cnt"]
-                st.dataframe(_err_show.head(10), use_container_width=True, hide_index=True)
-
-        # 样本明细表
-        with st.expander(f"📋 样本明细（共 {len(_sample_df)} 条）", expanded=True):
-            _cols_map = {
-                "biz_date": "日期", "queue_name": "队列", "reviewer_name": "审核人",
-                "raw_judgement": "审核人判定", "final_review_result": "质检判定",
-                "error_type": "错误类型", "error_reason": "错误归因",
-                "comment_text": "评论文本",
-            }
-            _avail_cols = [c for c in _cols_map if c in _sample_df.columns]
-            _show_df = _sample_df[_avail_cols].rename(columns=_cols_map).head(50)
-            st.dataframe(_show_df, use_container_width=True, hide_index=True, height=350)
-
-            if len(_sample_df) > 50:
-                st.caption(f"💡 仅展示前 50 条，完整数据请前往「明细查询」页面")
-
-            # 跳转到明细查询的按钮
-            if st.button("🔍 在明细查询中查看完整数据", key="goto_detail_from_sample", use_container_width=True):
-                    _jump_to_detail(selected_group, _sample_queue, _sample_auditor)
-    else:
-        st.info("当前筛选条件下无样本数据")
-else:
-    st.info("👆 请在上方选择具体的队列或审核人，查看问题样本")
+st.markdown("")  # 轻量间距
 
 # ==================== 第六行：质检标签分布 + 质检员工作量 ====================
 st.markdown("---")
 ds.section("📊 质检维度分析")
-st.caption("💡 了解质检标签分布和质检员工作量分布，帮助识别问题高发区域")
 
-label_col, owner_col = st.columns([1, 1])
+# 💡 性能优化：维度分析放在折叠面板中按需加载
+with st.expander("📊 查看质检标签分布 + 质检员工作量（点击展开加载）", expanded=False):
+    st.caption("💡 了解质检标签分布和质检员工作量分布，帮助识别问题高发区域")
 
-with label_col:
-    st.markdown("#### 🏷️ 质检结果分布")
-    label_df = load_qa_label_distribution_cached(grain, selected_date, selected_group, top_n=10)
-    if not label_df.empty:
-        # 添加统计信息
-        total_labels = label_df["cnt"].sum()
-        st.caption(f"前10个标签（按质检量降序），共 {total_labels:,} 条质检记录")
-        
-        # 使用水平条形图展示
-        fig_label = px.bar(
-            label_df.sort_values("cnt", ascending=True),
-            x="cnt", y="label_name",
-            orientation="h",
-            text=label_df.sort_values("cnt", ascending=True)["pct"].apply(lambda x: f"{x:.1f}%"),
-            color="cnt",
-            color_continuous_scale="Blues"
-        )
-        fig_label.update_traces(textposition="outside", textfont_size=11)
-        fig_label.update_layout(**ds.chart_layout(height=320), xaxis_title="质检量", yaxis_title="", showlegend=False, coloraxis_showscale=False)
-        st.plotly_chart(fig_label, use_container_width=True)
-        
-        # 补充：仅错误样本分布
-        with st.expander("🔴 仅错误样本分布", expanded=False):
-            error_label_df = load_qa_label_distribution_cached(grain, selected_date, selected_group, top_n=10)
-            # 从整体标签中过滤出错误相关项（如果有err_cnt字段）
-            if "err_cnt" in label_df.columns:
-                err_only = label_df[label_df["err_cnt"] > 0].sort_values("err_cnt", ascending=False)
-                if not err_only.empty:
-                    fig_err = px.bar(
-                        err_only, x="err_cnt", y="label_name", orientation="h",
-                        text="err_cnt", color_discrete_sequence=[COLORS.danger]
-                    )
-                    fig_err.update_traces(textposition="outside")
-                    fig_err.update_layout(**ds.chart_layout(height=250), xaxis_title="错误量", yaxis_title="")
-                    st.plotly_chart(fig_err, use_container_width=True)
+    label_col, owner_col = st.columns([1, 1])
+
+    with label_col:
+        st.markdown("#### 🏷️ 质检结果分布")
+        label_df = load_qa_label_distribution_cached(grain, selected_date, selected_group, top_n=10)
+        if not label_df.empty:
+            # 添加统计信息
+            total_labels = label_df["cnt"].sum()
+            st.caption(f"前10个标签（按质检量降序），共 {total_labels:,} 条质检记录")
+            
+            # 使用水平条形图展示
+            fig_label = px.bar(
+                label_df.sort_values("cnt", ascending=True),
+                x="cnt", y="label_name",
+                orientation="h",
+                text=label_df.sort_values("cnt", ascending=True)["pct"].apply(lambda x: f"{x:.1f}%"),
+                color="cnt",
+                color_continuous_scale="Blues"
+            )
+            fig_label.update_traces(textposition="outside", textfont_size=11)
+            fig_label.update_layout(**ds.chart_layout(height=320), xaxis_title="质检量", yaxis_title="", showlegend=False, coloraxis_showscale=False)
+            st.plotly_chart(fig_label, use_container_width=True)
+            
+            # 补充：仅错误样本分布
+            with st.expander("🔴 仅错误样本分布", expanded=False):
+                error_label_df = load_qa_label_distribution_cached(grain, selected_date, selected_group, top_n=10)
+                # 从整体标签中过滤出错误相关项（如果有err_cnt字段）
+                if "err_cnt" in label_df.columns:
+                    err_only = label_df[label_df["err_cnt"] > 0].sort_values("err_cnt", ascending=False)
+                    if not err_only.empty:
+                        fig_err = px.bar(
+                            err_only, x="err_cnt", y="label_name", orientation="h",
+                            text="err_cnt", color_discrete_sequence=[COLORS.danger]
+                        )
+                        fig_err.update_traces(textposition="outside")
+                        fig_err.update_layout(**ds.chart_layout(height=250), xaxis_title="错误量", yaxis_title="")
+                        st.plotly_chart(fig_err, use_container_width=True)
+                    else:
+                        st.success("🎉 所有标签均无错误记录")
                 else:
-                    st.success("🎉 所有标签均无错误记录")
-            else:
-                st.caption("💡 暂无错误维度数据，可通过数据管理页导入更完整的数据")
-    else:
-        st.info("暂无标签数据")
+                    st.caption("💡 暂无错误维度数据，可通过数据管理页导入更完整的数据")
+        else:
+            st.info("暂无标签数据")
 
-with owner_col:
-    st.markdown("#### 👨‍💼 质检员工作量")
-    owner_df = load_qa_owner_distribution_cached(grain, selected_date, selected_group, top_n=10)
-    if not owner_df.empty:
-        # 工作量概览指标
-        total_qa_owners = owner_df["qa_cnt"].sum()
-        owner_count = len(owner_df)
-        avg_qa = total_qa_owners / owner_count if owner_count > 0 else 0
-        max_qa = owner_df["qa_cnt"].max()
-        min_qa = owner_df["qa_cnt"].min()
-        # 均衡度 = 1 - (标准差/均值)，越接近1说明越均衡
-        std_qa = owner_df["qa_cnt"].std()
-        balance_score = max(0, 1 - std_qa / avg_qa) * 100 if avg_qa > 0 else 0
-        balance_color = COLORS.success if balance_score >= 70 else (COLORS.warning if balance_score >= 40 else COLORS.danger)
-        
-        _ow_col1, _ow_col2, _ow_col3 = st.columns(3)
-        with _ow_col1:
-            st.metric("人均质检量", f"{avg_qa:,.0f}")
-        with _ow_col2:
-            st.metric("最大/最小", f"{max_qa:,.0f} / {min_qa:,.0f}")
-        with _ow_col3:
-            st.markdown(f"""
-            <div style="text-align:center;">
-                <div style="font-size:0.75rem; color:{COLORS.text_secondary};">均衡度</div>
-                <div style="font-size:1.5rem; font-weight:700; color:{balance_color};">{balance_score:.0f}%</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.caption(f"前{owner_count}名质检员（按质检量降序）")
-        
-        # 表格展示
-        owner_show = pd.DataFrame()
-        owner_show["质检员"] = owner_df["owner_name"].apply(lambda x: x.split("-")[-1] if "-" in x else x)
-        owner_show["质检量"] = owner_df["qa_cnt"].apply(lambda x: f"{int(x):,}")
-        owner_show["正确率"] = owner_df["accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        owner_show["出错量"] = owner_df["error_cnt"].apply(lambda x: f"{int(x):,}")
-        
-        st.dataframe(
-            owner_show, 
-            use_container_width=True, 
-            hide_index=True, 
-            height=280,
-            column_config={
-                "质检员": st.column_config.TextColumn("质检员", width="medium"),
-                "质检量": st.column_config.TextColumn("质检量", width="small"),
-                "正确率": st.column_config.TextColumn("正确率", width="small"),
-                "出错量": st.column_config.TextColumn("出错量", width="small"),
-            }
-        )
-    else:
-        st.info("暂无质检员数据")
+    with owner_col:
+        st.markdown("#### 👨‍💼 质检员工作量")
+        owner_df = load_qa_owner_distribution_cached(grain, selected_date, selected_group, top_n=10)
+        if not owner_df.empty:
+            # 工作量概览指标
+            total_qa_owners = owner_df["qa_cnt"].sum()
+            owner_count = len(owner_df)
+            avg_qa = total_qa_owners / owner_count if owner_count > 0 else 0
+            max_qa = owner_df["qa_cnt"].max()
+            min_qa = owner_df["qa_cnt"].min()
+            # 均衡度 = 1 - (标准差/均值)，越接近1说明越均衡
+            std_qa = owner_df["qa_cnt"].std()
+            balance_score = max(0, 1 - std_qa / avg_qa) * 100 if avg_qa > 0 else 0
+            balance_color = COLORS.success if balance_score >= 70 else (COLORS.warning if balance_score >= 40 else COLORS.danger)
+            
+            _ow_col1, _ow_col2, _ow_col3 = st.columns(3)
+            with _ow_col1:
+                st.metric("人均质检量", f"{avg_qa:,.0f}")
+            with _ow_col2:
+                st.metric("最大/最小", f"{max_qa:,.0f} / {min_qa:,.0f}")
+            with _ow_col3:
+                st.markdown(f"""
+                <div style="text-align:center;">
+                    <div style="font-size:0.75rem; color:{COLORS.text_secondary};">均衡度</div>
+                    <div style="font-size:1.5rem; font-weight:700; color:{balance_color};">{balance_score:.0f}%</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            st.caption(f"前{owner_count}名质检员（按质检量降序）")
+            
+            # 表格展示
+            owner_show = pd.DataFrame()
+            owner_show["质检员"] = owner_df["owner_name"].apply(lambda x: x.split("-")[-1] if "-" in x else x)
+            owner_show["质检量"] = owner_df["qa_cnt"].apply(lambda x: f"{int(x):,}")
+            owner_show["正确率"] = owner_df["accuracy_rate"].apply(lambda x: f"{x:.2f}%")
+            owner_show["出错量"] = owner_df["error_cnt"].apply(lambda x: f"{int(x):,}")
+            
+            st.dataframe(
+                owner_show, 
+                use_container_width=True, 
+                hide_index=True, 
+                height=280,
+                column_config={
+                    "质检员": st.column_config.TextColumn("质检员", width="medium"),
+                    "质检量": st.column_config.TextColumn("质检量", width="small"),
+                    "正确率": st.column_config.TextColumn("正确率", width="small"),
+                    "出错量": st.column_config.TextColumn("出错量", width="small"),
+                }
+            )
+        else:
+            st.info("暂无质检员数据")
 
 # ==================== 底部说明 ====================
 st.markdown("---")

@@ -1,5 +1,7 @@
 [server]
 headless = true
+maxUploadSize = 50
+enableStaticServing = false
 
 [theme]
 primaryColor = "#2563EB"
@@ -13,3 +15,6 @@ gatherUsageStats = false
 
 [runner]
 fastReruns = true
+
+[client]
+showSidebarNavigation = true
