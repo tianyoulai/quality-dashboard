@@ -264,6 +264,8 @@ def get_newcomer_detail(
     batch_id: Optional[str] = Query(None, description="批次名称（可选，用于精确定位）")
 ) -> dict:
     """新人个人汇总指标 + 每日趋势 + 错误分布。"""
+    # 提取核心姓名（去掉"云雀联营-"前缀）
+    short_name = name.replace("云雀联营-", "") if "云雀联营-" in name else name
 
     # 查基础信息
     batch_filter = "AND b.batch_name = %s" if batch_id else ""
@@ -272,9 +274,9 @@ def get_newcomer_detail(
     meta = repo.fetch_one(f"""
         SELECT b.batch_name, b.join_date, b.team_name, b.mentor_name
         FROM dim_newcomer_batch b
-        WHERE b.reviewer_name = %s {batch_filter}
+        WHERE (b.reviewer_name = %s OR b.reviewer_alias = %s) {batch_filter}
         LIMIT 1
-    """, batch_params)
+    """, [name, name] + ([batch_id] if batch_id else []))
 
     # 总体指标
     summary = repo.fetch_one("""
@@ -287,8 +289,8 @@ def get_newcomer_detail(
                MAX(biz_date)     AS last_date,
                COUNT(DISTINCT queue_name) AS queue_cnt
         FROM fact_newcomer_qa
-        WHERE reviewer_name = %s
-    """, [name])
+        WHERE (reviewer_name = %s OR reviewer_short_name = %s OR reviewer_name = %s)
+    """, [name, short_name, short_name])
 
     if not summary or int(summary["qa_cnt"] or 0) == 0:
         raise HTTPException(status_code=404, detail=f"未找到新人数据: {name}")
@@ -304,9 +306,9 @@ def get_newcomer_detail(
         SELECT COALESCE(NULLIF(TRIM(error_type), ''), '无标签') AS err_type,
                COUNT(*) AS cnt
         FROM fact_newcomer_qa
-        WHERE reviewer_name = %s AND is_correct = 0
+        WHERE (reviewer_name = %s OR reviewer_short_name = %s OR reviewer_name = %s) AND is_correct = 0
         GROUP BY err_type ORDER BY cnt DESC LIMIT 10
-    """, [name])
+    """, [name, short_name, short_name])
     total_err = int(df_err["cnt"].sum()) if not df_err.empty else 0
     if not df_err.empty and total_err > 0:
         df_err["pct"] = (df_err["cnt"] / total_err * 100).round(1)
@@ -318,9 +320,9 @@ def get_newcomer_detail(
                COUNT(*) AS qa_cnt,
                ROUND(SUM(is_correct) * 100.0 / NULLIF(COUNT(*), 0), 2) AS accuracy
         FROM fact_newcomer_qa
-        WHERE reviewer_name = %s
+        WHERE (reviewer_name = %s OR reviewer_short_name = %s OR reviewer_name = %s)
         GROUP BY biz_date ORDER BY biz_date
-    """, [name])
+    """, [name, short_name, short_name])
     trend = dataframe_to_records(df_trend)
 
     # 状态

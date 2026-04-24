@@ -60,10 +60,59 @@ def batch_effective_start_expr(dim_alias: str = "n") -> str:
     return f"COALESCE({dim_alias}.effective_start_date, {dim_alias}.join_date)"
 
 
-def batch_effective_join_condition(fact_alias: str, dim_alias: str = "n", biz_date_field: str = "biz_date") -> str:
+def _extract_short_names(aliases: list[str]) -> list[str]:
+    """从 reviewer_alias 列表中提取核心姓名（去掉「云雀联营-」前缀）。"""
+    short = set()
+    for a in aliases:
+        name = a.replace("云雀联营-", "") if "云雀联营-" in a else a
+        short.add(name)
+    return list(short)
+
+
+def reviewer_name_in_condition(fact_alias: str, aliases: list[str], has_short_name: bool = True) -> tuple[str, list[str]]:
+    """生成多重名称匹配的 WHERE 条件和参数列表。
+    
+    同时匹配 reviewer_name（全名）和 reviewer_short_name（短名，仅 fact_newcomer_qa 有此字段），
+    解决「云雀联营-刘崇阳」vs「刘崇阳」vs「刘崇阳（白龙湖）」等格式不一致问题。
+    
+    Returns:
+        (sql_condition, params)
+    """
+    short_names = _extract_short_names(aliases)
+    all_names = list(set(aliases + short_names))
+    placeholders = ", ".join(["%s"] * len(all_names))
+    if has_short_name:
+        short_placeholders = ", ".join(["%s"] * len(short_names))
+        condition = (
+            f"({fact_alias}.reviewer_name IN ({placeholders})"
+            f" OR {fact_alias}.reviewer_short_name IN ({short_placeholders}))"
+        )
+        params = all_names + short_names
+    else:
+        condition = f"{fact_alias}.reviewer_name IN ({placeholders})"
+        params = all_names
+    return condition, params
+
+
+def batch_effective_join_condition(fact_alias: str, dim_alias: str = "n", biz_date_field: str = "biz_date", has_short_name: bool = True) -> str:
     start_expr = batch_effective_start_expr(dim_alias)
+    # 多重名称匹配：
+    # 1. fact.reviewer_name = dim.reviewer_alias（全名匹配，如 "云雀联营-刘崇阳" = "云雀联营-刘崇阳"）
+    # 2. fact.reviewer_short_name = dim.reviewer_name（短名匹配，仅 fact_newcomer_qa 有此字段）
+    # 3. fact.reviewer_name = dim.reviewer_name（原始名 = 短名，如 "刘崇阳" = "刘崇阳"）
+    if has_short_name:
+        name_cond = (
+            f"({fact_alias}.reviewer_name = {dim_alias}.reviewer_alias "
+            f"OR {fact_alias}.reviewer_short_name = {dim_alias}.reviewer_name "
+            f"OR {fact_alias}.reviewer_name = {dim_alias}.reviewer_name)"
+        )
+    else:
+        name_cond = (
+            f"({fact_alias}.reviewer_name = {dim_alias}.reviewer_alias "
+            f"OR {fact_alias}.reviewer_name = {dim_alias}.reviewer_name)"
+        )
     return (
-        f"{fact_alias}.reviewer_name = {dim_alias}.reviewer_alias "
+        f"{name_cond} "
         f"AND {fact_alias}.{biz_date_field} >= {start_expr} "
         f"AND ({dim_alias}.effective_end_date IS NULL OR {fact_alias}.{biz_date_field} <= {dim_alias}.effective_end_date)"
     )
@@ -90,6 +139,17 @@ def ensure_newcomer_schema() -> bool:
             repo.execute("ALTER TABLE fact_newcomer_qa ADD COLUMN training_topic VARCHAR(256) COMMENT '培训专题' AFTER risk_level")
         if "is_practice_sample" not in newcomer_columns:
             repo.execute("ALTER TABLE fact_newcomer_qa ADD COLUMN is_practice_sample TINYINT(1) DEFAULT 0 COMMENT '是否正式人力下线学习样例（1=是 0=否）' AFTER is_missjudge")
+        if "reviewer_short_name" not in newcomer_columns:
+            repo.execute("ALTER TABLE fact_newcomer_qa ADD COLUMN reviewer_short_name VARCHAR(128) COMMENT '审核人核心姓名（去掉前缀）' AFTER reviewer_name")
+            # 自动回填：去掉"云雀联营-"前缀
+            repo.execute("""
+                UPDATE fact_newcomer_qa
+                SET reviewer_short_name = CASE
+                    WHEN reviewer_name LIKE '云雀联营-%' THEN SUBSTRING(reviewer_name, 5)
+                    ELSE reviewer_name
+                END
+                WHERE reviewer_short_name IS NULL OR reviewer_short_name = ''
+            """)
         return True
     except Exception:
         return False
@@ -448,9 +508,9 @@ def load_newcomer_qa_daily(
         conditions.append(f"n.batch_name IN ({placeholders})")
         params.extend(batch_names)
     if reviewer_aliases:
-        placeholders = ", ".join(["%s"] * len(reviewer_aliases))
-        conditions.append(f"q.reviewer_name IN ({placeholders})")
-        params.extend(reviewer_aliases)
+        cond, cond_params = reviewer_name_in_condition("q", reviewer_aliases)
+        conditions.append(cond)
+        params.extend(cond_params)
     if stage:
         conditions.append("q.stage = %s")
         params.append(stage)
@@ -487,7 +547,7 @@ def load_formal_qa_daily(
             SUM(m.missjudge_cnt) AS missjudge_cnt
         FROM mart_day_auditor m
         JOIN dim_newcomer_batch n
-          ON {batch_effective_join_condition("m", "n")}
+          ON {batch_effective_join_condition("m", "n", has_short_name=False)}
         WHERE 1 = 1
     """
     params: list[str] = []
@@ -496,9 +556,11 @@ def load_formal_qa_daily(
         sql += f" AND n.batch_name IN ({placeholders})"
         params.extend(batch_names)
     if reviewer_aliases:
-        placeholders = ", ".join(["%s"] * len(reviewer_aliases))
+        short_names = _extract_short_names(reviewer_aliases)
+        all_names = list(set(reviewer_aliases + short_names))
+        placeholders = ", ".join(["%s"] * len(all_names))
         sql += f" AND m.reviewer_name IN ({placeholders})"
-        params.extend(reviewer_aliases)
+        params.extend(all_names)
     sql += " GROUP BY m.biz_date, m.reviewer_name, n.batch_name, n.team_name, n.reviewer_name"
     sql += " ORDER BY m.biz_date"
     return repo.fetch_df(sql, params)
@@ -506,27 +568,34 @@ def load_formal_qa_daily(
 
 @st.cache_data(show_spinner=False, ttl=300)
 def load_newcomer_error_detail(reviewer_alias: str, limit: int = 100) -> pd.DataFrame:
-    """加载某个新人的最近错误明细（内检+外检）。"""
+    """加载某个新人的最近错误明细（内检+外检）。
+    
+    使用多重名称匹配：reviewer_name = alias 或 reviewer_short_name = 短名。
+    """
+    # 提取核心姓名（去掉"云雀联营-"前缀）
+    short_name = reviewer_alias.replace("云雀联营-", "") if "云雀联营-" in reviewer_alias else reviewer_alias
     return repo.fetch_df("""
         SELECT biz_date, stage, queue_name, content_type,
                training_topic, risk_level, comment_text,
                raw_judgement, final_judgement, error_type, qa_note,
                is_correct, is_misjudge, is_missjudge
         FROM fact_newcomer_qa
-        WHERE reviewer_name = %s
+        WHERE (reviewer_name = %s OR reviewer_short_name = %s OR reviewer_name = %s)
           AND is_correct = 0
         ORDER BY biz_date DESC, qa_time DESC
         LIMIT %s
-    """, [reviewer_alias, limit])
+    """, [reviewer_alias, short_name, short_name, limit])
 
 
 @st.cache_data(show_spinner=False, ttl=300)
 def load_person_all_qa_records(reviewer_alias: str, limit: int = 200) -> pd.DataFrame:
     """加载某个新人的全量质检记录（包含正确和错误，内检+外检+正式上线）。
     
-    优先从 fact_newcomer_qa 加载内检/外检记录，
-    再从 fact_qa_event（通过 vw_qa_base）补充正式上线阶段的记录。
+    使用多重名称匹配：reviewer_name = alias 或 reviewer_short_name = 短名。
     """
+    # 提取核心姓名（去掉"云雀联营-"前缀）
+    short_name = reviewer_alias.replace("云雀联营-", "") if "云雀联营-" in reviewer_alias else reviewer_alias
+
     # 1. 新人内检/外检记录
     newcomer_df = repo.fetch_df("""
         SELECT biz_date, stage, queue_name, content_type,
@@ -534,10 +603,10 @@ def load_person_all_qa_records(reviewer_alias: str, limit: int = 200) -> pd.Data
                raw_judgement, final_judgement, error_type, qa_note,
                is_correct
         FROM fact_newcomer_qa
-        WHERE reviewer_name = %s
+        WHERE (reviewer_name = %s OR reviewer_short_name = %s OR reviewer_name = %s)
         ORDER BY biz_date DESC, qa_time DESC
         LIMIT %s
-    """, [reviewer_alias, limit])
+    """, [reviewer_alias, short_name, short_name, limit])
 
     # 2. 正式上线阶段记录（从 vw_qa_base 获取，包含申诉关联）
     formal_df = repo.fetch_df("""
@@ -548,11 +617,11 @@ def load_person_all_qa_records(reviewer_alias: str, limit: int = 200) -> pd.Data
                error_type, qa_note,
                is_final_correct AS is_correct
         FROM vw_qa_base
-        WHERE reviewer_name = %s
+        WHERE (reviewer_name = %s OR reviewer_name = %s)
           AND workforce_type = 'formal'
         ORDER BY biz_date DESC, qa_time DESC
         LIMIT %s
-    """, [reviewer_alias, limit])
+    """, [reviewer_alias, short_name, limit])
 
     frames = [df for df in [newcomer_df, formal_df] if df is not None and not df.empty]
     if not frames:
@@ -592,9 +661,9 @@ def load_newcomer_error_summary(
         sql += f" AND n.batch_name IN ({placeholders})"
         params.extend(batch_names)
     if reviewer_aliases:
-        placeholders = ", ".join(["%s"] * len(reviewer_aliases))
-        sql += f" AND q.reviewer_name IN ({placeholders})"
-        params.extend(reviewer_aliases)
+        cond, cond_params = reviewer_name_in_condition("q", reviewer_aliases)
+        sql += f" AND {cond}"
+        params.extend(cond_params)
     sql += " GROUP BY n.batch_name, n.team_name, n.team_leader, n.delivery_pm, n.owner, error_type ORDER BY error_cnt DESC"
     return repo.fetch_df(sql, params)
 
@@ -621,7 +690,7 @@ def load_formal_dimension_detail(
             SUM(CASE WHEN f.is_raw_correct = 1 THEN 1 ELSE 0 END) AS correct_cnt
         FROM fact_qa_event f
         JOIN dim_newcomer_batch n
-          ON {batch_effective_join_condition("f", "n")}
+          ON {batch_effective_join_condition("f", "n", has_short_name=False)}
         WHERE 1 = 1
     """
     params: list[str] = []
@@ -630,9 +699,11 @@ def load_formal_dimension_detail(
         sql += f" AND n.batch_name IN ({placeholders})"
         params.extend(batch_names)
     if reviewer_aliases:
-        placeholders = ", ".join(["%s"] * len(reviewer_aliases))
+        short_names = _extract_short_names(reviewer_aliases)
+        all_names = list(set(reviewer_aliases + short_names))
+        placeholders = ", ".join(["%s"] * len(all_names))
         sql += f" AND f.reviewer_name IN ({placeholders})"
-        params.extend(reviewer_aliases)
+        params.extend(all_names)
     sql += " GROUP BY n.batch_name, n.team_name, training_topic, risk_level, content_type ORDER BY qa_cnt DESC"
     return repo.fetch_df(sql, params)
 
@@ -669,9 +740,9 @@ def load_newcomer_dimension_detail(
         sql += f" AND n.batch_name IN ({placeholders})"
         params.extend(batch_names)
     if reviewer_aliases:
-        placeholders = ", ".join(["%s"] * len(reviewer_aliases))
-        sql += f" AND q.reviewer_name IN ({placeholders})"
-        params.extend(reviewer_aliases)
+        cond, cond_params = reviewer_name_in_condition("q", reviewer_aliases)
+        sql += f" AND {cond}"
+        params.extend(cond_params)
     sql += " GROUP BY n.batch_name, n.team_name, q.stage, training_topic, risk_level, content_type ORDER BY qa_cnt DESC"
     return repo.fetch_df(sql, params)
 
@@ -1836,7 +1907,11 @@ if active_view == "person":
         if selected_person:
             alias = selected_person.split(" (")[0]
             person_info = members_df[members_df["reviewer_alias"] == alias].iloc[0]
-            person_qa = combined_qa_df[combined_qa_df["reviewer_name"] == alias].copy() if not combined_qa_df.empty else pd.DataFrame()
+            # 多名称匹配：同时匹配 reviewer_alias 全名和提取的核心姓名
+            _short_alias = alias.replace("云雀联营-", "") if "云雀联营-" in alias else alias
+            _dim_name = person_info["reviewer_name"]  # dim表中的原始姓名
+            _match_names = {alias, _short_alias, _dim_name}
+            person_qa = combined_qa_df[combined_qa_df["reviewer_name"].isin(_match_names)].copy() if not combined_qa_df.empty else pd.DataFrame()
             person_stage_view = person_qa.groupby("stage", as_index=False).agg(
                 qa_cnt=("qa_cnt", "sum"),
                 correct_cnt=("correct_cnt", "sum"),
