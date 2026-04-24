@@ -303,7 +303,44 @@ else:
             err_dist.columns = ["错误类型", "数量"]
             st.dataframe(err_dist, use_container_width=True, hide_index=True)
 
-    # 明细表格（优化样式）
+    # 明细表格（分页展示）
     st.markdown("#### 📋 明细数据")
-    st.caption(f"显示前 {min(len(df), query_limit)} 条记录，共 {len(df)} 条")
-    st.dataframe(df, use_container_width=True, hide_index=True, height=500)
+    
+    PAGE_SIZE = 50
+    total_rows = len(df)
+    total_pages = max(1, (total_rows + PAGE_SIZE - 1) // PAGE_SIZE)
+    
+    # 分页控制
+    if "detail_page" not in st.session_state:
+        st.session_state["detail_page"] = 1
+    
+    # 确保页码有效
+    current_page = min(st.session_state["detail_page"], total_pages)
+    
+    page_col1, page_col2, page_col3, page_col4, page_col5 = st.columns([1, 1, 2, 1, 1])
+    with page_col1:
+        if st.button("⏮ 首页", key="page_first", use_container_width=True, disabled=(current_page <= 1)):
+            st.session_state["detail_page"] = 1
+            st.rerun()
+    with page_col2:
+        if st.button("◀ 上一页", key="page_prev", use_container_width=True, disabled=(current_page <= 1)):
+            st.session_state["detail_page"] = current_page - 1
+            st.rerun()
+    with page_col3:
+        st.markdown(f"<div style='text-align:center; padding:0.5rem; font-weight:600;'>第 {current_page} / {total_pages} 页 · 共 {total_rows:,} 条</div>", unsafe_allow_html=True)
+    with page_col4:
+        if st.button("下一页 ▶", key="page_next", use_container_width=True, disabled=(current_page >= total_pages)):
+            st.session_state["detail_page"] = current_page + 1
+            st.rerun()
+    with page_col5:
+        if st.button("末页 ⏭", key="page_last", use_container_width=True, disabled=(current_page >= total_pages)):
+            st.session_state["detail_page"] = total_pages
+            st.rerun()
+    
+    # 分页展示数据
+    start_idx = (current_page - 1) * PAGE_SIZE
+    end_idx = min(start_idx + PAGE_SIZE, total_rows)
+    page_df = df.iloc[start_idx:end_idx]
+    
+    st.caption(f"📄 当前显示第 {start_idx + 1} ~ {end_idx} 条")
+    st.dataframe(page_df, use_container_width=True, hide_index=True, height=500)

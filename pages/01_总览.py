@@ -733,21 +733,40 @@ with queue_col:
 
 with trend_col:
     st.markdown("#### 📈 正确率趋势")
+    # 快捷时间范围切换
+    _trend_range_labels = {"7天": 7, "14天": 14, "30天": 30, "全部": None}
+    _trend_cols = st.columns(len(_trend_range_labels))
+    if "trend_range" not in st.session_state:
+        st.session_state["trend_range"] = "全部"
+    for i, (label, days) in enumerate(_trend_range_labels.items()):
+        with _trend_cols[i]:
+            is_sel = st.session_state["trend_range"] == label
+            if st.button(label, key=f"trend_range_{label}", use_container_width=True, type="primary" if is_sel else "secondary"):
+                st.session_state["trend_range"] = label
+                st.rerun()
+    
     if not trend_df.empty:
         trend_df["anchor_date"] = pd.to_datetime(trend_df["anchor_date"])
+        # 根据选择的范围过滤数据
+        _selected_days = _trend_range_labels[st.session_state["trend_range"]]
+        if _selected_days is not None:
+            _cutoff = trend_df["anchor_date"].max() - pd.Timedelta(days=_selected_days)
+            trend_plot_df = trend_df[trend_df["anchor_date"] >= _cutoff].copy()
+        else:
+            trend_plot_df = trend_df.copy()
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=trend_df["anchor_date"], y=trend_df["final_accuracy_rate"],
+            x=trend_plot_df["anchor_date"], y=trend_plot_df["final_accuracy_rate"],
             mode="lines+markers", name="最终正确率",
             line=dict(color=COLOR_SUCCESS, width=3), marker=dict(size=8),
-            text=[f"{v:.2f}%" for v in trend_df["final_accuracy_rate"]],
+            text=[f"{v:.2f}%" for v in trend_plot_df["final_accuracy_rate"]],
             hovertemplate="<b>%{x|%Y-%m-%d}</b><br>最终正确率: %{text}<extra></extra>"
         ))
         fig.add_trace(go.Scatter(
-            x=trend_df["anchor_date"], y=trend_df["raw_accuracy_rate"],
+            x=trend_plot_df["anchor_date"], y=trend_plot_df["raw_accuracy_rate"],
             mode="lines+markers", name="原始正确率",
             line=dict(color="#94A3B8", width=2, dash="dot"), marker=dict(size=6),
-            text=[f"{v:.2f}%" for v in trend_df["raw_accuracy_rate"]],
+            text=[f"{v:.2f}%" for v in trend_plot_df["raw_accuracy_rate"]],
             hovertemplate="<b>%{x|%Y-%m-%d}</b><br>原始正确率: %{text}<extra></extra>"
         ))
         fig.add_hline(y=99.0, line_dash="dash", line_color=COLOR_WARN, annotation_text="目标 99%", annotation_position="right")
@@ -767,8 +786,8 @@ with trend_col:
             selection = clicked["selection"]
             if selection.get("point_indices"):
                 clicked_idx = selection["point_indices"][0]
-                if clicked_idx < len(trend_df):
-                    clicked_date = trend_df.iloc[clicked_idx]["anchor_date"]
+                if clicked_idx < len(trend_plot_df):
+                    clicked_date = trend_plot_df.iloc[clicked_idx]["anchor_date"]
                     st.info(f"💡 点击了 {clicked_date.strftime('%Y-%m-%d')}，可切换到对应日期查看详情")
     else:
         st.info("暂无趋势数据")
@@ -786,8 +805,13 @@ detail_auditor_df: pd.DataFrame = detail_payload["auditor_df"]
 # 队列和审核人选择器（优化布局）
 select_col1, select_col2, select_col3 = st.columns([1.5, 1.5, 2])
 with select_col1:
-    queue_options = ["(全部)"] + detail_queue_df["queue_name"].tolist() if not detail_queue_df.empty else ["(全部)"]
-    selected_queue = st.selectbox("🎯 选择队列", options=queue_options, key="queue_selector", label_visibility="visible")
+    # 按错误量降序排序，需关注的队列优先
+    if not detail_queue_df.empty:
+        _sorted_queues = detail_queue_df.sort_values("error_cnt", ascending=False)["queue_name"].tolist() if "error_cnt" in detail_queue_df.columns else detail_queue_df["queue_name"].tolist()
+        queue_options = ["(全部)"] + _sorted_queues
+    else:
+        queue_options = ["(全部)"]
+    selected_queue = st.selectbox("🎯 选择队列（按错误量排序）", options=queue_options, key="queue_selector", label_visibility="visible")
 with select_col2:
     # 如果选择了队列，过滤审核人列表
     if selected_queue != "(全部)" and not detail_auditor_df.empty:
@@ -891,16 +915,23 @@ with rank_col:
 with auditor_col:
     st.markdown("#### 👥 审核人视图")
     if not final_auditor_df.empty:
-        # 添加提示信息
-        st.caption(f"共 {len(final_auditor_df)} 位审核人，按最终正确率升序排列（需关注的审核人优先展示）")
+        total_auditors = len(final_auditor_df)
+        default_show = 20
+        
+        # 控制展示数量
+        show_all = st.session_state.get("show_all_auditors", False)
+        display_df = final_auditor_df if show_all else final_auditor_df.head(default_show)
+        
+        showing_count = len(display_df)
+        st.caption(f"共 {total_auditors} 位审核人，当前展示 {showing_count} 位，按最终正确率升序排列（需关注的审核人优先展示）")
         
         auditor_show = pd.DataFrame()
-        auditor_show["审核人"] = final_auditor_df["reviewer_name"]
-        auditor_show["质检量"] = final_auditor_df["qa_cnt"]
-        auditor_show["原始正确率"] = final_auditor_df["raw_accuracy_rate"]
-        auditor_show["最终正确率"] = final_auditor_df["final_accuracy_rate"]
-        auditor_show["错判量"] = final_auditor_df["misjudge_cnt"]
-        auditor_show["漏判量"] = final_auditor_df["missjudge_cnt"]
+        auditor_show["审核人"] = display_df["reviewer_name"]
+        auditor_show["质检量"] = display_df["qa_cnt"]
+        auditor_show["原始正确率"] = display_df["raw_accuracy_rate"]
+        auditor_show["最终正确率"] = display_df["final_accuracy_rate"]
+        auditor_show["错判量"] = display_df["misjudge_cnt"]
+        auditor_show["漏判量"] = display_df["missjudge_cnt"]
 
         st.dataframe(
             auditor_show,
@@ -916,9 +947,25 @@ with auditor_col:
                 "漏判量": st.column_config.NumberColumn("漏判量", width="small", format="d"),
             }
         )
-        # 跳转到明细查询（下探最后一层）
-        if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，查看具体问题样本"):
-            st.switch_page("pages/03_明细查询.py")
+        # 加载更多 / 收起
+        if total_auditors > default_show:
+            _btn_col1, _btn_col2 = st.columns(2)
+            with _btn_col1:
+                if not show_all:
+                    if st.button(f"📋 显示全部 {total_auditors} 位审核人", key="show_all_auditors_btn", use_container_width=True):
+                        st.session_state["show_all_auditors"] = True
+                        st.rerun()
+                else:
+                    if st.button("🔼 收起，只显示前20位", key="collapse_auditors_btn", use_container_width=True):
+                        st.session_state["show_all_auditors"] = False
+                        st.rerun()
+            with _btn_col2:
+                if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，查看具体问题样本"):
+                    st.switch_page("pages/03_明细查询.py")
+        else:
+            # 审核人不超过20位时只显示跳转按钮
+            if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，查看具体问题样本"):
+                st.switch_page("pages/03_明细查询.py")
     else:
         st.info("暂无审核人数据")
 
@@ -930,7 +977,7 @@ st.caption("💡 了解质检标签分布和质检员工作量分布，帮助识
 label_col, owner_col = st.columns([1, 1])
 
 with label_col:
-    st.markdown("#### 🏷️ 质检标签分布")
+    st.markdown("#### 🏷️ 质检结果分布")
     label_df = load_qa_label_distribution_cached(grain, selected_date, selected_group, top_n=10)
     if not label_df.empty:
         # 添加统计信息
@@ -955,6 +1002,29 @@ with label_col:
             plot_bgcolor='rgba(0,0,0,0)'
         )
         st.plotly_chart(fig_label, use_container_width=True)
+        
+        # 补充：仅错误样本分布
+        with st.expander("🔴 仅错误样本分布", expanded=False):
+            error_label_df = load_qa_label_distribution_cached(grain, selected_date, selected_group, top_n=10)
+            # 从整体标签中过滤出错误相关项（如果有err_cnt字段）
+            if "err_cnt" in label_df.columns:
+                err_only = label_df[label_df["err_cnt"] > 0].sort_values("err_cnt", ascending=False)
+                if not err_only.empty:
+                    fig_err = px.bar(
+                        err_only, x="err_cnt", y="label_name", orientation="h",
+                        text="err_cnt", color_discrete_sequence=["#EF4444"]
+                    )
+                    fig_err.update_traces(textposition="outside")
+                    fig_err.update_layout(
+                        height=250, margin=dict(l=20, r=20, t=10, b=20),
+                        xaxis_title="错误量", yaxis_title="",
+                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig_err, use_container_width=True)
+                else:
+                    st.success("🎉 所有标签均无错误记录")
+            else:
+                st.caption("💡 暂无错误维度数据，可通过数据管理页导入更完整的数据")
     else:
         st.info("暂无标签数据")
 
@@ -962,8 +1032,31 @@ with owner_col:
     st.markdown("#### 👨‍💼 质检员工作量")
     owner_df = load_qa_owner_distribution_cached(grain, selected_date, selected_group, top_n=10)
     if not owner_df.empty:
-        # 添加统计信息
-        st.caption(f"前10名质检员（按质检量降序）")
+        # 工作量概览指标
+        total_qa_owners = owner_df["qa_cnt"].sum()
+        owner_count = len(owner_df)
+        avg_qa = total_qa_owners / owner_count if owner_count > 0 else 0
+        max_qa = owner_df["qa_cnt"].max()
+        min_qa = owner_df["qa_cnt"].min()
+        # 均衡度 = 1 - (标准差/均值)，越接近1说明越均衡
+        std_qa = owner_df["qa_cnt"].std()
+        balance_score = max(0, 1 - std_qa / avg_qa) * 100 if avg_qa > 0 else 0
+        balance_color = "#10B981" if balance_score >= 70 else ("#F59E0B" if balance_score >= 40 else "#EF4444")
+        
+        _ow_col1, _ow_col2, _ow_col3 = st.columns(3)
+        with _ow_col1:
+            st.metric("人均质检量", f"{avg_qa:,.0f}")
+        with _ow_col2:
+            st.metric("最大/最小", f"{max_qa:,.0f} / {min_qa:,.0f}")
+        with _ow_col3:
+            st.markdown(f"""
+            <div style="text-align:center;">
+                <div style="font-size:0.75rem; color:#6B7280;">均衡度</div>
+                <div style="font-size:1.5rem; font-weight:700; color:{balance_color};">{balance_score:.0f}%</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.caption(f"前{owner_count}名质检员（按质检量降序）")
         
         # 表格展示
         owner_show = pd.DataFrame()
@@ -976,7 +1069,7 @@ with owner_col:
             owner_show, 
             use_container_width=True, 
             hide_index=True, 
-            height=320,
+            height=280,
             column_config={
                 "质检员": st.column_config.TextColumn("质检员", width="medium"),
                 "质检量": st.column_config.TextColumn("质检量", width="small"),
@@ -990,10 +1083,12 @@ with owner_col:
 # ==================== 底部说明 ====================
 st.markdown("---")
 st.markdown("""
-<div style='background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%); padding: 1rem; border-radius: 0.75rem; border: 1px solid #E5E7EB; margin-top: 1rem;'>
-    <div style='font-size: 0.85rem; color: #475569; line-height: 1.6;'>
+<div style='background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%); padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #E5E7EB; margin-top: 1rem;'>
+    <div style='font-size: 0.85rem; color: #475569; line-height: 1.8;'>
         <strong>💡 看板设计原则：</strong>异常先暴露 → 支持下探 → 沉淀培训动作<br>
-        <span style='color: #64748B; font-size: 0.8rem;'>数据每日自动更新 · 告警自动推送 · 支持 CSV 导出</span>
+        <strong>🚨 告警规则：</strong>原始正确率 &lt; 99% 触发 P1 重要 · &lt; 98% 触发 P0 紧急 · 告警按日自动生成<br>
+        <strong>📊 数据口径：</strong>原始正确率 = 一审正确数/质检总量 · 最终正确率 = 终审正确数/质检总量<br>
+        <span style='color: #64748B; font-size: 0.8rem;'>数据每日自动更新 · 告警自动推送 · 支持 CSV 导出 · 环比对比基准为同粒度前一期</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
