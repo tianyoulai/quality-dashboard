@@ -800,7 +800,7 @@ with tab_import[6]:
         st.error(f"加载告警规则失败: {e}")
 
 # ==================== 上传记录 ====================
-with tab_import[9]:
+with tab_import[7]:
     st.markdown("### 📜 上传记录")
     st.caption("查看最近 50 条文件上传记录。")
 
@@ -878,7 +878,7 @@ with tab_import[9]:
         st.info("审计日志表尚未创建，请运行 schema 初始化。")
 
 # ==================== 清除缓存 ====================
-with tab_import[9]:
+with tab_import[8]:
     st.markdown("### 清除 Streamlit 缓存")
     st.caption("如果看板数据展示异常（如组别名称未更新），可以清除缓存后刷新页面。")
 
@@ -973,7 +973,7 @@ with tab_import[9]:
                     repo.execute("DELETE FROM fact_upload_log")
 
                     st.success(f"已删除 {preview_cnt:,} 条数据！请点击「一键刷新」重新生成数仓和告警。")
-                    log_action("delete", "fact_qa_event", f"按日期删除 {preview_cnt}条, 范围: {delete_start}~{delete_end}")
+                    log_action("delete", "fact_qa_event", f"按日期删除 {preview_cnt}条, 范围: {date_start}~{date_end}")
                     st.cache_data.clear()
 
     else:  # 全部清除

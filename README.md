@@ -6,64 +6,74 @@
 
 | 模块 | 说明 |
 |------|------|
-| **数据管理** | Excel/CSV 批量导入、新人名单管理、数据健康检查 |
-| **总览** | 日/周/月维度正确率趋势、组别排名、KPI 达标监控 |
-| **内检** | 内检质检数据分析、审核人排名、错误类型分布 |
-| **明细查询** | 多维筛选 + 下钻、审核人/队列维度统计 |
+| **数据管理** | Excel/CSV 批量导入、新人名单管理、告警规则管理、数据健康检查、操作审计日志 |
+| **总览** | 日/周/月维度正确率趋势、组别排名、KPI 达标监控、组别下探分析 |
+| **内检** | 内检质检数据分析、审核人排名、错误类型 TOP5 分布 |
+| **明细查询** | 多维筛选 + 下钻、快速时间范围、审核人/队列维度统计、数据洞察 |
 | **新人追踪** | 批次概览、成长曲线、阶段对比、个人追踪、异常告警 |
 
 ## 报告推送
 
 | 报告 | 触发 | 内容 |
 |------|------|------|
-| **日报** | 每日定时 | 正确率 + 分组表现 + 风险 + AI 洞察 |
-| **周报** | 每周五 | 周趋势 + 周环比 + 周告警 + AI 洞察 |
-| **新人日报** | 每日定时 | 批次表现 + 异常人员 + 培训建议 |
+| **日报** | 每日 18:20 | 正确率 + 分组表现 + 风险 + AI 洞察 |
+| **周报** | 每周五 18:30 | 周趋势 + 周环比 + 周告警 + AI 洞察 |
+| **新人日报** | 每日 18:20 | 批次表现 + 异常人员 + 培训建议 |
 
 ## 项目结构
 
 ```
 quality-dashboard/
-├── app.py                      # Streamlit 入口
-├── pages/                      # Streamlit 多页面
-│   ├── 00_数据管理.py
-│   ├── 01_总览.py
-│   ├── 02_内检.py
-│   ├── 03_明细查询.py
-│   └── 04_新人追踪.py
-├── views/newcomer/             # 新人追踪子模块
-├── services/                   # 业务逻辑层
-│   ├── dashboard_service.py    # 主查询服务
-│   ├── module_views.py         # 视图渲染
-│   ├── newcomer_aggregates.py  # 新人聚合
-│   └── wecom_push.py           # 企微推送
-├── reports/                    # 报告引擎
-│   ├── engine.py               # 数据采集 + AI 洞察
-│   └── formatters/             # 格式化器（企微卡片/Markdown）
-├── jobs/                       # 定时任务
-│   ├── daily_report.py         # 日报生成 & 推送
-│   ├── weekly_report.py        # 周报生成 & 推送
-│   ├── newcomer_daily_report.py
-│   ├── import_fact_data.py     # 主数据导入
-│   ├── import_newcomer_qa.py   # 新人数据导入
+├── app.py                          # Streamlit 入口
+├── pages/                          # Streamlit 多页面
+│   ├── 00_数据管理.py              # 数据导入/规则管理/健康检查
+│   ├── 01_总览.py                  # 多维度数据总览
+│   ├── 02_内检.py                  # 内检分析
+│   ├── 03_明细查询.py              # 多维明细查询
+│   └── 04_新人追踪.py              # 新人质检追踪
+├── views/                          # 页面子模块
+│   ├── dashboard/                  # 总览页子模块
+│   ├── newcomer/                   # 新人追踪子模块
+│   └── data_mgmt/                  # 数据管理子模块
+├── services/                       # 业务逻辑层
+│   ├── dashboard_service.py        # 主查询服务
+│   ├── module_views.py             # 视图渲染
+│   ├── newcomer_aggregates.py      # 新人聚合
+│   └── wecom_push.py               # 企微推送
+├── reports/                        # 报告引擎
+│   ├── engine.py                   # 数据采集 + AI 洞察
+│   └── formatters/                 # 格式化器（企微卡片/Markdown）
+├── jobs/                           # 定时任务 & 脚本
+│   ├── daily_report.py             # 日报生成 & 推送
+│   ├── weekly_report.py            # 周报生成 & 推送
+│   ├── newcomer_daily_report.py    # 新人日报
+│   ├── auto_maintenance.py         # 自动归档 & 健康检查
+│   ├── import_fact_data.py         # 主数据导入
+│   ├── import_newcomer_qa.py       # 新人数据导入
+│   ├── refresh_warehouse.py        # 数仓刷新
+│   ├── refresh_alerts.py           # 告警刷新
 │   └── ...
-├── storage/                    # 数据层
-│   ├── tidb_manager.py         # TiDB 连接池（单例）
-│   ├── repository.py           # 数据仓库
-│   └── schema.sql              # 表结构
-├── utils/                      # 工具函数
-├── config/                     # 配置（不提交 Git）
-│   ├── settings.json           # 数据库/API 密钥
-│   └── alert_modules.yaml      # 告警规则
-└── .github/workflows/          # GitHub Actions
-    └── daily-report.yml        # 自动化报告推送
+├── storage/                        # 数据层
+│   ├── tidb_manager.py             # TiDB 连接池（单例）
+│   └── repository.py               # 数据仓库
+├── utils/                          # 工具函数
+│   ├── audit.py                    # 操作审计日志
+│   ├── auth.py                     # 轻量权限控制
+│   ├── export_center.py            # 导出中心
+│   ├── styles.py                   # 全局 CSS
+│   ├── cache.py                    # 缓存管理
+│   ├── helpers.py                  # 通用工具
+│   └── alert_module.py             # 告警模块
+├── config/                         # 配置（不提交 Git）
+│   ├── settings.json               # 数据库/API 密钥
+│   └── alert_modules.yaml          # 告警规则
+└── .github/workflows/
+    └── daily-report.yml            # GitHub Actions 统一调度
 ```
 
 ## 快速开始
 
 ### 1. 配置
-
-复制配置模板并填入实际值：
 
 ```bash
 cp .env.example config/settings.json
@@ -115,7 +125,7 @@ python jobs/weekly_report.py --dry-run
 # 新人日报
 python jobs/newcomer_daily_report.py --dry-run
 
-# 实际推送
+# 实际推送（去掉 --dry-run）
 python jobs/daily_report.py
 ```
 
@@ -135,12 +145,18 @@ python jobs/daily_report.py
 | Secret | 说明 |
 |--------|------|
 | `TIDB_HOST` | TiDB 主机地址 |
-| `TIDB_PORT` | TiDB 端口 |
+| `TIDB_PORT` | TiDB 端口（默认 4000） |
 | `TIDB_USER` | TiDB 用户名 |
 | `TIDB_PASSWORD` | TiDB 密码 |
 | `TIDB_DATABASE` | 数据库名 |
 | `WECOM_WEBHOOK_URL` | 企微群 Webhook URL |
 | `DEEPSEEK_API_KEY` | DeepSeek API Key |
+| `DEEPSEEK_API_URL` | DeepSeek API URL |
+
+Actions 统一调度：
+- 日报 + 新人日报：每天 UTC 10:20（北京 18:20）
+- 周报：每周五 UTC 10:30（北京 18:30）
+- 支持手动触发，可选择报告类型（daily/weekly/newcomer/all）
 
 ## 技术栈
 
