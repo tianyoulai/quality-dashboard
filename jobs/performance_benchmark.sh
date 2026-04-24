@@ -95,7 +95,14 @@ echo "🗄️  步骤 3/3: 数据库索引验证"
 echo "----------------------------------------"
 
 if command -v mysql &> /dev/null; then
-    MYSQL_CMD="mysql -h 127.0.0.1 -P 4000 -u root qc_dashboard -N -B"
+    DB_HOST="${TIDB_HOST:-127.0.0.1}"
+    DB_PORT="${TIDB_PORT:-4000}"
+    DB_USER="${TIDB_USER:-root}"
+    DB_NAME="${TIDB_DATABASE:-qc_dashboard}"
+    MYSQL_CMD="mysql -h $DB_HOST -P $DB_PORT -u $DB_USER $DB_NAME -N -B"
+    if [ -n "${TIDB_PASSWORD:-}" ]; then
+        MYSQL_CMD="mysql -h $DB_HOST -P $DB_PORT -u $DB_USER -p$TIDB_PASSWORD $DB_NAME -N -B"
+    fi
     
     echo "检查关键索引..."
     

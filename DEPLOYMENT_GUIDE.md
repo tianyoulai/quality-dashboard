@@ -168,7 +168,7 @@ cp .env.example .env
 TIDB_HOST=your-tidb-host.tidbcloud.com
 TIDB_PORT=4000
 TIDB_USER=your_username
-TIDB_PASSWORD=your_password
+TIDB_PASSWORD=<替换为你的数据库密码>
 TIDB_DATABASE=qc_dashboard
 ```
 
@@ -342,7 +342,7 @@ curl http://localhost:8000/api/health
 | `TIDB_HOST` | TiDB主机地址 | 无 | `gateway.tidbcloud.com` |
 | `TIDB_PORT` | TiDB端口 | 4000 | `4000` |
 | `TIDB_USER` | 数据库用户名 | 无 | `root` |
-| `TIDB_PASSWORD` | 数据库密码 | 无 | `password123` |
+| `TIDB_PASSWORD` | 数据库密码 | 无 | `<替换为你的密码>` |
 | `TIDB_DATABASE` | 数据库名 | `qc_dashboard` | `qc_dashboard` |
 | `API_ALLOW_ORIGINS` | CORS允许的源 | `*` | `http://localhost:3000` |
 | `API_SLOW_THRESHOLD_MS` | 慢请求阈值(ms) | 800 | `1000` |

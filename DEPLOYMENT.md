@@ -61,7 +61,7 @@ vim .env
 TIDB_HOST=gateway01.prod.tidbcloud.com
 TIDB_PORT=4000
 TIDB_USER=your_prod_user
-TIDB_PASSWORD=your_strong_password
+TIDB_PASSWORD=<替换为你的数据库密码>
 TIDB_DATABASE=qc_dashboard_prod
 
 # API 配置

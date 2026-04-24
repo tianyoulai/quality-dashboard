@@ -32,6 +32,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from storage.repository import DashboardRepository
+from services.wecom_push import (
+    send_wecom_webhook as _wecom_send,
+    send_wecom_webhook_with_split as _wecom_send_split,
+)
 
 # ── 正确率目标值 ──
 ACC_TARGET = 99.00  # %
@@ -1059,83 +1063,17 @@ def call_deepseek(report: dict) -> str:
 # ═══════════════════════════════════════════════════════════════
 
 def send_wecom_webhook(content: str, mentioned_list: list[str] | None = None) -> dict:
-    settings = load_settings()
-    webhook_url = settings["wecom_webhook_url"]
-    payload: dict[str, Any] = {
-        "msgtype": "markdown",
-        "markdown": {"content": content},
-    }
-    if mentioned_list:
-        payload["markdown"]["mentioned_list"] = mentioned_list
-
-    import requests
-    resp = requests.post(webhook_url, json=payload, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    """调用统一的 wecom_push 服务层发送消息，凭据从 st.secrets / 环境变量 / settings.json 自动读取。"""
+    return _wecom_send(content, mentioned_list=mentioned_list)
 
 
 # ── 企微 Markdown 长度限制 ──
 WECOM_MAX_LEN = 4096  # 企微 webhook 硬限制
 
 
-def _split_for_wecom(content: str, max_len: int = WECOM_MAX_LEN) -> list[str]:
-    """将超长内容拆分为多条消息，每条不超过 max_len 字符。
-
-    策略：
-    1. 内容 <= max_len → 原样返回单条
-    2. 超长时按「标题+核心数据」优先，逐段截断
-    """
-    if len(content) <= max_len:
-        return [content]
-
-    lines = content.split("\n")
-    parts: list[str] = []
-    current: list[str] = []
-
-    for line in lines:
-        # 单行过长（如 AI 洞察段落），强制截断
-        if len(line) > max_len - 50:
-            line = line[:max_len - 80] + "...（内容过长已截断，查看完整日报）"
-
-        if sum(len(l) + 1 for l in current) + len(line) + 1 > max_len and current:
-            parts.append("\n".join(current))
-            current = [line]
-        else:
-            current.append(line)
-
-    if current:
-        parts.append("\n".join(current))
-
-    return parts
-
-
 def send_wecom_webhook_with_split(content: str, mentioned_list: list[str] | None = None) -> tuple[bool, str]:
-    """发送企微消息，自动处理超长内容的分片。
-
-    Returns:
-        (success: bool, message: str)
-    """
-    parts = _split_for_wecom(content)
-    errors: list[str] = []
-
-    for idx, part in enumerate(parts):
-        # 最后一条追加提示
-        if idx == len(parts) - 1 and len(parts) > 1:
-            part += "\n\n> 📄 以上为日报摘要，[完整版](点击此处查看详情)请查看归档文件。"
-        elif len(parts) > 1:
-            header = f"📊 **评论业务质检日报** ({idx+1}/{len(parts)})\n---\n"
-            part = header + part
-
-        try:
-            result = send_wecom_webhook(part, mentioned_list=mentioned_list)
-            if result.get("errcode") != 0:
-                errors.append(f"第{idx+1}段推送失败: {result}")
-        except Exception as e:
-            errors.append(f"第{idx+1}段异常: {e}")
-
-    if errors:
-        return False, "; ".join(errors)
-    return True, f"共 {len(parts)} 条消息已推送"
+    """发送企微消息，自动处理超长内容的分片（委托给服务层）。"""
+    return _wecom_send_split(content, mentioned_list=mentioned_list)
 
 
 # ═══════════════════════════════════════════════════════════════
