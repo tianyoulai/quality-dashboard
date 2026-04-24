@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
-"""新人培训日报：生成 Markdown 并通过企微机器人推送。
-
-基于 services/newcomer_aggregates.py 的 build_training_daily_payload + format_training_daily_markdown。
-支持命令行独立运行，可由 launchd 定时调用。
+"""新人培训日报 -- 基于统一报告引擎生成 & 推送。
 
 用法:
-    python jobs/newcomer_daily_report.py                 # 推送今日新人日报
-    python jobs/newcomer_daily_report.py --dry-run       # 只生成不推送
-    python jobs/newcomer_daily_report.py --force         # 强制推送（忽略去重）
-    python jobs/newcomer_daily_report.py --date 2026-04-14  # 指定日期
+    python jobs/newcomer_daily_report.py                  # 推送今日新人日报
+    python jobs/newcomer_daily_report.py --dry-run        # 只生成不推送
+    python jobs/newcomer_daily_report.py --date 2026-04-21
+    python jobs/newcomer_daily_report.py --force
 """
 from __future__ import annotations
 
@@ -21,71 +18,79 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from services.newcomer_aggregates import (
-    build_training_daily_payload,
-    format_training_daily_markdown,
-    send_training_daily_report,
-)
-# wecom 推送由 send_training_daily_report 内部处理，无需额外导入
+from reports import generate_newcomer_report
+from reports.formatters.wecom_card import format_newcomer_wecom
+from reports.formatters.markdown_file import format_newcomer_markdown
+from services.wecom_push import send_wecom_webhook_with_split
 
-# ── 去重文件 ──
+
+# ── 去重 ──────────────────────────────────────────────────────
 CACHE_DIR = PROJECT_ROOT / ".cache"
 CACHE_DIR.mkdir(exist_ok=True)
 SENT_FILE = CACHE_DIR / "newcomer_report_sent.txt"
 
 
-def _load_sent_dates() -> set[str]:
-    if not SENT_FILE.exists():
-        return set()
-    return {line.strip() for line in SENT_FILE.read_text().splitlines() if line.strip()}
+def _load_sent() -> set[str]:
+    if SENT_FILE.exists():
+        return {l.strip() for l in SENT_FILE.read_text("utf-8").splitlines() if l.strip()}
+    return set()
 
 
-def _mark_date_sent(report_date: date) -> None:
-    sent = _load_sent_dates()
-    sent.add(str(report_date))
-    SENT_FILE.write_text("\n".join(sorted(sent)) + "\n", encoding="utf-8")
+def _mark_sent(d: date) -> None:
+    s = _load_sent()
+    s.add(str(d))
+    SENT_FILE.write_text("\n".join(sorted(s)), encoding="utf-8")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="新人培训日报生成 & 企微群推送")
-    parser.add_argument("--date", default=str(date.today() - timedelta(days=1)),
-                        help="报告日期 YYYY-MM-DD（默认 T-1）")
-    parser.add_argument("--dry-run", action="store_true", help="只生成不推送")
-    parser.add_argument("--force", action="store_true", help="强制推送（忽略去重检查）")
-    parser.add_argument("--mention", nargs="*", default=[], help="@指定成员 userId 列表")
+    parser.add_argument("--date", default=str(date.today() - timedelta(days=1)))
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--force", action="store_true")
+    parser.add_argument("--skip-ai", action="store_true")
+    parser.add_argument("--mention", nargs="*", default=[])
     args = parser.parse_args()
 
-    report_date = args.date
-    print(f"👶 新人培训日报 | 日期: {report_date}")
+    report_date = date.fromisoformat(args.date)
+    print(f"👶 新人培训日报 | {report_date}")
 
-    # 生成日报内容
-    payload = build_training_daily_payload()
-    markdown = format_training_daily_markdown(payload)
+    # 1. 生成
+    result = generate_newcomer_report(report_date, skip_ai=args.skip_ai)
 
+    # 2. 格式化
+    wecom_md = format_newcomer_wecom(result)
+    full_md = format_newcomer_markdown(result)
+
+    # 3. 输出
+    print(wecom_md)
+
+    out_path = PROJECT_ROOT / "deliverables" / f"newcomer_report_{report_date}.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(full_md, encoding="utf-8")
+    print(f"\n📄 新人日报已保存: {out_path}")
+
+    # 4. 推送
     if args.dry_run:
-        print("\n" + "=" * 60)
-        print(markdown)
-        print("=" * 60)
         print("\n⏭️ dry-run 模式，未推送。")
         return
 
-    # 去重检查
-    if not args.force:
-        sent_dates = _load_sent_dates()
-        if str(report_date) in sent_dates:
-            print(f"⏭️ 报告日期 {report_date} 已推送过，跳过（可用 --force 强制推送）")
-            return
+    if not args.force and str(report_date) in _load_sent():
+        print(f"⏭️ {report_date} 已推送过，跳过。")
+        return
 
-    # 推送
-    result = send_training_daily_report(
-        mentioned_list=args.mention if args.mention else None,
-    )
+    if not result.has_data:
+        from services.wecom_push import send_wecom_webhook
+        send_wecom_webhook(f"👶 新人日报 | {report_date}\n\n⚠️ **今日无新人质检数据**")
+        _mark_sent(report_date)
+        return
 
-    if result.get("ok"):
-        print(f"✅ 新人日报推送成功")
-        _mark_date_sent(date.fromisoformat(report_date))
+    mentioned = args.mention if args.mention else None
+    ok, msg = send_wecom_webhook_with_split(wecom_md, mentioned_list=mentioned)
+    if ok:
+        print(f"✅ {msg}")
+        _mark_sent(report_date)
     else:
-        print(f"❌ 推送失败: {result.get('message', '未知错误')}")
+        print(f"❌ 推送失败: {msg}")
         sys.exit(1)
 
 
