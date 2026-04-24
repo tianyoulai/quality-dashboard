@@ -12,9 +12,9 @@ import streamlit as st
 
 from storage.repository import DashboardRepository
 
-# 全局CSS样式
-from utils.styles import inject_global_css
-inject_global_css()
+# 设计系统 v3.0
+from utils.design_system import ds, COLORS
+ds.inject_theme()
 
 repo = DashboardRepository()
 

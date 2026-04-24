@@ -46,22 +46,9 @@ from views.dashboard._shared import (
     to_csv_bytes,
 )
 
-# 全局CSS + 总览页特有样式
-from utils.styles import inject_global_css
-inject_global_css()
-
-st.markdown("""
-<style>
-    /* 总览页特有：卡片悬停效果 */
-    .metric-card {
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .metric-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-</style>
-""", unsafe_allow_html=True)
+# 设计系统 v3.0（替换旧的 styles.py）
+from utils.design_system import ds, COLORS
+ds.inject_theme()
 
 service = DashboardService()
 
@@ -85,23 +72,10 @@ def _jump_to_detail(group: str | None = None, queue: str | None = None, auditor:
 
 
 # ==================== Hero 区 ====================
-st.markdown(
-    """
-    <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-            <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">📊 质培运营看板</h1>
-            <div style="font-size: 0.85rem; color: #6b7280;">实时监控 · 智能告警 · 数据驱动</div>
-        </div>
-        <div style="font-size: 0.9rem; color: #4b5563; line-height: 1.6; margin-top: 0.75rem;">
-            🎯 日看异常 · 周看复发 · 月看治理<br>
-            📍 支持下探链路：<span style="background: #f3f4f6; padding: 0.15rem 0.5rem; border-radius: 0.3rem; color: #374151;">组别</span> → 
-            <span style="background: #f3f4f6; padding: 0.15rem 0.5rem; border-radius: 0.3rem; color: #374151;">队列</span> → 
-            <span style="background: #f3f4f6; padding: 0.15rem 0.5rem; border-radius: 0.3rem; color: #374151;">审核人</span> → 
-            <span style="background: #f3f4f6; padding: 0.15rem 0.5rem; border-radius: 0.3rem; color: #374151;">问题样本</span>
-        </div>
-    </div>
-    """,
-    unsafe_allow_html=True,
+ds.hero(
+    "📊", "质培运营看板",
+    "实时监控 · 智能告警 · 数据驱动",
+    badges=["日看异常", "周看复发", "月看治理", "组别→队列→审核人→样本"],
 )
 
 # 获取数据日期范围，设置默认日期为数据最新日期
@@ -111,7 +85,7 @@ _default_date = _data_max_date if _data_max_date <= date.today() else date.today
 # 数据更新时间标注
 st.markdown(f"""
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-    <div style="font-size: 0.78rem; color: #9CA3AF;">
+    <div style="font-size: 0.78rem; color: {COLORS.text_muted};">
         📅 数据范围 <strong>{_data_min_date}</strong> ~ <strong>{_data_max_date}</strong> &nbsp;·&nbsp; 🕐 页面加载于 <strong>{date.today().strftime('%Y-%m-%d')}</strong>
     </div>
 </div>
@@ -155,10 +129,7 @@ with mode_col4:
 
 st.markdown("---")
 
-# 缓存刷新按钮（放在日期行右侧）
-if st.sidebar.button("🔄 刷新数据缓存", key="refresh_cache", use_container_width=True):
-    st.cache_data.clear()
-    st.rerun()
+# 缓存刷新按钮已由设计系统侧边栏统一提供
 
 # ==================== 加载数据 ====================
 # 💡 首屏轻量加载：只查 group_df + alerts_df（2次DB查询，原来7次）
@@ -207,7 +178,7 @@ if group_df.empty:
 # calc_change 已从 views.dashboard._shared 导入
 
 # ==================== 第一行：核心指标 ====================
-st.markdown("#### 📈 核心指标概览")
+ds.section("📈 核心指标概览")
 total_qa = group_df["qa_cnt"].sum()
 avg_raw_acc = (group_df["raw_accuracy_rate"] * group_df["qa_cnt"]).sum() / total_qa if total_qa > 0 else 0
 avg_final_acc = (group_df["final_accuracy_rate"] * group_df["qa_cnt"]).sum() / total_qa if total_qa > 0 else 0
@@ -221,113 +192,52 @@ if "final_error_cnt" in group_df.columns:
 else:
     total_final_errors = int(total_qa * (100 - avg_final_acc) / 100)
 
-# 核心指标卡片（美化版 - 增加图标和描述）
+# 核心指标卡片（设计系统 v3.0）
 metric_col1, metric_col2, metric_col3, metric_col4, metric_col5 = st.columns(5)
 with metric_col1:
-    st.markdown(f"""
-        <div style="background: #ffffff; 
-                    padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; font-weight: 500;">📊 质检总量</div>
-            <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; color: #1f2937;">{int(total_qa):,}</div>
-            <div style="font-size: 0.7rem; opacity: 0.8;">累计抽检样本数</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.metric_card("质检总量", f"{int(total_qa):,}", icon="📊", border_color=COLORS.primary)
 with metric_col2:
     # 环比变化：原始正确率
     prev_total_qa = prev_group_df["qa_cnt"].sum() if not prev_group_df.empty else 0
     prev_avg_raw_acc = (prev_group_df["raw_accuracy_rate"] * prev_group_df["qa_cnt"]).sum() / prev_total_qa if prev_total_qa > 0 else None
     raw_acc_change_html = calc_change(avg_raw_acc, prev_avg_raw_acc)
     grain_label = "日" if grain == "day" else ("周" if grain == "week" else "月")
-    prev_label = f"环比上{grain_label}" if raw_acc_change_html else "一审准确率"
-    st.markdown(f"""
-        <div style="background: #ffffff; 
-                    padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; font-weight: 500;">✓ 原始正确率</div>
-            <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; color: #2e7d32;">{avg_raw_acc:.2f}%</div>
-            <div style="font-size: 0.7rem; opacity: 0.8;">{prev_label} {raw_acc_change_html}</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.metric_card("原始正确率", f"{avg_raw_acc:.2f}%", delta=raw_acc_change_html, icon="✓",
+                   color=COLORS.success if avg_raw_acc >= 99 else COLORS.danger,
+                   border_color=COLORS.success if avg_raw_acc >= 99 else COLORS.danger)
 with metric_col3:
     prev_avg_final_acc = (prev_group_df["final_accuracy_rate"] * prev_group_df["qa_cnt"]).sum() / prev_total_qa if prev_total_qa > 0 else None
     final_acc_change_html = calc_change(avg_final_acc, prev_avg_final_acc)
-    final_prev_label = f"环比上{grain_label}" if final_acc_change_html else "终审准确率"
-    st.markdown(f"""
-        <div style="background: #ffffff; 
-                    padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; font-weight: 500;">✓✓ 最终正确率</div>
-            <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; color: #2e7d32;">{avg_final_acc:.2f}%</div>
-            <div style="font-size: 0.7rem; opacity: 0.8;">{final_prev_label} {final_acc_change_html}</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.metric_card("最终正确率", f"{avg_final_acc:.2f}%", delta=final_acc_change_html, icon="✓✓",
+                   color=COLORS.success if avg_final_acc >= 99 else COLORS.danger,
+                   border_color=COLORS.success if avg_final_acc >= 99 else COLORS.danger)
 with metric_col4:
-    st.markdown(f"""
-        <div style="background: #ffffff; 
-                    padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; font-weight: 500;">✗ 原始错误量</div>
-            <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; color: #dc2626;">{total_raw_errors:,}</div>
-            <div style="font-size: 0.7rem; opacity: 0.8;">一审错误样本</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.metric_card("原始错误量", f"{total_raw_errors:,}", icon="✗",
+                   color=COLORS.danger, border_color=COLORS.danger)
 with metric_col5:
-    st.markdown(f"""
-        <div style="background: #ffffff; 
-                    padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-            <div style="font-size: 0.8rem; color: #6b7280; margin-bottom: 0.5rem; font-weight: 500;">✗✗ 终审错误量</div>
-            <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; color: #dc2626;">{total_final_errors:,}</div>
-            <div style="font-size: 0.7rem; opacity: 0.8;">终审错误样本</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.metric_card("终审错误量", f"{total_final_errors:,}", icon="✗✗",
+                   color=COLORS.danger, border_color=COLORS.danger)
 
 st.markdown("")  # 轻量间距
 
-# ==================== 第二行：告警区域（紧凑版） ====================
-st.markdown("#### 🚨 实时告警监控")
+# ==================== 第二行：告警区域（设计系统 v3.0） ====================
+ds.section("🚨 实时告警监控")
 # 级别统计（横向紧凑展示）
 alert_col1, alert_col2, alert_col3, alert_col4, alert_col5 = st.columns([1, 1, 1, 1, 2])
 with alert_col1:
-    st.markdown(f"""
-        <div style='background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid {COLOR_P0};'>
-            <div style='color:{COLOR_P0}; font-size:1.75rem; font-weight:700;'>{alert_summary.get('P0', 0)}</div>
-            <div style='font-size:0.75rem; color:#991B1B; font-weight:600;'>🔴 P0 紧急</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.alert_badge("P0", alert_summary.get("P0", 0))
 with alert_col2:
-    st.markdown(f"""
-        <div style='background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid {COLOR_P1};'>
-            <div style='color:{COLOR_P1}; font-size:1.75rem; font-weight:700;'>{alert_summary.get('P1', 0)}</div>
-            <div style='font-size:0.75rem; color:#92400E; font-weight:600;'>🟡 P1 重要</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.alert_badge("P1", alert_summary.get("P1", 0))
 with alert_col3:
-    st.markdown(f"""
-        <div style='background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid {COLOR_P2};'>
-            <div style='color:{COLOR_P2}; font-size:1.75rem; font-weight:700;'>{alert_summary.get('P2', 0)}</div>
-            <div style='font-size:0.75rem; color:#1E40AF; font-weight:600;'>🔵 P2 关注</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.alert_badge("P2", alert_summary.get("P2", 0))
 with alert_col4:
-    st.markdown(f"""
-        <div style='background: linear-gradient(135deg, #F1F5F9 0%, #E2E8F0 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid #64748B;'>
-            <div style='font-size:1.75rem; font-weight:700; color:#1E293B;'>{alert_summary.get('total', 0)}</div>
-            <div style='font-size:0.75rem; color:#475569; font-weight:600;'>📊 总计</div>
-        </div>
-    """, unsafe_allow_html=True)
+    ds.alert_badge("total", alert_summary.get("total", 0))
 with alert_col5:
-    # SLA 超时提示（如果有）
-    if alert_sla_summary.get("total_overdue", 0) > 0:
-        st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); padding: 0.75rem; border-radius: 0.75rem; border-left: 4px solid #DC2626;'>
-                <div style='color:#DC2626; font-weight:700; font-size: 1rem; margin-bottom: 0.25rem;'>⚠️ SLA 超时 {alert_sla_summary.get('total_overdue', 0)} 条</div>
-                <div style='font-size:0.7rem; color:#991B1B;'>待处理 {alert_sla_summary.get('open_overdue', 0)} · 已认领 {alert_sla_summary.get('claimed_overdue', 0)}</div>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-            <div style='background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border-left: 4px solid #10B981;'>
-                <div style='color: #10B981; font-weight: 700; font-size: 1rem;'>✅ 无 SLA 超时</div>
-                <div style='font-size: 0.7rem; color: #047857;'>所有告警均在处理时限内</div>
-            </div>
-        """, unsafe_allow_html=True)
+    ds.sla_status(
+        alert_sla_summary.get("total_overdue", 0),
+        alert_sla_summary.get("open_overdue", 0),
+        alert_sla_summary.get("claimed_overdue", 0),
+    )
 
 # 告警详情折叠面板
 if not alerts_df.empty:
@@ -366,7 +276,7 @@ else:
 st.markdown("")  # 轻量间距
 
 # ==================== 第三行：组别卡片 ====================
-st.markdown("#### 🏢 组别经营视图")
+ds.section("🏢 组别经营视图")
 st.caption("💡 点击组别卡片可切换查看详细数据，卡片颜色代表达标状态")
 
 # 计算 B 组整体
@@ -429,57 +339,36 @@ for idx, (_, row) in enumerate(display_groups.iterrows()):
     raw_change = calc_change(raw_rate, prev_raw_rate)
     final_change = calc_change(final_rate, prev_final_rate)
     
-    # 状态颜色和图标
-    if raw_rate >= 99:
-        bg_gradient = "linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)"
-        border_color = "#10B981"
-        status_icon = "✅"
-        status_text = "达标"
-        status_color = "#047857"
-    elif raw_rate >= 98:
-        bg_gradient = "linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)"
-        border_color = "#F59E0B"
-        status_icon = "⚠️"
-        status_text = "观察中"
-        status_color = "#92400E"
-    else:
-        bg_gradient = "linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%)"
-        border_color = "#EF4444"
-        status_icon = "❌"
-        status_text = "需关注"
-        status_color = "#991B1B"
-    
-    is_selected = selected_group == group_name
-    border = f"3px solid #3B82F6" if is_selected else f"2px solid {border_color}"
-    shadow = "0 8px 16px rgba(59, 130, 246, 0.2)" if is_selected else "0 2px 8px rgba(0,0,0,0.1)"
+    # 使用设计系统的卡片样式方案
+    style = ds.group_card_style(raw_rate, is_selected)
     display_name = "B组（整体）" if group_name == "B组" else group_name
     
     with group_cols[idx]:
         st.markdown(
             f"""
-            <div style="padding: 1.25rem; border-radius: 1rem; background: {bg_gradient}; border: {border}; margin-bottom: 0.5rem; box-shadow: {shadow}; transition: all 0.3s ease; min-height: 180px;">
+            <div class="ds-card" style="background: {style['bg']}; border: {style['border']}; box-shadow: {style['shadow']}; min-height: 180px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-                    <div style="font-weight: 700; font-size: 1.1rem; color: #1E293B;">{display_name}</div>
-                    <div style="font-size: 0.75rem; color: {status_color}; font-weight: 600; background: white; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">{status_icon} {status_text}</div>
+                    <div style="font-weight: 700; font-size: 1.1rem; color: {COLORS.text_primary};">{display_name}</div>
+                    {ds.status_chip(f"{style['icon']} {style['text']}", "success" if raw_rate >= 99 else ("warning" if raw_rate >= 98 else "danger"))}
                 </div>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.5rem;">
-                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid #E5E7EB;">
-                        <div style="font-size: 0.7rem; color: #64748B; margin-bottom: 0.25rem;">原始正确率</div>
-                        <div style="font-size: 1.25rem; font-weight: 700; color: {'#10B981' if raw_rate >= 99 else '#EF4444'};">{raw_rate:.2f}%</div>
+                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid {COLORS.border};">
+                        <div style="font-size: 0.7rem; color: {COLORS.text_secondary}; margin-bottom: 0.25rem;">原始正确率</div>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: {COLORS.success if raw_rate >= 99 else COLORS.danger};">{raw_rate:.2f}%</div>
                         <div style="font-size: 0.65rem; margin-top: 0.25rem; height: 0.9rem;">{raw_change}</div>
                     </div>
-                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid #E5E7EB;">
-                        <div style="font-size: 0.7rem; color: #64748B; margin-bottom: 0.25rem;">最终正确率</div>
-                        <div style="font-size: 1.25rem; font-weight: 700; color: {'#10B981' if final_rate >= 99 else '#EF4444'};">{final_rate:.2f}%</div>
+                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid {COLORS.border};">
+                        <div style="font-size: 0.7rem; color: {COLORS.text_secondary}; margin-bottom: 0.25rem;">最终正确率</div>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: {COLORS.success if final_rate >= 99 else COLORS.danger};">{final_rate:.2f}%</div>
                         <div style="font-size: 0.65rem; margin-top: 0.25rem; height: 0.9rem;">{final_change}</div>
                     </div>
-                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid #E5E7EB;">
-                        <div style="font-size: 0.7rem; color: #64748B; margin-bottom: 0.25rem;">质检量</div>
-                        <div style="font-size: 1.25rem; font-weight: 700; color: #1E293B;">{qa_cnt:,}</div>
+                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid {COLORS.border};">
+                        <div style="font-size: 0.7rem; color: {COLORS.text_secondary}; margin-bottom: 0.25rem;">质检量</div>
+                        <div style="font-size: 1.25rem; font-weight: 700; color: {COLORS.text_primary};">{qa_cnt:,}</div>
                     </div>
-                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid #E5E7EB;">
-                        <div style="font-size: 0.7rem; color: #64748B; margin-bottom: 0.25rem;">原始错误量</div>
-                        <div style="font-size: 1.1rem; font-weight: 700; color: #EF4444;">{raw_error_cnt:,}</div>
+                    <div style="background: white; padding: 0.75rem; border-radius: 0.5rem; text-align: center; border: 1px solid {COLORS.border};">
+                        <div style="font-size: 0.7rem; color: {COLORS.text_secondary}; margin-bottom: 0.25rem;">原始错误量</div>
+                        <div style="font-size: 1.1rem; font-weight: 700; color: {COLORS.danger};">{raw_error_cnt:,}</div>
                     </div>
                 </div>
             </div>
@@ -520,13 +409,7 @@ with queue_col:
             textfont_size=11,
             hovertemplate="<b>%{label}</b><br>占比: %{percent}<br>量级: %{value:,} 条<extra></extra>"
         )
-        fig_pie.update_layout(
-            height=300, 
-            margin=dict(l=20, r=20, t=10, b=10), 
-            showlegend=False,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
+        fig_pie.update_layout(**ds.chart_layout(height=300), showlegend=False)
         st.plotly_chart(fig_pie, use_container_width=True)
         
         # 添加说明
@@ -574,12 +457,9 @@ with trend_col:
         ))
         fig.add_hline(y=99.0, line_dash="dash", line_color=COLOR_WARN, annotation_text="目标 99%", annotation_position="right")
         fig.update_layout(
-            height=300, margin=dict(l=20, r=20, t=10, b=30),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            **ds.chart_layout(height=300),
             yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
             xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
         )
         # 支持点击交互
         clicked = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key="trend_chart")
@@ -611,7 +491,7 @@ with trend_col:
 st.markdown("")  # 轻量间距
 
 # ==================== 第五行：队列排名 + 下探 ====================
-st.markdown("### 🔍 数据下探分析")
+ds.section("🔍 数据下探分析")
 st.caption("💡 通过选择队列和审核人，逐层下探到具体问题样本")
 
 detail_payload = load_group_detail(grain, selected_date, selected_group, None, None, None, None)
@@ -639,19 +519,13 @@ with select_col2:
         auditor_options = ["(全部)"] + detail_auditor_df["reviewer_name"].tolist() if not detail_auditor_df.empty else ["(全部)"]
     selected_auditor = st.selectbox("👤 选择审核人", options=auditor_options, key="auditor_selector", label_visibility="visible")
 with select_col3:
-    # 面包屑导航（优化样式）
-    breadcrumb_parts = [f"<span style='font-weight:600; color:#3B82F6; background: #EFF6FF; padding: 0.25rem 0.5rem; border-radius: 0.375rem;'>{selected_group}</span>"]
+    # 面包屑导航（设计系统 v3.0）
+    breadcrumb_items = [(selected_group, COLORS.primary)]
     if selected_queue != "(全部)":
-        breadcrumb_parts.append(f"<span style='color:#94A3B8;'>›</span> <span style='font-weight:600; color:#10B981; background: #F0FDF4; padding: 0.25rem 0.5rem; border-radius: 0.375rem;'>{selected_queue}</span>")
+        breadcrumb_items.append((selected_queue, COLORS.success))
     if selected_auditor != "(全部)":
-        breadcrumb_parts.append(f"<span style='color:#94A3B8;'>›</span> <span style='font-weight:600; color:#F59E0B; background: #FFFBEB; padding: 0.25rem 0.5rem; border-radius: 0.375rem;'>{selected_auditor}</span>")
-    breadcrumb_html = " ".join(breadcrumb_parts)
-    st.markdown(f"""
-        <div style='padding: 0.75rem; background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%); border-radius: 0.5rem; border: 1px solid #E5E7EB;'>
-            <div style='font-size: 0.75rem; color: #64748B; margin-bottom: 0.5rem;'>📍 当前下探路径</div>
-            <div style='font-size: 0.9rem;'>{breadcrumb_html}</div>
-        </div>
-    """, unsafe_allow_html=True)
+        breadcrumb_items.append((selected_auditor, COLORS.warning))
+    ds.breadcrumb(breadcrumb_items)
 
 # 快捷筛选按钮（带选中状态高亮）
 st.markdown("##### ⚡ 快捷筛选")
@@ -845,7 +719,7 @@ else:
 
 # ==================== 第六行：质检标签分布 + 质检员工作量 ====================
 st.markdown("---")
-st.markdown("### 📊 质检维度分析")
+ds.section("📊 质检维度分析")
 st.caption("💡 了解质检标签分布和质检员工作量分布，帮助识别问题高发区域")
 
 label_col, owner_col = st.columns([1, 1])
@@ -868,13 +742,7 @@ with label_col:
             color_continuous_scale="Blues"
         )
         fig_label.update_traces(textposition="outside", textfont_size=11)
-        fig_label.update_layout(
-            height=320, margin=dict(l=20, r=20, t=10, b=20),
-            xaxis_title="质检量", yaxis_title="",
-            showlegend=False, coloraxis_showscale=False,
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)'
-        )
+        fig_label.update_layout(**ds.chart_layout(height=320), xaxis_title="质检量", yaxis_title="", showlegend=False, coloraxis_showscale=False)
         st.plotly_chart(fig_label, use_container_width=True)
         
         # 补充：仅错误样本分布
@@ -889,11 +757,7 @@ with label_col:
                         text="err_cnt", color_discrete_sequence=["#EF4444"]
                     )
                     fig_err.update_traces(textposition="outside")
-                    fig_err.update_layout(
-                        height=250, margin=dict(l=20, r=20, t=10, b=20),
-                        xaxis_title="错误量", yaxis_title="",
-                        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
-                    )
+                    fig_err.update_layout(**ds.chart_layout(height=250), xaxis_title="错误量", yaxis_title="")
                     st.plotly_chart(fig_err, use_container_width=True)
                 else:
                     st.success("🎉 所有标签均无错误记录")
@@ -997,13 +861,9 @@ with st.expander("📥 导出中心", expanded=False):
             except Exception as e:
                 st.error(f"导出失败: {e}")
 
-st.markdown("""
-<div style='background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%); padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #E5E7EB; margin-top: 1rem;'>
-    <div style='font-size: 0.85rem; color: #475569; line-height: 1.8;'>
-        <strong>💡 看板设计原则：</strong>异常先暴露 → 支持下探 → 沉淀培训动作<br>
-        <strong>🚨 告警规则：</strong>原始正确率 &lt; 99% 触发 P1 重要 · &lt; 98% 触发 P0 紧急 · 告警按日自动生成<br>
-        <strong>📊 数据口径：</strong>原始正确率 = 一审正确数/质检总量 · 最终正确率 = 终审正确数/质检总量<br>
-        <span style='color: #64748B; font-size: 0.8rem;'>数据每日自动更新 · 告警自动推送 · 支持 CSV 导出 · 环比对比基准为同粒度前一期</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+ds.footer([
+    "<strong>💡 看板设计原则：</strong>异常先暴露 → 支持下探 → 沉淀培训动作",
+    "<strong>🚨 告警规则：</strong>原始正确率 &lt; 99% 触发 P1 重要 · &lt; 98% 触发 P0 紧急 · 告警按日自动生成",
+    "<strong>📊 数据口径：</strong>原始正确率 = 一审正确数/质检总量 · 最终正确率 = 终审正确数/质检总量",
+    f"<span style='color: {COLORS.text_muted}; font-size: 0.78rem;'>数据每日自动更新 · 告警自动推送 · 支持 CSV 导出 · 环比对比基准为同粒度前一期</span>",
+])

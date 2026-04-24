@@ -9,46 +9,17 @@ import streamlit as st
 from services.dashboard_service import DashboardService
 from storage.repository import DashboardRepository
 
-# 全局CSS + 明细查询页特有样式
-from utils.styles import inject_global_css
-inject_global_css()
-
-st.markdown("""
-<style>
-    /* 明细查询特有：下载按钮样式 */
-    .stDownloadButton > button {
-        background: #2e7d32;
-        color: white;
-        border-radius: 0.5rem;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        transition: all 0.2s ease;
-    }
-    .stDownloadButton > button:hover {
-        background: #1b5e20;
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
-    }
-</style>
-""", unsafe_allow_html=True)
+# 设计系统 v3.0
+from utils.design_system import ds, COLORS
+ds.inject_theme()
 
 repo = DashboardRepository()
 service = DashboardService()
 
-# Hero 区域
-st.markdown("""
-<div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">🔍 明细查询</h1>
-    </div>
-    <div style="font-size: 0.9rem; color: #4b5563; line-height: 1.6;">
-        多维度筛选 · 问题下钻 · 数据导出
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# Hero 区域（设计系统组件）
+ds.hero("🔍", "明细查询", "多维度筛选 · 问题下钻 · 数据导出")
 
 
-@st.cache_data(show_spinner=False, ttl=600)
 @st.cache_data(show_spinner=False, ttl=600)
 def get_filter_options() -> dict:
     """获取筛选选项（缓存 10 分钟）。
@@ -298,9 +269,9 @@ df = query_detail(date_start, date_end, group_val, queue_val, reviewer_val, erro
 if df.empty:
     st.info("当前筛选条件下没有数据。试试放宽筛选条件。")
 else:
-    # 结果统计（优化样式）
-    st.markdown("---")
-    st.markdown("### 📊 查询结果")
+    # 结果统计（设计系统 v3.0）
+    ds.divider()
+    ds.section("📊 查询结果")
     
     # 统计概览卡片
     s1, s2, s3, s4, s5 = st.columns(5)
@@ -311,42 +282,15 @@ else:
     miss = (df["漏判"] == "是").sum()
     
     with s1:
-        st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid #3B82F6;'>
-                <div style='font-size: 0.75rem; color: #1E40AF; margin-bottom: 0.25rem;'>总记录</div>
-                <div style='font-size: 1.5rem; font-weight: 700; color: #1E40AF;'>{total:,}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        ds.metric_card("总记录", f"{total:,}", icon="📋", border_color=COLORS.primary)
     with s2:
-        st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid #EF4444;'>
-                <div style='font-size: 0.75rem; color: #991B1B; margin-bottom: 0.25rem;'>原始错误</div>
-                <div style='font-size: 1.5rem; font-weight: 700; color: #EF4444;'>{raw_err:,}</div>
-                <div style='font-size: 0.7rem; color: #991B1B;'>{raw_err/total*100:.1f}%</div>
-            </div>
-        """, unsafe_allow_html=True)
+        ds.metric_card("原始错误", f"{raw_err:,}", delta=f"{raw_err/total*100:.1f}%", icon="✗", color=COLORS.danger, border_color=COLORS.danger)
     with s3:
-        st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #FEF2F2 0%, #FEE2E2 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid #DC2626;'>
-                <div style='font-size: 0.75rem; color: #7F1D1D; margin-bottom: 0.25rem;'>最终错误</div>
-                <div style='font-size: 1.5rem; font-weight: 700; color: #DC2626;'>{final_err:,}</div>
-                <div style='font-size: 0.7rem; color: #7F1D1D;'>{final_err/total*100:.1f}%</div>
-            </div>
-        """, unsafe_allow_html=True)
+        ds.metric_card("最终错误", f"{final_err:,}", delta=f"{final_err/total*100:.1f}%", icon="✗✗", color=COLORS.danger, border_color=COLORS.danger)
     with s4:
-        st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid #F59E0B;'>
-                <div style='font-size: 0.75rem; color: #92400E; margin-bottom: 0.25rem;'>错判</div>
-                <div style='font-size: 1.5rem; font-weight: 700; color: #F59E0B;'>{mis:,}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        ds.metric_card("错判", f"{mis:,}", icon="⚠️", color=COLORS.warning, border_color=COLORS.warning)
     with s5:
-        st.markdown(f"""
-            <div style='background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%); padding: 0.75rem; border-radius: 0.75rem; text-align: center; border: 2px solid #10B981;'>
-                <div style='font-size: 0.75rem; color: #047857; margin-bottom: 0.25rem;'>漏判</div>
-                <div style='font-size: 1.5rem; font-weight: 700; color: #10B981;'>{miss:,}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        ds.metric_card("漏判", f"{miss:,}", icon="🔍", color=COLORS.success, border_color=COLORS.success)
     
     # 导出按钮（优化样式）
     csv_data = to_csv_bytes(df)

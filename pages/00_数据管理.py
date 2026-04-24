@@ -23,25 +23,17 @@ from views.data_mgmt import (
     render_health_check,
 )
 
-from utils.styles import inject_global_css
-inject_global_css()
+# 设计系统 v3.0
+from utils.design_system import ds, COLORS
+ds.inject_theme()
 
 # 权限控制（可通过 config/settings.json 启用）
 from utils.auth import require_role, render_admin_badge
 render_admin_badge()
 require_role("admin")
 
-# Hero 区域
-st.markdown("""
-<div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">⚙️ 数据管理</h1>
-    </div>
-    <div style="font-size: 0.9rem; color: #4b5563; line-height: 1.6;">
-        上传质检 Excel 或申诉 CSV · 自动入库并刷新数仓/告警 · 支持多文件批量上传 · 数据维护与清理
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# Hero 区域（设计系统组件）
+ds.hero("⚙️", "数据管理", "导入 · 刷新 · 维护", badges=["质检Excel", "申诉CSV", "新人批次", "告警规则"])
 
 # ---- 数据新鲜度面板 ----
 with st.expander("📊 数据新鲜度概览", expanded=False):

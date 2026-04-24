@@ -48,8 +48,9 @@ from views.newcomer._data import create_data_loaders
 #  全局配置
 # ═══════════════════════════════════════════════════════════════
 
-from utils.styles import inject_global_css
-inject_global_css()
+# 设计系统 v3.0
+from utils.design_system import ds, COLORS
+ds.inject_theme()
 
 repo = DashboardRepository()
 
