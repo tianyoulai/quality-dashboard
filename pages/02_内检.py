@@ -12,23 +12,9 @@ import streamlit as st
 
 from storage.repository import DashboardRepository
 
-# 全局CSS样式优化
-st.markdown("""
-<style>
-    .main > div { padding-top: 1rem; }
-    .stDataFrame { 
-        border-radius: 0.75rem; 
-        overflow: hidden; 
-        border: 1px solid #E5E7EB;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; width: 100% !important; }
-    section[data-testid="stSidebar"] ~ div.main .block-container { max-width: 100% !important; }
-    h1 { margin-bottom: 0.5rem; }
-    h3 { margin-top: 1.5rem; margin-bottom: 1rem; }
-    hr { margin: 1.5rem 0; border-color: #E5E7EB; }
-</style>
-""", unsafe_allow_html=True)
+# 全局CSS样式
+from utils.styles import inject_global_css
+inject_global_css()
 
 repo = DashboardRepository()
 
@@ -213,6 +199,37 @@ with tab_grain[0]:
                         m4.metric("申诉改判率", f"{appeal_rate:.2f}%", help="基于联表匹配数据计算，当前联表命中率极低，仅供参考")
                     else:
                         m4.metric("申诉改判率", "—", help="暂无联表匹配数据")
+
+        # ---- 审核人排名（日维度汇总） ----
+        with st.expander("👤 审核人正确率排名", expanded=False):
+            auditor_sql = """
+                SELECT reviewer_name,
+                       COUNT(*) AS qa_cnt,
+                       SUM(CASE WHEN raw_judgement='正确' THEN 1 ELSE 0 END) AS raw_correct,
+                       SUM(CASE WHEN final_judgement='正确' THEN 1 ELSE 0 END) AS final_correct
+                FROM vw_qa_base
+                WHERE biz_date BETWEEN %s AND %s
+                GROUP BY reviewer_name
+                HAVING qa_cnt >= 5
+                ORDER BY raw_correct/qa_cnt ASC
+            """
+            auditor_df = repo.fetch_df(auditor_sql, (date_start, date_end))
+            if not auditor_df.empty:
+                auditor_df["raw_accuracy"] = auditor_df["raw_correct"] / auditor_df["qa_cnt"] * 100
+                auditor_df["final_accuracy"] = auditor_df["final_correct"] / auditor_df["qa_cnt"] * 100
+                auditor_df["error_cnt"] = auditor_df["qa_cnt"] - auditor_df["raw_correct"]
+
+                a_show = pd.DataFrame()
+                a_show["审核人"] = auditor_df["reviewer_name"].apply(lambda x: x.split("-")[-1] if "-" in str(x) else x)
+                a_show["质检量"] = auditor_df["qa_cnt"].apply(lambda x: f"{int(x):,}")
+                a_show["出错量"] = auditor_df["error_cnt"].apply(lambda x: f"{int(x):,}")
+                a_show["原始正确率"] = auditor_df["raw_accuracy"].apply(lambda x: f"{x:.2f}%")
+                a_show["最终正确率"] = auditor_df["final_accuracy"].apply(lambda x: f"{x:.2f}%")
+
+                st.caption(f"共 {len(auditor_df)} 位审核人（≥5条质检记录），按原始正确率升序排列")
+                st.dataframe(a_show, use_container_width=True, hide_index=True, height=400)
+            else:
+                st.info("所选日期范围内无审核人数据")
 
 
 # ==================== 周维度 ====================

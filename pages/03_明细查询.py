@@ -9,16 +9,13 @@ import streamlit as st
 from services.dashboard_service import DashboardService
 from storage.repository import DashboardRepository
 
-# 全局CSS样式优化
+# 全局CSS + 明细查询页特有样式
+from utils.styles import inject_global_css
+inject_global_css()
+
 st.markdown("""
 <style>
-    .main > div { padding-top: 1rem; }
-    .stDataFrame { 
-        border-radius: 0.75rem; 
-        overflow: hidden; 
-        border: 1px solid #E5E7EB;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
+    /* 明细查询特有：下载按钮样式 */
     .stDownloadButton > button {
         background: #2e7d32;
         color: white;
@@ -32,9 +29,6 @@ st.markdown("""
         transform: translateY(-1px);
         box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
     }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; width: 100% !important; }
-    section[data-testid="stSidebar"] ~ div.main .block-container { max-width: 100% !important; }
-    h1 { margin-bottom: 0.5rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -311,6 +305,44 @@ else:
             err_dist = df[df["错误类型"] != "—"]["错误类型"].value_counts().reset_index()
             err_dist.columns = ["错误类型", "数量"]
             st.dataframe(err_dist, use_container_width=True, hide_index=True)
+
+    # 审核人维度快速统计
+    if "审核人" in df.columns and total > 0:
+        with st.expander("👤 审核人维度统计", expanded=False):
+            reviewer_stats = df.groupby("审核人").agg(
+                总量=("审核人", "count"),
+            ).reset_index()
+            if "原始判断" in df.columns:
+                err_by_reviewer = df[df["原始判断"] == "错误"].groupby("审核人").size().reset_index(name="错误量")
+                reviewer_stats = reviewer_stats.merge(err_by_reviewer, on="审核人", how="left")
+                reviewer_stats["错误量"] = reviewer_stats["错误量"].fillna(0).astype(int)
+                reviewer_stats["正确率"] = ((reviewer_stats["总量"] - reviewer_stats["错误量"]) / reviewer_stats["总量"] * 100).round(2)
+                reviewer_stats = reviewer_stats.sort_values("正确率", ascending=True)
+                reviewer_stats["正确率"] = reviewer_stats["正确率"].apply(lambda x: f"{x:.2f}%")
+            reviewer_stats["总量"] = reviewer_stats["总量"].apply(lambda x: f"{x:,}")
+            if "错误量" in reviewer_stats.columns:
+                reviewer_stats["错误量"] = reviewer_stats["错误量"].apply(lambda x: f"{x:,}")
+            st.caption(f"共 {len(reviewer_stats)} 位审核人")
+            st.dataframe(reviewer_stats, use_container_width=True, hide_index=True, height=300)
+
+    # 队列维度快速统计
+    if "队列" in df.columns and total > 0:
+        with st.expander("📋 队列维度统计", expanded=False):
+            queue_stats = df.groupby("队列").agg(
+                总量=("队列", "count"),
+            ).reset_index()
+            if "原始判断" in df.columns:
+                err_by_queue = df[df["原始判断"] == "错误"].groupby("队列").size().reset_index(name="错误量")
+                queue_stats = queue_stats.merge(err_by_queue, on="队列", how="left")
+                queue_stats["错误量"] = queue_stats["错误量"].fillna(0).astype(int)
+                queue_stats["正确率"] = ((queue_stats["总量"] - queue_stats["错误量"]) / queue_stats["总量"] * 100).round(2)
+                queue_stats = queue_stats.sort_values("正确率", ascending=True)
+                queue_stats["正确率"] = queue_stats["正确率"].apply(lambda x: f"{x:.2f}%")
+            queue_stats["总量"] = queue_stats["总量"].apply(lambda x: f"{x:,}")
+            if "错误量" in queue_stats.columns:
+                queue_stats["错误量"] = queue_stats["错误量"].apply(lambda x: f"{x:,}")
+            st.caption(f"共 {len(queue_stats)} 个队列")
+            st.dataframe(queue_stats, use_container_width=True, hide_index=True, height=300)
 
     # 明细表格（分页展示）
     st.markdown("#### 📋 明细数据")

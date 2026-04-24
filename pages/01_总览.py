@@ -25,67 +25,19 @@ import streamlit as st
 from services.dashboard_service import DashboardService
 from storage.repository import DashboardRepository
 
-# 全局CSS样式优化
+# 全局CSS + 总览页特有样式
+from utils.styles import inject_global_css
+inject_global_css()
+
 st.markdown("""
 <style>
-    /* 整体字体优化 */
-    .main > div {
-        padding-top: 1rem;
-    }
-    
-    /* 卡片悬停效果 */
+    /* 总览页特有：卡片悬停效果 */
     .metric-card {
         transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
     .metric-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    /* 按钮美化 */
-    .stButton > button {
-        border-radius: 0.5rem;
-        transition: all 0.2s ease;
-        font-weight: 500;
-    }
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-    }
-    
-    /* 表格美化 */
-    .stDataFrame {
-        border-radius: 0.5rem;
-        overflow: hidden;
-        border: 1px solid #E5E7EB;
-    }
-    
-    /* 折叠面板美化 */
-    .streamlit-expanderHeader {
-        background: #F8FAFC;
-        border-radius: 0.5rem;
-        border: 1px solid #E5E7EB;
-    }
-    
-    /* 段落间距优化 */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 100% !important;
-        width: 100% !important;
-    }
-    section[data-testid="stSidebar"] ~ div.main .block-container { max-width: 100% !important; }
-    
-    /* 标题样式优化 */
-    h3 {
-        margin-top: 1.5rem;
-        margin-bottom: 1rem;
-    }
-    
-    /* 下划线样式 */
-    hr {
-        margin: 1.5rem 0;
-        border-color: #E5E7EB;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -112,7 +64,7 @@ COLOR_WARN = "#F59E0B"
 
 @st.cache_data(show_spinner=False, ttl=300)
 def get_data_date_range() -> tuple[date, date]:
-    """获取数据库中的日期范围，用于设置默认日期"""
+    """获取数据库中的日期范围, 用于设置默认日期"""
     row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
     if not row or row.get("min_d") is None:
         return date.today(), date.today()
@@ -239,13 +191,13 @@ def load_alert_history(alert_id: str | None) -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False, ttl=300)
 def load_qa_label_distribution_cached(grain: str, selected_date: date, group_name: str | None = None, top_n: int = 10) -> pd.DataFrame:
-    """获取质检标签分布（缓存 5 分钟）"""
+    """获取质检标签分布(缓存5分钟)"""
     return service.load_qa_label_distribution(grain, selected_date, group_name, top_n)
 
 
 @st.cache_data(show_spinner=False, ttl=300)
 def load_qa_owner_distribution_cached(grain: str, selected_date: date, group_name: str | None = None, top_n: int = 10) -> pd.DataFrame:
-    """获取质检员工作量分布（缓存 5 分钟）"""
+    """获取质检员工作量分布(缓存5分钟)"""
     return service.load_qa_owner_distribution(grain, selected_date, group_name, top_n)
 
 
@@ -351,8 +303,19 @@ with mode_col4:
 
 st.markdown("---")
 
+# 缓存刷新按钮（放在日期行右侧）
+if st.sidebar.button("🔄 刷新数据缓存", key="refresh_cache", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
+
 # ==================== 加载数据 ====================
-payload = load_group_overview(grain, selected_date)
+try:
+    payload = load_group_overview(grain, selected_date)
+except Exception as e:
+    st.error(f"⚠️ 数据加载失败：{e}")
+    st.info("请检查数据库连接是否正常，或尝试刷新缓存。")
+    st.stop()
+    
 group_df: pd.DataFrame = payload["group_df"]
 alerts_df: pd.DataFrame = payload["alerts_df"]
 alert_summary: dict[str, int] = payload["alert_summary"]
