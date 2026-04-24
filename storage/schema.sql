@@ -125,6 +125,109 @@ CREATE TABLE IF NOT EXISTS etl_run_log (
 
 CREATE INDEX IF NOT EXISTS idx_erl_job_name ON etl_run_log (job_name);
 
+-- ═══════════════════════════════════════════════════════════════
+--  新人追踪 - FACT 层
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS fact_newcomer_qa (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    biz_date DATE,
+    qa_time DATETIME,
+    reviewer_name VARCHAR(128),
+    reviewer_short_name VARCHAR(128) COMMENT '审核人核心姓名（去掉前缀）',
+    batch_name VARCHAR(128),
+    stage VARCHAR(16) COMMENT 'internal/external',
+    queue_name VARCHAR(128),
+    content_type VARCHAR(128) COMMENT '内容类型',
+    qa_owner_name VARCHAR(128),
+    source_record_id VARCHAR(128),
+    comment_id VARCHAR(128),
+    dynamic_id VARCHAR(128),
+    comment_text TEXT,
+    raw_judgement VARCHAR(128),
+    final_judgement VARCHAR(128),
+    error_type VARCHAR(128),
+    risk_level VARCHAR(64) COMMENT '风险等级',
+    training_topic VARCHAR(256) COMMENT '培训专题',
+    qa_note TEXT,
+    is_correct TINYINT(1) DEFAULT 0,
+    is_misjudge TINYINT(1) DEFAULT 0,
+    is_missjudge TINYINT(1) DEFAULT 0,
+    is_practice_sample TINYINT(1) DEFAULT 0 COMMENT '是否正式人力下线学习样例（1=是 0=否）',
+    source_file_name VARCHAR(256),
+    row_hash VARCHAR(64),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_fnq_biz_date ON fact_newcomer_qa (biz_date);
+CREATE INDEX IF NOT EXISTS idx_fnq_reviewer ON fact_newcomer_qa (reviewer_name);
+CREATE INDEX IF NOT EXISTS idx_fnq_batch ON fact_newcomer_qa (batch_name);
+CREATE INDEX IF NOT EXISTS idx_fnq_row_hash ON fact_newcomer_qa (row_hash);
+CREATE INDEX IF NOT EXISTS idx_fnq_stage ON fact_newcomer_qa (stage);
+
+CREATE TABLE IF NOT EXISTS fact_newcomer_milestone (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    reviewer_name VARCHAR(128) NOT NULL COMMENT '审核人姓名',
+    batch_name VARCHAR(128) COMMENT '所属批次',
+    from_status VARCHAR(32) COMMENT '变更前状态',
+    to_status VARCHAR(32) NOT NULL COMMENT '变更后状态',
+    rule_code VARCHAR(64) COMMENT '触发规则编码',
+    trigger_type VARCHAR(16) NOT NULL DEFAULT 'manual' COMMENT 'auto/manual/system',
+    evidence TEXT COMMENT '状态变更依据（JSON）',
+    operator VARCHAR(64) DEFAULT 'system' COMMENT '操作人',
+    note TEXT COMMENT '备注',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_fnm_reviewer ON fact_newcomer_milestone (reviewer_name);
+CREATE INDEX IF NOT EXISTS idx_fnm_batch ON fact_newcomer_milestone (batch_name);
+
+-- ═══════════════════════════════════════════════════════════════
+--  新人追踪 - DIM 层
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS dim_newcomer_batch (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    batch_name VARCHAR(128) NOT NULL,
+    reviewer_name VARCHAR(128) NOT NULL,
+    reviewer_alias VARCHAR(128) COMMENT '系统映射名（云雀联营-姓名）',
+    team_name VARCHAR(128) DEFAULT '未分组',
+    join_date DATE,
+    effective_start_date DATE COMMENT '批次归属生效开始日期（默认同join_date）',
+    effective_end_date DATE COMMENT '批次归属生效结束日期（为空表示仍在该批次口径内）',
+    team_leader VARCHAR(128),
+    delivery_pm VARCHAR(128) COMMENT '交付PM',
+    mentor_name VARCHAR(128),
+    owner VARCHAR(128),
+    status VARCHAR(32) DEFAULT 'pending' COMMENT 'pending/internal_training/external_training/formal_probation/graduated/exited',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_batch_reviewer (batch_name, reviewer_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_dnb_batch ON dim_newcomer_batch (batch_name);
+CREATE INDEX IF NOT EXISTS idx_dnb_reviewer ON dim_newcomer_batch (reviewer_name);
+CREATE INDEX IF NOT EXISTS idx_dnb_status ON dim_newcomer_batch (status);
+
+CREATE TABLE IF NOT EXISTS dim_graduation_rule (
+    rule_code VARCHAR(64) PRIMARY KEY,
+    rule_name VARCHAR(256),
+    from_status VARCHAR(32) NOT NULL COMMENT '触发状态',
+    to_status VARCHAR(32) NOT NULL COMMENT '目标状态',
+    metric VARCHAR(64) NOT NULL COMMENT '考核指标: accuracy_rate/misjudge_rate/missjudge_rate',
+    compare_op VARCHAR(8) NOT NULL DEFAULT '>=' COMMENT '比较运算符',
+    threshold DOUBLE NOT NULL COMMENT '阈值',
+    consecutive_days INT NOT NULL DEFAULT 3 COMMENT '需连续达标天数',
+    min_qa_cnt INT NOT NULL DEFAULT 30 COMMENT '最低累计质检量',
+    enabled TINYINT(1) DEFAULT 1,
+    description TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- ═══════════════════════════════════════════════════════════════
+--  FACT 层（续）
+-- ═══════════════════════════════════════════════════════════════
+
 CREATE TABLE IF NOT EXISTS fact_upload_log (
     upload_id VARCHAR(64) PRIMARY KEY,
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,

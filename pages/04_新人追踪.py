@@ -530,7 +530,7 @@ filtered_batch_df = aggregate_batch_scope_df if not aggregate_batch_scope_df.emp
     teams=("team_name", lambda x: ",".join(sorted({str(v) for v in x if pd.notna(v) and str(v).strip()}))),
     owners=("owner", lambda x: ",".join(sorted({str(v) for v in x if pd.notna(v) and str(v).strip()}))),
     graduated_cnt=("status", lambda x: int((x == "graduated").sum())),
-    training_cnt=("status", lambda x: int((x == "training").sum())),
+    training_cnt=("status", lambda x: int((~x.isin(["graduated", "exited"])).sum())),
 ) if not members_df.empty else pd.DataFrame(columns=batch_df.columns)
 
 # --- 衍生计算 ---
@@ -629,7 +629,7 @@ if not combined_qa_df.empty:
         batch_gap_df["gap_pct"] = batch_gap_df["sample_gap_pct"]
 
     team_summary_df = members_df.groupby(["batch_name", "team_name", "team_leader", "delivery_pm", "owner"], as_index=False).agg(
-        人数=("reviewer_name", "count"), 培训中=("status", lambda x: (x == "training").sum()), 已转正=("status", lambda x: (x == "graduated").sum()),
+        人数=("reviewer_name", "count"), 培训中=("status", lambda x: (~x.isin(["graduated", "exited"])).sum()), 已转正=("status", lambda x: (x == "graduated").sum()),
     )
     team_summary_df = team_summary_df.merge(
         team_accuracy_df[["batch_name", "team_name", "qa_cnt", "sample_accuracy", "per_capita_accuracy", "accuracy_gap", "misjudge_rate", "missjudge_rate", "issue_rate"]],

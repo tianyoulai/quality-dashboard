@@ -71,6 +71,14 @@ def render_person(ctx: dict) -> None:
     total_qa = int(person_qa["qa_cnt"].sum()) if not person_qa.empty else 0
 
     # --- 个人信息卡 ---
+    # 获取状态标签
+    try:
+        from services.newcomer_lifecycle import get_status_label, load_milestones
+        db_status = person_info.get("status", "training")
+        person_status_label, person_status_color, person_status_bg = get_status_label(db_status)
+    except Exception:
+        person_status_label, person_status_color, person_status_bg = "📚 培训中", "#8b5cf6", "#f5f3ff"
+
     st.markdown(f"""
     <div style="background:linear-gradient(135deg, #ffffff 0%, #F8FAFC 100%); border:1px solid #E5E7EB; border-radius:1rem; padding:1rem 1.2rem; margin-bottom:1rem;">
         <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; flex-wrap:wrap;">
@@ -81,7 +89,10 @@ def render_person(ctx: dict) -> None:
                     联营管理：{display_text(person_info['team_leader'])} · 交付PM：{display_text(person_info['delivery_pm'])} · 质培owner：{display_text(person_info['owner'])} · 导师/质检：{display_text(person_info['mentor_name'])}
                 </div>
             </div>
-            <div style="padding:0.28rem 0.8rem; border-radius:999px; background:{stage_bg}; color:{stage_color}; font-size:0.8rem; font-weight:700; border:1px solid {stage_color};">{stage_label}</div>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+                <div style="padding:0.28rem 0.8rem; border-radius:999px; background:{person_status_bg}; color:{person_status_color}; font-size:0.8rem; font-weight:700; border:1px solid {person_status_color};">{person_status_label}</div>
+                <div style="padding:0.28rem 0.8rem; border-radius:999px; background:{stage_bg}; color:{stage_color}; font-size:0.8rem; font-weight:700; border:1px solid {stage_color};">{stage_label}</div>
+            </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -133,6 +144,34 @@ def render_person(ctx: dict) -> None:
                 )
                 fig_ps.update_layout(height=340, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                 render_plot(fig_ps, f"person_stage_{alias}")
+
+    # --- 状态里程碑时间线 ---
+    try:
+        person_milestones = load_milestones(
+            ctx["repo"],
+            reviewer_name=person_info["reviewer_name"],
+            batch_name=person_info["batch_name"],
+            limit=20,
+        )
+        if person_milestones is not None and not person_milestones.empty:
+            with st.expander(f"🏁 状态流转时间线（{len(person_milestones)} 条记录）", expanded=False):
+                for _, ms in person_milestones.iterrows():
+                    from_lbl = get_status_label(ms["from_status"])[0] if ms["from_status"] else "—"
+                    to_lbl = get_status_label(ms["to_status"])[0]
+                    trigger_map = {"auto": "🤖 推荐确认", "manual": "✋ 手动", "system": "⚙️ 自动"}
+                    trigger_lbl = trigger_map.get(ms["trigger_type"], ms["trigger_type"])
+                    note_text = f' · {ms["note"]}' if ms.get("note") else ""
+                    st.markdown(f"""
+                    <div style="display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.5rem; padding:0.5rem 0.75rem; background:#F8FAFC; border-radius:0.5rem; border-left:3px solid #3b82f6;">
+                        <div style="font-size:0.75rem; color:#94a3b8; min-width:5.5rem;">{str(ms['created_at'])[:16]}</div>
+                        <div style="font-size:0.85rem; color:#1e293b;">
+                            {from_lbl} → <strong>{to_lbl}</strong>
+                            <span style="font-size:0.75rem; color:#64748B; margin-left:0.5rem;">{trigger_lbl}{note_text}</span>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+    except Exception:
+        pass  # 里程碑表可能还未创建
 
     # --- 错误明细 ---
     st.markdown("##### 📋 近期错误明细")

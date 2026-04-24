@@ -55,7 +55,7 @@ def create_data_loaders(repo: "DashboardRepository", helpers: dict):
                 GROUP_CONCAT(DISTINCT team_name ORDER BY team_name) AS teams,
                 GROUP_CONCAT(DISTINCT owner ORDER BY owner) AS owners,
                 SUM(CASE WHEN status = 'graduated' THEN 1 ELSE 0 END) AS graduated_cnt,
-                SUM(CASE WHEN status = 'training' THEN 1 ELSE 0 END) AS training_cnt
+                SUM(CASE WHEN status NOT IN ('graduated', 'exited') THEN 1 ELSE 0 END) AS training_cnt
             FROM dim_newcomer_batch d
             GROUP BY batch_name
             ORDER BY MIN({batch_effective_start_expr('d')}) DESC
