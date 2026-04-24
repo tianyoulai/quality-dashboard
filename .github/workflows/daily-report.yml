@@ -1,23 +1,42 @@
-# 质检日报推送 - GitHub Action
-# ⚠️ 默认关闭自动调度（与本地 LaunchAgents daily_refresh 重复）
-#    本地 13:05 已覆盖数据刷新+企微推送，此 workflow 仅作备用/手动触发
-#    如需启用自动调度，取消下方 schedule 注释即可
+# 质检报告自动推送 - GitHub Actions
+# 统一调度：日报 + 周报 + 新人日报
+# 
+# 调度策略：
+#   - 日报 + 新人日报：每天 UTC 10:20 (北京 18:20)
+#   - 周报：每周五 UTC 10:30 (北京 18:30)
+#   - 手动触发：支持选择报告类型
 
-name: Daily QA Report
+name: QA Report Pipeline
 
 on:
-  # schedule:
-  #   # UTC 10:20 = 北京时间 18:20（每天）
-  #   - cron: '20 10 * * *'
+  schedule:
+    # 日报 + 新人日报：北京时间 18:20（工作日+周末均推送）
+    - cron: '20 10 * * *'
+    # 周报：每周五北京时间 18:30
+    - cron: '30 10 * * 5'
   workflow_dispatch:
-    # 允许手动触发（用于测试或应急推送）
     inputs:
+      report_type:
+        description: '报告类型'
+        required: true
+        type: choice
+        options:
+          - daily
+          - weekly
+          - newcomer
+          - all
+        default: 'all'
       report_date:
-        description: '报告日期 (YYYY-MM-DD)，默认昨天'
+        description: '报告日期 (YYYY-MM-DD)，留空=自动'
         required: false
         default: ''
       dry_run:
         description: '仅生成不推送'
+        required: false
+        type: boolean
+        default: false
+      skip_ai:
+        description: '跳过 AI 洞察'
         required: false
         type: boolean
         default: false
@@ -26,28 +45,29 @@ permissions:
   contents: read
 
 concurrency:
-  group: daily-qa-report-${{ github.ref }}
+  group: qa-report-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  PYTHON_VERSION: '3.12'
+
 jobs:
-  daily-report:
+  report:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Prepare config
         env:
@@ -57,11 +77,11 @@ jobs:
           TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
           TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
           WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK_URL }}
+          DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_URL: ${{ secrets.DEEPSEEK_API_URL }}
         run: |
-          # 直接生成完整的 settings.json，代码从该文件读取所有配置
           mkdir -p config
 
-          # 生成 settings.json
           python << 'PYEOF'
           import json, os, sys
 
@@ -72,25 +92,20 @@ jobs:
               "TIDB_DATABASE": os.environ.get("TIDB_DATABASE", ""),
               "WECOM_WEBHOOK": os.environ.get("WECOM_WEBHOOK", ""),
           }
-          missing = [name for name, value in required.items() if not value]
-
+          missing = [k for k, v in required.items() if not v]
           if missing:
-              print(f"⚠️ Secrets 未配置（{', '.join(missing)}），跳过配置生成。")
-              print("   → 如需启用此 workflow，请在 Settings → Secrets 中配置以下变量：")
-              print("     TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE, WECOM_WEBHOOK_URL")
-              print("   → 或使用本地 LaunchAgents daily_refresh (每天 13:05) 已覆盖此功能")
-              # 写一个标记文件，让后续步骤知道配置未就绪
-              with open("config/.skip_flag", "w") as f:
-                  f.write("secrets_missing")
+              print(f"::warning::Secrets 未配置: {', '.join(missing)}")
+              open("config/.skip_flag", "w").write("secrets_missing")
               sys.exit(0)
 
           config = {
               "wecom_webhook_url": required["WECOM_WEBHOOK"],
-              "wecom_webhook_key": "",
-              "daily_report_hour": 18,
-              "daily_report_minute": 20,
               "dashboard_url": "https://quality-dashboard-2026.streamlit.app/",
-              "db_path": "data/warehouse/qa.duckdb",
+              "deepseek": {
+                  "api_key": os.environ.get("DEEPSEEK_KEY", ""),
+                  "api_url": os.environ.get("DEEPSEEK_URL", "https://api.deepseek.com/v1/chat/completions"),
+                  "model": "deepseek-reasoner"
+              },
               "tidb": {
                   "host": required["TIDB_HOST"],
                   "port": int(os.environ.get("TIDB_PORT", "4000")),
@@ -100,48 +115,132 @@ jobs:
                   "charset": "utf8mb4"
               }
           }
-
-          with open("config/settings.json", "w", encoding="utf-8") as f:
+          with open("config/settings.json", "w") as f:
               json.dump(config, f, indent=2)
-
-          print("Config prepared (secrets omitted).")
+          print("✅ Config prepared")
           PYEOF
 
-      - name: Run daily report
+      # ── 判断执行哪些报告 ──
+      - name: Determine report types
         if: hashFiles('config/.skip_flag') == ''
+        id: plan
+        run: |
+          EVENT="${{ github.event_name }}"
+          
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            TYPE="${{ github.event.inputs.report_type }}"
+            echo "run_daily=$( [ "$TYPE" = "daily" ] || [ "$TYPE" = "all" ] && echo true || echo false )" >> $GITHUB_OUTPUT
+            echo "run_weekly=$( [ "$TYPE" = "weekly" ] || [ "$TYPE" = "all" ] && echo true || echo false )" >> $GITHUB_OUTPUT
+            echo "run_newcomer=$( [ "$TYPE" = "newcomer" ] || [ "$TYPE" = "all" ] && echo true || echo false )" >> $GITHUB_OUTPUT
+          else
+            # schedule 触发
+            CRON="${{ github.event.schedule }}"
+            if [ "$CRON" = "30 10 * * 5" ]; then
+              # 周五周报
+              echo "run_daily=true" >> $GITHUB_OUTPUT
+              echo "run_weekly=true" >> $GITHUB_OUTPUT
+              echo "run_newcomer=true" >> $GITHUB_OUTPUT
+            else
+              # 日报 + 新人日报
+              echo "run_daily=true" >> $GITHUB_OUTPUT
+              echo "run_weekly=false" >> $GITHUB_OUTPUT
+              echo "run_newcomer=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      # ── 刷新数仓 + 告警（报告依赖最新聚合数据）──
+      - name: Refresh warehouse & alerts
+        if: hashFiles('config/.skip_flag') == ''
+        run: |
+          echo "🔄 Refreshing warehouse..."
+          python jobs/refresh_warehouse.py || echo "::warning::数仓刷新失败，使用现有数据"
+          echo "🔔 Refreshing alerts..."
+          python jobs/refresh_alerts.py || echo "::warning::告警刷新失败，使用现有数据"
+
+      # ── 日报 ──
+      - name: Daily report
+        if: hashFiles('config/.skip_flag') == '' && steps.plan.outputs.run_daily == 'true'
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL }}
         run: |
-          ARGS=""
-          
-          # 计算日期参数
+          ARGS="--force"
           if [ -n "${{ github.event.inputs.report_date }}" ]; then
-            ARGS="--date ${{ github.event.inputs.report_date }}"
+            ARGS="$ARGS --date ${{ github.event.inputs.report_date }}"
           else
-            ARGS="--date $(date -d 'yesterday' '+%Y-%m-%d')"
+            ARGS="$ARGS --date $(date -u -d '-1 day' '+%Y-%m-%d')"
           fi
+          [ "${{ github.event.inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+          [ "${{ github.event.inputs.skip_ai }}" = "true" ] && ARGS="$ARGS --skip-ai"
           
-          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
-            ARGS="$ARGS --dry-run"
-          fi
-          
-          echo "Running: python jobs/daily_report.py $ARGS"
+          echo "📊 Running: python jobs/daily_report.py $ARGS"
           python jobs/daily_report.py $ARGS
 
+      # ── 新人日报 ──
+      - name: Newcomer daily report
+        if: hashFiles('config/.skip_flag') == '' && steps.plan.outputs.run_newcomer == 'true'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL }}
+        run: |
+          ARGS="--force"
+          if [ -n "${{ github.event.inputs.report_date }}" ]; then
+            ARGS="$ARGS --date ${{ github.event.inputs.report_date }}"
+          else
+            ARGS="$ARGS --date $(date -u -d '-1 day' '+%Y-%m-%d')"
+          fi
+          [ "${{ github.event.inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+          [ "${{ github.event.inputs.skip_ai }}" = "true" ] && ARGS="$ARGS --skip-ai"
+          
+          echo "👶 Running: python jobs/newcomer_daily_report.py $ARGS"
+          python jobs/newcomer_daily_report.py $ARGS
+
+      # ── 周报（仅周五或手动选择）──
+      - name: Weekly report
+        if: hashFiles('config/.skip_flag') == '' && steps.plan.outputs.run_weekly == 'true'
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_URL: ${{ secrets.DEEPSEEK_API_URL }}
+        run: |
+          ARGS="--force"
+          if [ -n "${{ github.event.inputs.report_date }}" ]; then
+            ARGS="$ARGS --date ${{ github.event.inputs.report_date }}"
+          else
+            ARGS="$ARGS --date $(date -u '+%Y-%m-%d')"
+          fi
+          [ "${{ github.event.inputs.dry_run }}" = "true" ] && ARGS="$ARGS --dry-run"
+          [ "${{ github.event.inputs.skip_ai }}" = "true" ] && ARGS="$ARGS --skip-ai"
+          
+          echo "📈 Running: python jobs/weekly_report.py $ARGS"
+          python jobs/weekly_report.py $ARGS
+
+      # ── 自动归档（超过90天的数据）──
+      - name: Auto archive old data
+        if: hashFiles('config/.skip_flag') == ''
+        run: |
+          echo "🗄️ Running data archive..."
+          python jobs/auto_maintenance.py --archive --days 90 || echo "::warning::数据归档失败"
+
+      # ── 健康检查（异常时推送企微）──
+      - name: Health check & push
+        if: hashFiles('config/.skip_flag') == ''
+        run: |
+          echo "🩺 Running health check..."
+          python jobs/auto_maintenance.py --health --push || echo "::warning::健康检查失败"
+
+      # ── 跳过通知 ──
       - name: Skip notice
         if: hashFiles('config/.skip_flag') != ''
         run: |
-          echo "::notice::⏭️ Daily QA Report 已跳过 — Secrets 未配置"
-          echo "::notice::   本地 LaunchAgents daily_refresh (13:05) 已覆盖此功能"
-          echo "::notice::   如需启用云端推送，请配置 Repository Secrets 后手动触发"
-          echo "SKIP=true" >> $GITHUB_STEP_SUMMARY
+          echo "::notice::⏭️ 报告已跳过 — Secrets 未配置"
+          echo "请在 Settings → Secrets 中配置: TIDB_HOST, TIDB_PORT, TIDB_USER, TIDB_PASSWORD, TIDB_DATABASE, WECOM_WEBHOOK_URL, DEEPSEEK_API_KEY" >> $GITHUB_STEP_SUMMARY
 
-      - name: Upload report artifact
+      # ── 保存产物 ──
+      - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
-          name: daily-report-${{ github.run_number }}
+          name: qa-reports-${{ github.run_number }}
           path: |
             deliverables/
             daily_data.json
