@@ -5,7 +5,7 @@ from typing import Any
 
 import pandas as pd
 
-from api.serializers import dataframe_to_records, normalize_payload
+from utils.helpers import dataframe_to_records, normalize_payload
 from storage.repository import DashboardRepository
 
 repo = DashboardRepository()

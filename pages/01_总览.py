@@ -281,8 +281,8 @@ with quick_col3:
         st.session_state["quick_mode"] = "appeal"
         st.rerun()
 with quick_col4:
-    if st.button("📊 数据总览", use_container_width=True, help="跳转到数据总览页"):
-        st.switch_page("pages/02_数据总览.py")
+    if st.button("👶 新人追踪", use_container_width=True, help="查看新人质检成长情况"):
+        st.switch_page("pages/04_新人追踪.py")
 
 # 模式切换 + 日期选择（一行搞定）
 mode_col1, mode_col2, mode_col3, mode_col4 = st.columns([1, 1, 1, 2])
@@ -749,6 +749,19 @@ with trend_col:
                 if clicked_idx < len(trend_plot_df):
                     clicked_date = trend_plot_df.iloc[clicked_idx]["anchor_date"]
                     st.info(f"💡 点击了 {clicked_date.strftime('%Y-%m-%d')}，可切换到对应日期查看详情")
+
+        # 趋势概要统计
+        if len(trend_plot_df) >= 2:
+            latest = trend_plot_df.iloc[-1]
+            earliest = trend_plot_df.iloc[0]
+            avg_final = trend_plot_df["final_accuracy_rate"].mean()
+            min_final = trend_plot_df["final_accuracy_rate"].min()
+            min_date = trend_plot_df.loc[trend_plot_df["final_accuracy_rate"].idxmin(), "anchor_date"]
+            _ts1, _ts2, _ts3 = st.columns(3)
+            _ts1.metric("区间均值", f"{avg_final:.2f}%")
+            _ts2.metric("区间最低", f"{min_final:.2f}%", help=f"出现于 {min_date.strftime('%Y-%m-%d')}")
+            delta_val = latest["final_accuracy_rate"] - earliest["final_accuracy_rate"]
+            _ts3.metric("区间变化", f"{delta_val:+.2f}%")
     else:
         st.info("暂无趋势数据")
 

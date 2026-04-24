@@ -358,24 +358,29 @@ else:
     # 确保页码有效
     current_page = min(st.session_state["detail_page"], total_pages)
     
-    page_col1, page_col2, page_col3, page_col4, page_col5 = st.columns([1, 1, 2, 1, 1])
+    page_col1, page_col2, page_col3, page_col4, page_col5, page_col6 = st.columns([0.8, 0.8, 1.5, 0.8, 0.8, 1.2])
     with page_col1:
         if st.button("⏮ 首页", key="page_first", use_container_width=True, disabled=(current_page <= 1)):
             st.session_state["detail_page"] = 1
             st.rerun()
     with page_col2:
-        if st.button("◀ 上一页", key="page_prev", use_container_width=True, disabled=(current_page <= 1)):
+        if st.button("◀ 上页", key="page_prev", use_container_width=True, disabled=(current_page <= 1)):
             st.session_state["detail_page"] = current_page - 1
             st.rerun()
     with page_col3:
         st.markdown(f"<div style='text-align:center; padding:0.5rem; font-weight:600;'>第 {current_page} / {total_pages} 页 · 共 {total_rows:,} 条</div>", unsafe_allow_html=True)
     with page_col4:
-        if st.button("下一页 ▶", key="page_next", use_container_width=True, disabled=(current_page >= total_pages)):
+        if st.button("下页 ▶", key="page_next", use_container_width=True, disabled=(current_page >= total_pages)):
             st.session_state["detail_page"] = current_page + 1
             st.rerun()
     with page_col5:
         if st.button("末页 ⏭", key="page_last", use_container_width=True, disabled=(current_page >= total_pages)):
             st.session_state["detail_page"] = total_pages
+            st.rerun()
+    with page_col6:
+        jump_page = st.number_input("跳转到", min_value=1, max_value=total_pages, value=current_page, step=1, key="jump_page", label_visibility="collapsed")
+        if jump_page != current_page:
+            st.session_state["detail_page"] = jump_page
             st.rerun()
     
     # 分页展示数据

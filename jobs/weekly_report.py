@@ -58,6 +58,24 @@ def main() -> None:
     week_label = f"{week_start}~{week_end}"
     print(f"📈 周报生成 | {week_label}")
 
+    try:
+        _run_report(week_end, week_start, week_label, args)
+    except Exception as e:
+        print(f"❌ 周报生成失败: {e}")
+        import traceback
+        traceback.print_exc()
+        if not args.dry_run:
+            try:
+                from services.wecom_push import send_wecom_webhook
+                send_wecom_webhook(f"⚠️ 质检周报生成失败 | {week_label}\n\n错误：{e}")
+            except Exception:
+                pass
+        sys.exit(1)
+
+
+def _run_report(week_end: date, week_start: date, week_label: str, args) -> None:
+    """周报生成核心逻辑。"""
+
     # 1. 生成
     result = generate_weekly_report(week_end, skip_ai=args.skip_ai)
 

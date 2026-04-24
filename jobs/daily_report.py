@@ -57,6 +57,25 @@ def main() -> None:
     report_date = date.fromisoformat(args.date)
     print(f"📊 日报生成 | {report_date}")
 
+    try:
+        _run_report(report_date, args)
+    except Exception as e:
+        print(f"❌ 日报生成失败: {e}")
+        import traceback
+        traceback.print_exc()
+        # 尝试推送错误通知
+        if not args.dry_run:
+            try:
+                from services.wecom_push import send_wecom_webhook
+                send_wecom_webhook(f"⚠️ 质检日报生成失败 | {report_date}\n\n错误：{e}")
+            except Exception:
+                pass
+        sys.exit(1)
+
+
+def _run_report(report_date: date, args) -> None:
+    """日报生成核心逻辑。"""
+
     # 1. 生成数据
     result = generate_daily_report(report_date, skip_ai=args.skip_ai)
 
