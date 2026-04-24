@@ -21,12 +21,14 @@ from storage.repository import DashboardRepository
 # ═══════════════════════════════════════════════════════════════
 
 # 完整的新人状态流
+# 实际业务: 内检 → 外检 → 正式队列(=毕业)
+# formal_probation 保留用于自动推断（检测到正式队列数据时标记）
 STATUS_FLOW = [
     "pending",              # 待开始：已录入名单但无任何质检数据
     "internal_training",    # 内检培训中：已有内检质检数据
     "external_training",    # 外检培训中：已有外检质检数据
-    "formal_probation",     # 正式观察期：已进入正式队列
-    "graduated",            # 已毕业：满足毕业条件并确认
+    "formal_probation",     # 已进入正式队列（自动推断用）
+    "graduated",            # 已毕业：正式上线
     "exited",               # 已退出：离职/淘汰
 ]
 
@@ -34,14 +36,15 @@ STATUS_LABELS = {
     "pending":           ("⏳ 待开始",    "#94a3b8", "#f8fafc"),
     "internal_training": ("🏫 内检培训中", "#8b5cf6", "#f5f3ff"),
     "external_training": ("🔍 外检培训中", "#3b82f6", "#eff6ff"),
-    "formal_probation":  ("✅ 正式观察期", "#f59e0b", "#fffbeb"),
+    "formal_probation":  ("✅ 正式队列",  "#f59e0b", "#fffbeb"),
     "graduated":         ("🎓 已毕业",    "#10b981", "#ecfdf5"),
     "exited":            ("🚪 已退出",    "#6b7280", "#f9fafb"),
     # 兼容旧 status
     "training":          ("📚 培训中",    "#8b5cf6", "#f5f3ff"),
 }
 
-# 默认毕业条件
+# 默认晋级条件
+# 正式上线 = 进入正式队列 = 毕业（新人培训结束）
 DEFAULT_RULES = [
     {
         "rule_code": "INTERNAL_TO_EXTERNAL",
@@ -50,34 +53,22 @@ DEFAULT_RULES = [
         "to_status": "external_training",
         "metric": "accuracy_rate",
         "compare_op": ">=",
-        "threshold": 95.0,
+        "threshold": 90.0,
         "consecutive_days": 3,
         "min_qa_cnt": 30,
-        "description": "连续3天内检正确率≥95%且累计质检量≥30，建议进入外检",
+        "description": "连续3天内检正确率≥90%且累计质检量≥30，建议进入外检",
     },
     {
         "rule_code": "EXTERNAL_TO_FORMAL",
         "rule_name": "外检 → 正式上线",
         "from_status": "external_training",
-        "to_status": "formal_probation",
-        "metric": "accuracy_rate",
-        "compare_op": ">=",
-        "threshold": 97.0,
-        "consecutive_days": 5,
-        "min_qa_cnt": 50,
-        "description": "连续5天外检正确率≥97%且累计质检量≥50，建议正式上线",
-    },
-    {
-        "rule_code": "FORMAL_TO_GRADUATED",
-        "rule_name": "正式 → 毕业",
-        "from_status": "formal_probation",
         "to_status": "graduated",
         "metric": "accuracy_rate",
         "compare_op": ">=",
         "threshold": 98.0,
-        "consecutive_days": 7,
-        "min_qa_cnt": 100,
-        "description": "连续7天正式正确率≥98%且累计质检量≥100，建议毕业",
+        "consecutive_days": 3,
+        "min_qa_cnt": 50,
+        "description": "连续3天外检正确率≥98%且累计质检量≥50，建议正式上线（毕业）",
     },
 ]
 
@@ -145,8 +136,8 @@ def ensure_lifecycle_schema(repo: DashboardRepository) -> None:
 def infer_current_stage(repo: DashboardRepository, reviewer_name: str) -> str:
     """根据质检数据推断审核人当前实际所处阶段。
 
-    逻辑（与文件名识别一致）：
-    - 有 formal 阶段数据 → formal_probation
+    逻辑（与文件名/队列识别一致）：
+    - 有 formal（正式队列）数据 → graduated（进入正式队列=毕业）
     - 有 external 阶段数据 → external_training
     - 有 internal 阶段数据 → internal_training
     - 无任何数据 → pending
@@ -172,7 +163,7 @@ def infer_current_stage(repo: DashboardRepository, reviewer_name: str) -> str:
         stages.add("formal")
 
     if "formal" in stages:
-        return "formal_probation"
+        return "graduated"  # 进入正式队列 = 毕业
     if "external" in stages:
         return "external_training"
     if "internal" in stages:
@@ -246,7 +237,7 @@ def batch_infer_stages(repo: DashboardRepository) -> pd.DataFrame:
                 stages.add("formal")
 
         if "formal" in stages:
-            inferred = "formal_probation"
+            inferred = "graduated"  # 进入正式队列 = 毕业
         elif "external" in stages:
             inferred = "external_training"
         elif "internal" in stages:

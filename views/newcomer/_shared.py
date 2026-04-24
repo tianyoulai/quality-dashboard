@@ -25,7 +25,7 @@ STATUS_META = {
     "pending":           ("⏳ 待开始",    "#94a3b8", "#f8fafc"),
     "internal_training": ("🏫 内检培训中", "#8b5cf6", "#f5f3ff"),
     "external_training": ("🔍 外检培训中", "#3b82f6", "#eff6ff"),
-    "formal_probation":  ("✅ 正式观察期", "#f59e0b", "#fffbeb"),
+    "formal_probation":  ("✅ 正式队列",  "#f59e0b", "#fffbeb"),
     "graduated":         ("🎓 已毕业",    "#10b981", "#ecfdf5"),
     "exited":            ("🚪 已退出",    "#6b7280", "#f9fafb"),
     "training":          ("📚 培训中",    "#8b5cf6", "#f5f3ff"),  # 兼容旧值
