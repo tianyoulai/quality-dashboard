@@ -307,12 +307,7 @@ batch_df = load_batch_list()
 unmatched_df = load_unmatched_newcomer_rows()
 
 if batch_df is None or batch_df.empty:
-    st.markdown("""
-    <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-        <h1 style="margin: 0; font-size: 2rem; font-weight: 700;">👶 新人追踪</h1>
-        <div style="font-size: 0.9rem; color: #4b5563; margin-top: 0.5rem;">暂无新人数据，请先在「数据导入 → 新人映射」上传新人名单。</div>
-    </div>
-    """, unsafe_allow_html=True)
+    ds.hero("👶", "新人追踪", "暂无新人数据，请先在「数据导入 → 新人映射」上传新人名单。")
     st.stop()
 
 total_people = int(batch_df["total_cnt"].sum())
@@ -321,21 +316,11 @@ all_teams: set[str] = set()
 for t in batch_df["teams"].dropna():
     all_teams.update(t.split(","))
 
-st.markdown(f"""
-<div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">👶 新人追踪</h1>
-        <div style="font-size: 0.85rem; color: #6b7280;">共 {total_batches} 批次 · {total_people} 人 · {len(all_teams)} 个团队</div>
-    </div>
-    <div style="font-size: 0.9rem; color: #4b5563; line-height: 1.6;">
-        📍 成长路径：
-        <span style="background: #f3e8ff; padding: 0.15rem 0.5rem; border-radius: 0.3rem; color: #7c3aed;">🏫 内部质检</span> →
-        <span style="background: #dbeafe; padding: 0.15rem 0.5rem; border-radius: 0.3rem; color: #1d4ed8;">🔍 外部质检</span> →
-        <span style="background: #d1fae5; padding: 0.15rem 0.5rem; border-radius: 0.3rem; color: #047857;">✅ 正式上线</span>
-        &nbsp;·&nbsp; 通过审核人名「云雀联营-姓名」自动关联
-    </div>
-</div>
-""", unsafe_allow_html=True)
+ds.hero(
+    "👶", "新人追踪",
+    f"共 {total_batches} 批次 · {total_people} 人 · {len(all_teams)} 个团队",
+    badges=["🏫 内部质检", "🔍 外部质检", "✅ 正式上线", "自动关联「云雀联营-姓名」"],
+)
 
 # --- 未关联 / 借调练习提示 ---
 practice_df = pd.DataFrame(columns=["reviewer_name", "stage", "is_practice_sample", "row_cnt", "start_date", "end_date"])
@@ -778,17 +763,13 @@ VIEW_ROUTER[active_view](ctx)
 #  底部说明
 # ═══════════════════════════════════════════════════════════════
 
-st.markdown("---")
-st.markdown("""
-<div style='background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%); padding: 1rem; border-radius: 0.75rem; border: 1px solid #E5E7EB;'>
-    <div style='font-size: 0.85rem; color: #475569; line-height: 1.6;'>
-        <strong>💡 阶段识别规则：</strong><br>
-        · 文件名含「10816」→ 外部质检<br>
-        · 文件队列含「新人评论测试」或文件名含「新人」→ 内部质检<br>
-        · 其他 → 正式上线（通过审核人名自动关联）<br>
-        · 正式队列借调到新人队列练习的人员，不计入新人批次统计<br>
-        · 聚合层统一同时展示「样本正确率 + 人均正确率」；个人追踪页只看单人样本正确率<br>
-        <span style='color: #64748B; font-size: 0.8rem;'>审核人映射：名单姓名 → 「云雀联营-」+ 姓名；批次归属按 reviewer_alias + biz_date + 生效区间判断</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+ds.divider()
+ds.footer([
+    "<strong>💡 阶段识别规则：</strong>",
+    "· 文件名含「10816」→ 外部质检",
+    "· 文件队列含「新人评论测试」或文件名含「新人」→ 内部质检",
+    "· 其他 → 正式上线（通过审核人名自动关联）",
+    "· 正式队列借调到新人队列练习的人员，不计入新人批次统计",
+    "· 聚合层统一同时展示「样本正确率 + 人均正确率」；个人追踪页只看单人样本正确率",
+    f"<span style='color: {COLORS.text_muted}; font-size: 0.78rem;'>审核人映射：名单姓名 → 「云雀联营-」+ 姓名；批次归属按 reviewer_alias + biz_date + 生效区间判断</span>",
+])

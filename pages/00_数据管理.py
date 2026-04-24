@@ -796,7 +796,7 @@ with tab_import[5]:
                     with col_info:
                         st.markdown(f"""
                         **{rec['reviewer_name']}** · {rec['batch_name']} · {rec.get('team_name', '')}
-                        <br><span style="font-size:0.85rem; color:#475569;">
+                        <br><span style="font-size:0.85rem; color:{COLORS.text_secondary};">
                         {from_label} → {to_label} · {rec['evidence_summary']}
                         </span>
                         """, unsafe_allow_html=True)

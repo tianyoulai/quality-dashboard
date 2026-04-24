@@ -451,7 +451,7 @@ with trend_col:
         fig.add_trace(go.Scatter(
             x=trend_plot_df["anchor_date"], y=trend_plot_df["raw_accuracy_rate"],
             mode="lines+markers", name="原始正确率",
-            line=dict(color="#94A3B8", width=2, dash="dot"), marker=dict(size=6),
+            line=dict(color=COLORS.text_muted, width=2, dash="dot"), marker=dict(size=6),
             text=[f"{v:.2f}%" for v in trend_plot_df["raw_accuracy_rate"]],
             hovertemplate="<b>%{x|%Y-%m-%d}</b><br>原始正确率: %{text}<extra></extra>"
         ))
@@ -754,7 +754,7 @@ with label_col:
                 if not err_only.empty:
                     fig_err = px.bar(
                         err_only, x="err_cnt", y="label_name", orientation="h",
-                        text="err_cnt", color_discrete_sequence=["#EF4444"]
+                        text="err_cnt", color_discrete_sequence=[COLORS.danger]
                     )
                     fig_err.update_traces(textposition="outside")
                     fig_err.update_layout(**ds.chart_layout(height=250), xaxis_title="错误量", yaxis_title="")
@@ -779,7 +779,7 @@ with owner_col:
         # 均衡度 = 1 - (标准差/均值)，越接近1说明越均衡
         std_qa = owner_df["qa_cnt"].std()
         balance_score = max(0, 1 - std_qa / avg_qa) * 100 if avg_qa > 0 else 0
-        balance_color = "#10B981" if balance_score >= 70 else ("#F59E0B" if balance_score >= 40 else "#EF4444")
+        balance_color = COLORS.success if balance_score >= 70 else (COLORS.warning if balance_score >= 40 else COLORS.danger)
         
         _ow_col1, _ow_col2, _ow_col3 = st.columns(3)
         with _ow_col1:
@@ -789,7 +789,7 @@ with owner_col:
         with _ow_col3:
             st.markdown(f"""
             <div style="text-align:center;">
-                <div style="font-size:0.75rem; color:#6B7280;">均衡度</div>
+                <div style="font-size:0.75rem; color:{COLORS.text_secondary};">均衡度</div>
                 <div style="font-size:1.5rem; font-weight:700; color:{balance_color};">{balance_score:.0f}%</div>
             </div>
             """, unsafe_allow_html=True)

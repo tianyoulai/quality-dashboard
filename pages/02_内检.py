@@ -76,30 +76,28 @@ def _build_group_trend(df: pd.DataFrame, date_col: str, grain_label: str, key_su
             fig.add_trace(go.Scatter(
                 x=trend[date_col], y=trend["final_accuracy_rate"],
                 mode="lines+markers", name="最终正确率",
-                line=dict(color="#10B981", width=3), marker=dict(size=8),
+                line=dict(color=COLORS.success, width=3), marker=dict(size=8),
                 text=[f"{v:.2f}%" for v in trend["final_accuracy_rate"]],
                 hovertemplate="<b>%{x}</b><br>最终正确率: %{text}<extra></extra>"
             ))
             fig.add_trace(go.Scatter(
                 x=trend[date_col], y=trend["raw_accuracy_rate"],
                 mode="lines+markers", name="原始正确率",
-                line=dict(color="#94A3B8", width=2, dash="dot"), marker=dict(size=6),
+                line=dict(color=COLORS.text_muted, width=2, dash="dot"), marker=dict(size=6),
                 text=[f"{v:.2f}%" for v in trend["raw_accuracy_rate"]],
                 hovertemplate="<b>%{x}</b><br>原始正确率: %{text}<extra></extra>"
             ))
-            fig.add_hline(y=99.0, line_dash="dash", line_color="#F59E0B", annotation_text="目标 99%", annotation_position="right")
+            fig.add_hline(y=99.0, line_dash="dash", line_color=COLORS.warning, annotation_text="目标 99%", annotation_position="right")
             # 增加区间均值参考线
             if len(trend) > 1:
                 avg_final = trend["final_accuracy_rate"].mean()
-                fig.add_hline(y=avg_final, line_dash="dot", line_color="#8B5CF6",
+                fig.add_hline(y=avg_final, line_dash="dot", line_color=COLORS.chart_palette[4],
                               annotation_text=f"均值 {avg_final:.2f}%",
                               annotation_position="bottom right")
             fig.update_layout(
-                height=400, margin=dict(l=20, r=20, t=30, b=30),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                **ds.chart_layout(height=400),
                 yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
                 xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig, use_container_width=True)
 
@@ -152,28 +150,19 @@ def load_all_group_monthly() -> pd.DataFrame:
 
 min_d, max_d = get_date_range()
 
-# Hero 区域
-st.markdown("""
-<div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #8B5CF6; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">🔍 内检分析</h1>
-    </div>
-    <div style="font-size: 0.9rem; color: #4b5563; line-height: 1.6;">
-        跨周期趋势对比 · 全量组别排名 · 审核一致性分析
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# Hero 区域（设计系统 v3.0）
+ds.hero("🔍", "内检分析", "跨周期趋势对比 · 全量组别排名 · 审核一致性分析")
 
 # 检查数据范围
 if min_d is None or max_d is None:
     st.warning("数据库中没有质检数据，请先导入数据。")
     st.stop()
 
-# 数据范围提示（优化样式）
+# 数据范围提示
 st.markdown(f"""
-<div style='background: #f9fafb; padding: 0.75rem 1rem; border-radius: 0.5rem; border-left: 4px solid #6b7280; margin-bottom: 1rem;'>
-    <span style='font-weight: 600; color: #374151;'>📅 数据日期范围：</span>
-    <span style='color: #374151;'>{min_d} ~ {max_d}</span>
+<div class="ds-card" style="padding: 0.75rem 1rem; border-left: 4px solid {COLORS.text_secondary}; margin-bottom: 1rem;">
+    <span style='font-weight: 600; color: {COLORS.text_primary};'>📅 数据日期范围：</span>
+    <span style='color: {COLORS.text_primary};'>{min_d} ~ {max_d}</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -219,11 +208,11 @@ with tab_grain[0]:
             st.warning("所选日期范围内没有数据。")
         else:
             # 全量组别排名（通用函数）
-            st.markdown("### 🏆 全量组别排名")
+            ds.section("🏆 全量组别排名")
             _build_group_ranking(filtered, "biz_date", "日维度")
             
             # 组别趋势（通用函数）
-            st.markdown("### 📊 组别趋势图")
+            ds.section("📊 组别趋势图")
             sel_group = _build_group_trend(filtered, "biz_date", "日维度", "day")
         # ---- 审核人排名（日维度汇总） ----
         with st.expander("👤 审核人正确率排名", expanded=False):
@@ -279,11 +268,10 @@ with tab_grain[0]:
                 )
                 fig_et.update_traces(textposition="outside", textfont_size=12)
                 fig_et.update_layout(
-                    height=280, margin=dict(l=20, r=60, t=10, b=20),
+                    **ds.chart_layout(height=280),
                     xaxis_title="错误数量", yaxis_title="",
                     showlegend=False, coloraxis_showscale=False,
                     yaxis=dict(autorange="reversed"),
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
                 )
                 st.plotly_chart(fig_et, use_container_width=True)
 
@@ -306,11 +294,11 @@ with tab_grain[1]:
             df_weekly = df_weekly[df_weekly["inspect_type"] == inspect_type_value]
         
         # 全量组别周度排名（通用函数）
-        st.markdown("### 🏆 全量组别周度排名")
+        ds.section("🏆 全量组别周度排名")
         _build_group_ranking(df_weekly, "week_begin_date", "周维度")
         
         # 组别趋势（通用函数）
-        st.markdown("### 📊 组别周趋势")
+        ds.section("📊 组别周趋势")
         _build_group_trend(df_weekly, "week_begin_date", "周维度", "week")
 
 
@@ -326,9 +314,9 @@ with tab_grain[2]:
             df_monthly = df_monthly[df_monthly["inspect_type"] == inspect_type_value]
         
         # 全量组别月度排名（通用函数）
-        st.markdown("### 🏆 全量组别月度排名")
+        ds.section("🏆 全量组别月度排名")
         _build_group_ranking(df_monthly, "month_begin_date", "月维度")
         
         # 组别趋势（通用函数）
-        st.markdown("### 📊 组别月趋势")
+        ds.section("📊 组别月趋势")
         _build_group_trend(df_monthly, "month_begin_date", "月维度", "month")
