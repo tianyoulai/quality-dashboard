@@ -1,15 +1,8 @@
-# === 敏感配置（含密钥，绝不提交） ===
+# ── 敏感配置（绝不提交） ──
 .env
 config/settings.json
-config/gsheet_service_account.json
 
-# === 数据文件（大文件，不上传） ===
-data/
-*.duckdb
-*.db
-*.sqlite3
-
-# === Python ===
+# ── Python ──
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,12 +13,25 @@ env/
 *.egg-info/
 dist/
 build/
-*.egg
 
-# === Streamlit ===
+# ── Streamlit ──
 .streamlit/secrets.toml
 
-# === 工具和系统 ===
+# ── 数据文件 ──
+data/
+*.duckdb
+*.db
+*.sqlite3
+*.csv
+
+# ── 生成产物 ──
+deliverables/
+daily_data.json
+*.log
+.cache/
+logs/
+
+# ── 系统文件 ──
 .DS_Store
 Thumbs.db
 .idea/
@@ -34,27 +40,10 @@ Thumbs.db
 *.swo
 *~
 
-# === WorkBuddy / CodeBuddy 内部 ===
-.workbuddy/
-.codebuddy/
-
-# === 日志和缓存 ===
-*.log
-.cache/
-logs/
-
-# === 临时文件 ===
+# ── 临时/截图 ──
 *.tmp
 *.bak
-*.csv
-
-# === 不需要提交的大目录 ===
+*.png
+*.jpg
 generated-images/
-deliverables/
-
-# === 根目录改造文档（仅 README.md 需要提交） ===
-/*改造说明.md
-/*报告.md
-/*总结.md
-/*方案.md
-/*检查报告*.md
+screenshots/

@@ -166,11 +166,13 @@ def _call_deepseek(report: ReportResult, custom_prompt: str = "") -> str:
     """调用 DeepSeek 4.0 Pro API 生成 AI 洞察。"""
     import requests
 
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
-    api_url = os.environ.get(
-        "DEEPSEEK_API_URL",
-        "https://api.deepseek.com/v1/chat/completions",
-    )
+    settings = _load_settings()
+    ds_cfg = settings.get("deepseek", {})
+
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "") or ds_cfg.get("api_key", "")
+    api_url = os.environ.get("DEEPSEEK_API_URL", "") or ds_cfg.get("api_url", "https://api.deepseek.com/v1/chat/completions")
+    model_name = ds_cfg.get("model", "deepseek-reasoner")
+
     if not api_key:
         return ""
 
@@ -236,7 +238,7 @@ def _call_deepseek(report: ReportResult, custom_prompt: str = "") -> str:
                 "Content-Type": "application/json",
             },
             json={
-                "model": "deepseek-reasoner",
+                "model": model_name,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"质检数据：\n{data_str}"},
