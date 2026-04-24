@@ -115,11 +115,16 @@ def parse_external(df: pd.DataFrame, source_file: str, biz_date_override: date |
         # 错判/漏判推断
         is_misjudge = 0
         is_missjudge = 0
+        error_type = None
         if not is_correct and raw_judgement and final_judgement:
             if raw_judgement != "正常" and final_judgement == "正常":
                 is_misjudge = 1  # 错判：标了违规但实际正常
+                error_type = "错判"
             elif raw_judgement == "正常" and final_judgement != "正常":
                 is_missjudge = 1  # 漏判：标了正常但实际违规
+                error_type = "漏判"
+            else:
+                error_type = "判定不一致"
 
         qa_time = pd.to_datetime(r.get("质检时间"), errors="coerce")
         biz_d = biz_date_override or (qa_time.date() if pd.notna(qa_time) else date.today())
@@ -143,7 +148,7 @@ def parse_external(df: pd.DataFrame, source_file: str, biz_date_override: date |
             "comment_text": str(r.get("原始答案.commentContent", "")).strip(),
             "raw_judgement": raw_judgement,
             "final_judgement": final_judgement,
-            "error_type": None,
+            "error_type": error_type,
             "qa_note": None,
             "is_correct": is_correct,
             "is_misjudge": is_misjudge,

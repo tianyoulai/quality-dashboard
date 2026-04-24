@@ -139,7 +139,7 @@ def render_person(ctx: dict) -> None:
     error_detail_df = load_newcomer_error_detail(alias, 80)
     if error_detail_df is not None and not error_detail_df.empty:
         display_errors = error_detail_df[["biz_date", "stage", "queue_name", "content_type", "training_topic", "risk_level", "comment_text", "raw_judgement", "final_judgement", "error_type", "qa_note"]].copy()
-        display_errors.columns = ["日期", "阶段", "队列", "内容类型", "培训专题", "风险等级", "评论文本", "一审结果", "质检结果", "错误类型", "质检备注"]
+        display_errors.columns = ["日期", "阶段", "队列", "内容类型", "培训专题", "风险等级", "评论文本", "审核人判定", "质检判定", "错误类型", "质检备注"]
         display_errors["阶段"] = display_errors["阶段"].map(STAGE_SHORT_MAP).fillna("—")
         st.dataframe(display_errors, use_container_width=True, hide_index=True, height=320)
         csv = display_errors.to_csv(index=False).encode("utf-8-sig")
@@ -156,7 +156,7 @@ def render_person(ctx: dict) -> None:
                 "biz_date": "日期", "stage": "阶段", "queue_name": "队列",
                 "content_type": "内容类型", "training_topic": "培训专题",
                 "risk_level": "风险等级", "comment_text": "评论文本",
-                "raw_judgement": "一审结果", "final_judgement": "质检结果",
+                "raw_judgement": "审核人判定", "final_judgement": "质检判定",
                 "error_type": "错误类型", "qa_note": "质检备注", "is_correct": "是否正确",
             }
             for old_name, new_name in col_rename.items():
