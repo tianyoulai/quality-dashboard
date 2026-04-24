@@ -448,7 +448,7 @@ with tab_import[3]:
         )
 
         if st.button("📥 导入新人质检数据", key="import_nc_qa"):
-            import subprocess, tempfile
+            import subprocess, tempfile, sys as _sys
             total_imported = 0
             for f in nc_qa_files:
                 with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
@@ -456,7 +456,7 @@ with tab_import[3]:
                     tmp_path = tmp.name
 
                 cmd = [
-                    "python", str(PROJECT_ROOT / "jobs" / "import_newcomer_qa.py"),
+                    _sys.executable, str(PROJECT_ROOT / "jobs" / "import_newcomer_qa.py"),
                     "--file", tmp_path,
                     "--source-name", f.name,
                 ]
