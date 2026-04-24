@@ -26,14 +26,15 @@ COLOR_WARN = "#F59E0B"
 
 def calc_change(current_rate: float, prev_rate: float | None) -> str:
     """计算环比变化HTML片段。"""
-    if prev_rate is None:
+    import pandas as _pd
+    if prev_rate is None or _pd.isna(prev_rate):
         return ""
     diff = current_rate - prev_rate
     if abs(diff) < 0.01:
-        return "<span style='color:#94A3B8;'>持平</span>"
+        return "<span style='color:#64748B; font-size:0.7rem;'>→ 0.00%</span>"
     if diff > 0:
-        return f"<span style='color:#10B981;'>▲ +{diff:.2f}%</span>"
-    return f"<span style='color:#EF4444;'>▼ {diff:.2f}%</span>"
+        return f"<span style='color:#10B981; font-size:0.7rem;'>▲ +{diff:.2f}%</span>"
+    return f"<span style='color:#EF4444; font-size:0.7rem;'>▼ {diff:.2f}%</span>"
 
 
 def safe_file_part(value: str | None) -> str:

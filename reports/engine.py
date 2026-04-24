@@ -153,12 +153,8 @@ def _safe_pct(num, den) -> float:
     return round(float(num or 0) * 100.0 / den_f, 2) if den_f > 0 else 0.0
 
 
-def _load_settings() -> dict:
-    p = PROJECT_ROOT / "config" / "settings.json"
-    if p.exists():
-        with open(p, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+# _load_settings 统一使用 jobs/_report_common.py 中的版本
+from jobs._report_common import load_settings as _load_settings
 
 
 # ── DeepSeek 4.0 Pro 调用 ────────────────────────────────────

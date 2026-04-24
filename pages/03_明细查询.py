@@ -189,16 +189,34 @@ with st.container(border=True):
         default_end = st.session_state.get("detail_quick_end", opts["max_date"])
         date_end = st.date_input("截止日期", value=default_end, key="detail_end")
     with c3:
-        group_sel = st.selectbox("组别", options=["(全部)"] + opts["groups"], key="detail_group")
+        # 接收从总览页跳转过来的预设组别
+        _preset_group = st.session_state.pop("detail_group_preset", None)
+        _group_options = ["(全部)"] + opts["groups"]
+        _default_group_idx = 0
+        if _preset_group and _preset_group in opts["groups"]:
+            _default_group_idx = _group_options.index(_preset_group)
+        group_sel = st.selectbox("组别", options=_group_options, index=_default_group_idx, key="detail_group")
 
     c4, c5, c6 = st.columns(3)
     queue_options = []
     if group_sel != "(全部)" and not opts["queues"].empty:
         queue_options = opts["queues"][opts["queues"]["group_name"] == group_sel]["queue_name"].tolist()
     with c4:
-        queue_sel = st.selectbox("队列", options=["(全部)"] + queue_options, key="detail_queue")
+        # 接收预设队列
+        _preset_queue = st.session_state.pop("detail_queue_preset", None)
+        _queue_options = ["(全部)"] + queue_options
+        _default_queue_idx = 0
+        if _preset_queue and _preset_queue in queue_options:
+            _default_queue_idx = _queue_options.index(_preset_queue)
+        queue_sel = st.selectbox("队列", options=_queue_options, index=_default_queue_idx, key="detail_queue")
     with c5:
-        reviewer_sel = st.selectbox("审核人", options=["(全部)"] + opts["reviewers"], key="detail_reviewer")
+        # 接收预设审核人
+        _preset_reviewer = st.session_state.pop("detail_reviewer_preset", None)
+        _reviewer_options = ["(全部)"] + opts["reviewers"]
+        _default_reviewer_idx = 0
+        if _preset_reviewer and _preset_reviewer in opts["reviewers"]:
+            _default_reviewer_idx = _reviewer_options.index(_preset_reviewer)
+        reviewer_sel = st.selectbox("审核人", options=_reviewer_options, index=_default_reviewer_idx, key="detail_reviewer")
     with c6:
         error_sel = st.selectbox("错误类型", options=["(全部)"] + opts["error_types"], key="detail_error")
 
@@ -235,14 +253,19 @@ error_val = error_sel if error_sel != "(全部)" else None
 issue_mode = issue_filter if only_issues and issue_filter != "全部问题" else None
 
 # 查询按钮 —— 点击后才触发数据查询，避免页面打开时自动加载全量数据
+# 如果从总览页带着筛选条件跳转过来，自动触发查询
+_auto_query = any(v is not None for v in [group_val, queue_val, reviewer_val])
 query_btn_col1, query_btn_col2 = st.columns([1, 3])
 with query_btn_col1:
     do_query = st.button("🔍 开始查询", type="primary", use_container_width=True)
 with query_btn_col2:
-    st.caption("💡 设定好筛选条件后，点击「开始查询」按钮加载数据")
+    if _auto_query:
+        st.caption("✅ 已从总览页带入筛选条件，自动查询中...")
+    else:
+        st.caption("💡 设定好筛选条件后，点击「开始查询」按钮加载数据")
 
 # 使用 session_state 记住是否已执行查询
-if do_query:
+if do_query or _auto_query:
     st.session_state["detail_queried"] = True
 
 if not st.session_state.get("detail_queried", False):

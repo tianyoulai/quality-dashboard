@@ -65,10 +65,19 @@ service = DashboardService()
 # 数据加载函数已移至 views/dashboard/_data.py
 
 
-# 数据加载函数已移至 views/dashboard/_data.py
-
-
-# 工具函数已移至 views/dashboard/_shared.py
+def _jump_to_detail(group: str | None = None, queue: str | None = None, auditor: str | None = None):
+    """跳转到明细查询页，同时传递筛选条件。"""
+    if group and group != "(全部)":
+        st.session_state["detail_group_preset"] = group
+    if queue and queue != "(全部)":
+        st.session_state["detail_queue_preset"] = queue
+    if auditor and auditor != "(全部)":
+        st.session_state["detail_reviewer_preset"] = auditor
+    # 传递当前日期范围
+    if "selected_date" in dir():
+        st.session_state["detail_quick_start"] = selected_date
+        st.session_state["detail_quick_end"] = selected_date
+    st.switch_page("pages/03_明细查询.py")
 
 
 # ==================== Hero 区 ====================
@@ -190,17 +199,7 @@ if group_df.empty:
     st.warning("当前还没有 fact 数据。请先导入质检数据。")
     st.stop()
 
-# 计算环比变化
-def calc_change(current_rate: float, prev_rate: float | None) -> str:
-    if prev_rate is None or pd.isna(prev_rate):
-        return ""
-    delta = current_rate - prev_rate
-    if abs(delta) < 0.01:
-        return "<span style='color:#64748B; font-size:0.7rem;'>→0.00%</span>"
-    elif delta > 0:
-        return f"<span style='color:#10B981; font-size:0.7rem;'>↑{delta:.2f}%</span>"
-    else:
-        return f"<span style='color:#EF4444; font-size:0.7rem;'>↓{abs(delta):.2f}%</span>"
+# calc_change 已从 views.dashboard._shared 导入
 
 # ==================== 第一行：核心指标 ====================
 st.markdown("#### 📈 核心指标概览")
@@ -772,12 +771,12 @@ with auditor_col:
                         st.session_state["show_all_auditors"] = False
                         st.rerun()
             with _btn_col2:
-                if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，查看具体问题样本"):
-                    st.switch_page("pages/03_明细查询.py")
+                if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
+                    _jump_to_detail(selected_group, selected_queue, selected_auditor)
         else:
             # 审核人不超过20位时只显示跳转按钮
-            if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，查看具体问题样本"):
-                st.switch_page("pages/03_明细查询.py")
+            if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
+                _jump_to_detail(selected_group, selected_queue, selected_auditor)
     else:
         st.info("暂无审核人数据")
 
@@ -833,7 +832,7 @@ if _sample_queue or _sample_auditor:
 
             # 跳转到明细查询的按钮
             if st.button("🔍 在明细查询中查看完整数据", key="goto_detail_from_sample", use_container_width=True):
-                st.switch_page("pages/03_明细查询.py")
+                    _jump_to_detail(selected_group, _sample_queue, _sample_auditor)
     else:
         st.info("当前筛选条件下无样本数据")
 else:

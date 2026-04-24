@@ -23,24 +23,7 @@ from reports import generate_weekly_report
 from reports.formatters.wecom_card import format_weekly_wecom
 from reports.formatters.markdown_file import format_weekly_markdown
 from services.wecom_push import send_wecom_webhook_with_split
-
-
-# ── 去重 ──────────────────────────────────────────────────────
-CACHE_DIR = PROJECT_ROOT / ".cache"
-CACHE_DIR.mkdir(exist_ok=True)
-SENT_FILE = CACHE_DIR / "weekly_report_sent.txt"
-
-
-def _load_sent() -> set[str]:
-    if SENT_FILE.exists():
-        return {l.strip() for l in SENT_FILE.read_text("utf-8").splitlines() if l.strip()}
-    return set()
-
-
-def _mark_sent(d: str) -> None:
-    s = _load_sent()
-    s.add(d)
-    SENT_FILE.write_text("\n".join(sorted(s)), encoding="utf-8")
+from jobs._report_common import load_sent, mark_sent, push_error_notification, save_deliverable
 
 
 def main() -> None:
@@ -65,11 +48,7 @@ def main() -> None:
         import traceback
         traceback.print_exc()
         if not args.dry_run:
-            try:
-                from services.wecom_push import send_wecom_webhook
-                send_wecom_webhook(f"⚠️ 质检周报生成失败 | {week_label}\n\n错误：{e}")
-            except Exception:
-                pass
+            push_error_notification("质检周报", week_label, e)
         sys.exit(1)
 
 
@@ -117,21 +96,21 @@ def _run_report(week_end: date, week_start: date, week_label: str, args) -> None
         print("\n⏭️ dry-run 模式，未推送。")
         return
 
-    if not args.force and week_label in _load_sent():
+    if not args.force and week_label in load_sent("weekly"):
         print(f"⏭️ {week_label} 已推送过，跳过。")
         return
 
     if not result.has_data:
         from services.wecom_push import send_wecom_webhook
         send_wecom_webhook(f"📈 质检周报 | {week_label}\n\n⚠️ **本周无质检数据**")
-        _mark_sent(week_label)
+        mark_sent("weekly", week_label)
         return
 
     mentioned = args.mention if args.mention else None
     ok, msg = send_wecom_webhook_with_split(wecom_md, mentioned_list=mentioned)
     if ok:
         print(f"✅ {msg}")
-        _mark_sent(week_label)
+        mark_sent("weekly", week_label)
     else:
         print(f"❌ 推送失败: {msg}")
         sys.exit(1)

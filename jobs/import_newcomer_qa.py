@@ -26,6 +26,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from storage.repository import DashboardRepository
+from utils.date_parser import extract_date_from_filename
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -62,31 +63,6 @@ def detect_stage(filename: str, df: pd.DataFrame | None = None) -> str:
 
     # 默认按内检处理
     return "internal"
-
-
-def extract_date_from_filename(filename: str) -> date | None:
-    """从文件名提取日期。
-
-    支持：2026.4.9xxx → 2026-04-09
-          2026-04-08_xxx → 2026-04-08
-    """
-    # YYYY.M.D
-    m = re.search(r"(\d{4})\.(\d{1,2})\.(\d{1,2})", filename)
-    if m:
-        try:
-            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        except ValueError:
-            pass
-
-    # YYYY-MM-DD
-    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", filename)
-    if m:
-        try:
-            return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        except ValueError:
-            pass
-
-    return None
 
 
 # ═══════════════════════════════════════════════════════════════

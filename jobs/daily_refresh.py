@@ -113,33 +113,8 @@ def scan_wework_qa_files(
     return sorted(set(qa_files))
 
 
-def extract_date_from_filename(filename: str, year: int) -> date | None:
-    """从文件名提取业务日期。"""
-    # 匹配 YYYY.M.D 或 YYYY.MM.DD
-    match = re.search(r'(\d{4})\.(\d{1,2})\.(\d{1,2})', filename)
-    if match:
-        try:
-            return date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
-        except ValueError:
-            pass
-    
-    # 匹配 MMDD（如 0329）
-    match = re.search(r'(?:^|[^\d])(\d{2})(\d{2})(?:[^\d]|$)', filename)
-    if match:
-        try:
-            return date(year, int(match.group(1)), int(match.group(2)))
-        except ValueError:
-            pass
-    
-    # 匹配 M.D（如 3.29）
-    match = re.search(r'(?:^|[^\d])(\d{1,2})\.(\d{1,2})(?:[^\d\.]|$)', filename)
-    if match:
-        try:
-            return date(year, int(match.group(1)), int(match.group(2)))
-        except ValueError:
-            pass
-    
-    return None
+# extract_date_from_filename 已统一到 utils/date_parser.py
+from utils.date_parser import extract_date_from_filename
 
 
 def main() -> None:

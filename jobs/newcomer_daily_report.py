@@ -22,24 +22,7 @@ from reports import generate_newcomer_report
 from reports.formatters.wecom_card import format_newcomer_wecom
 from reports.formatters.markdown_file import format_newcomer_markdown
 from services.wecom_push import send_wecom_webhook_with_split
-
-
-# ── 去重 ──────────────────────────────────────────────────────
-CACHE_DIR = PROJECT_ROOT / ".cache"
-CACHE_DIR.mkdir(exist_ok=True)
-SENT_FILE = CACHE_DIR / "newcomer_report_sent.txt"
-
-
-def _load_sent() -> set[str]:
-    if SENT_FILE.exists():
-        return {l.strip() for l in SENT_FILE.read_text("utf-8").splitlines() if l.strip()}
-    return set()
-
-
-def _mark_sent(d: date) -> None:
-    s = _load_sent()
-    s.add(str(d))
-    SENT_FILE.write_text("\n".join(sorted(s)), encoding="utf-8")
+from jobs._report_common import load_sent, mark_sent, push_error_notification
 
 
 def main() -> None:
@@ -61,11 +44,7 @@ def main() -> None:
         import traceback
         traceback.print_exc()
         if not args.dry_run:
-            try:
-                from services.wecom_push import send_wecom_webhook
-                send_wecom_webhook(f"⚠️ 新人培训日报生成失败 | {report_date}\n\n错误：{e}")
-            except Exception:
-                pass
+            push_error_notification("新人培训日报", str(report_date), e)
         sys.exit(1)
 
 
@@ -92,21 +71,21 @@ def _run_report(report_date: date, args) -> None:
         print("\n⏭️ dry-run 模式，未推送。")
         return
 
-    if not args.force and str(report_date) in _load_sent():
+    if not args.force and str(report_date) in load_sent("newcomer"):
         print(f"⏭️ {report_date} 已推送过，跳过。")
         return
 
     if not result.has_data:
         from services.wecom_push import send_wecom_webhook
         send_wecom_webhook(f"👶 新人日报 | {report_date}\n\n⚠️ **今日无新人质检数据**")
-        _mark_sent(report_date)
+        mark_sent("newcomer", report_date)
         return
 
     mentioned = args.mention if args.mention else None
     ok, msg = send_wecom_webhook_with_split(wecom_md, mentioned_list=mentioned)
     if ok:
         print(f"✅ {msg}")
-        _mark_sent(report_date)
+        mark_sent("newcomer", report_date)
     else:
         print(f"❌ 推送失败: {msg}")
         sys.exit(1)

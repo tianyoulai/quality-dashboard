@@ -113,75 +113,8 @@ def identify_business_line(filename: str) -> tuple[str, str]:
     return "未识别", "未识别"
 
 
-def extract_date_from_filename(filename: str, reference_year: int | None = None) -> date | None:
-    """从文件名提取业务日期。
-
-    支持格式：
-    - 2026.3.6长沙云雀... → 2026-03-06
-    - 2026.3.14长沙... → 2026-03-14
-    - 0322迁移人力... → 智能推断年份-03-22
-    - 3.20迁移人力... → 智能推断年份-03-20
-
-    年份推断逻辑：
-    - 如果没有年份信息，优先使用去年的日期（避免未来日期）
-    - 如果去年的日期导致日期 > 今天，则使用前年
-    - 最多回溯 2 年
-
-    Args:
-        filename: 文件名
-        reference_year: 参考年份（用于测试），默认当前年份
-
-    Returns:
-        date | None: 提取成功返回日期，否则返回 None
-    """
-    import datetime
-
-    today = datetime.date.today()
-    current_year = reference_year or today.year
-
-    # 匹配 YYYY.M.D 或 YYYY.MM.DD 格式（如 2026.3.6）
-    match = re.search(r'(\d{4})\.(\d{1,2})\.(\d{1,2})', filename)
-    if match:
-        year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
-        try:
-            return datetime.date(year, month, day)
-        except ValueError:
-            pass
-
-    # 智能年份推断函数
-    def infer_year(month: int, day: int) -> int:
-        """推断合理的年份，避免未来日期"""
-        for year_offset in range(3):  # 尝试今年、去年、前年
-            candidate_year = current_year - year_offset
-            try:
-                candidate_date = datetime.date(candidate_year, month, day)
-                if candidate_date <= today:
-                    return candidate_year
-            except ValueError:
-                continue
-        return current_year - 1  # 默认去年
-
-    # 匹配 MMDD 格式（如 0322、0314）
-    match = re.search(r'(?:^|[^\d])(\d{2})(\d{2})(?:[^\d]|$)', filename)
-    if match:
-        month, day = int(match.group(1)), int(match.group(2))
-        try:
-            year = infer_year(month, day)
-            return datetime.date(year, month, day)
-        except ValueError:
-            pass
-
-    # 匹配 M.D 格式（如 3.20、3.6）
-    match = re.search(r'(?:^|[^\d])(\d{1,2})\.(\d{1,2})(?:[^\d\.]|$)', filename)
-    if match:
-        month, day = int(match.group(1)), int(match.group(2))
-        try:
-            year = infer_year(month, day)
-            return datetime.date(year, month, day)
-        except ValueError:
-            pass
-
-    return None
+# extract_date_from_filename 已统一到 utils/date_parser.py
+from utils.date_parser import extract_date_from_filename
 
 
 QA_INSERT_COLUMNS = [

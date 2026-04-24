@@ -40,6 +40,7 @@ from views.newcomer._shared import (
     is_non_newcomer_practice_reviewer,
     safe_pct,
     suggest_team_action,
+    normalize_numeric_columns,
 )
 from views.newcomer._data import create_data_loaders
 
@@ -159,14 +160,7 @@ ensure_newcomer_schema()
 #  数据计算辅助函数
 # ═══════════════════════════════════════════════════════════════
 
-def normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
-    df = df.copy()
-    for col in columns:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-    return df
+# normalize_numeric_columns 已从 views.newcomer._shared 导入
 
 
 def ensure_accuracy_columns(df: pd.DataFrame) -> pd.DataFrame:
