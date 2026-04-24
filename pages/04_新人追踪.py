@@ -22,14 +22,12 @@ import streamlit as st
 from services.newcomer_aggregates import build_newcomer_aggregate_payload
 from storage.repository import DashboardRepository
 
-st.set_page_config(page_title="质培运营看板-新人追踪", page_icon="👶", layout="wide")
-
 # 全局CSS
 st.markdown("""
 <style>
     .main > div { padding-top: 1rem; }
     .stDataFrame { border-radius: 0.75rem; overflow: hidden; border: 1px solid #E5E7EB; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; }
     h1 { margin-bottom: 0.5rem; }
     h3 { margin-top: 1.5rem; margin-bottom: 1rem; }
     hr { margin: 1.5rem 0; border-color: #E5E7EB; }

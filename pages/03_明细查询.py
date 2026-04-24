@@ -9,8 +9,6 @@ import streamlit as st
 from services.dashboard_service import DashboardService
 from storage.repository import DashboardRepository
 
-st.set_page_config(page_title="质培运营看板-明细查询", page_icon="📋", layout="wide")
-
 # 全局CSS样式优化
 st.markdown("""
 <style>
@@ -34,7 +32,7 @@ st.markdown("""
         transform: translateY(-1px);
         box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
     }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; }
     h1 { margin-bottom: 0.5rem; }
 </style>
 """, unsafe_allow_html=True)

@@ -25,8 +25,6 @@ import streamlit as st
 from services.dashboard_service import DashboardService
 from storage.repository import DashboardRepository
 
-st.set_page_config(page_title="质培运营看板-总览", page_icon="📈", layout="wide")
-
 # 全局CSS样式优化
 st.markdown("""
 <style>
@@ -73,6 +71,7 @@ st.markdown("""
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
+        max-width: 100% !important;
     }
     
     /* 标题样式优化 */

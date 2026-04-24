@@ -13,7 +13,8 @@ import streamlit as st
 
 from storage.repository import DashboardRepository
 
-st.set_page_config(page_title="质培运营看板-数据管理", page_icon="⚙️", layout="wide")
+# 全宽CSS
+st.markdown("""<style>.block-container { max-width: 100% !important; }</style>""", unsafe_allow_html=True)
 
 # 项目根目录（所有 subprocess 调用都用绝对路径）
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

@@ -144,12 +144,10 @@ def render_module_page(module_key: str):
     """渲染一个模块的完整页面（供各独立页面调用）。"""
     meta = QC_MODULE_META[module_key]
 
-    st.set_page_config(page_title=f"质培运营看板-{meta['label']}", page_icon=meta["icon"], layout="wide")
-
     # CSS
     st.markdown("""<style>
         .main > div { padding-top: 1rem; }
-        .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+        .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; }
     </style>""", unsafe_allow_html=True)
 
     # Hero
