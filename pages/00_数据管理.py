@@ -598,9 +598,10 @@ with tab_import[4]:
                         repo.execute("TRUNCATE TABLE dim_newcomer_batch")
                         st.warning("已清空旧数据")
 
-                    # 逐行插入
+                    # 逐行插入（使用 INSERT IGNORE 避免唯一键冲突）
                     inserted = 0
                     skipped = 0
+                    seen_keys = set()  # 内存去重，避免CSV中重复行
                     for _, row in batch_df.iterrows():
                         name = str(row["reviewer_name"]).strip()
                         batch = str(row["batch_name"]).strip()
@@ -608,17 +609,25 @@ with tab_import[4]:
                             skipped += 1
                             continue
 
-                        # 检查是否已存在
-                        existing = repo.fetch_one(
-                            "SELECT COUNT(*) AS cnt FROM dim_newcomer_batch WHERE reviewer_name = %s AND batch_name = %s",
-                            [name, batch]
-                        )
-                        if existing and existing["cnt"] > 0:
+                        # CSV 内部去重
+                        dedup_key = (batch, name)
+                        if dedup_key in seen_keys:
                             skipped += 1
                             continue
+                        seen_keys.add(dedup_key)
+
+                        # 非覆盖模式下检查数据库是否已存在
+                        if nc_import_mode != "覆盖（先清空再导入）":
+                            existing = repo.fetch_one(
+                                "SELECT COUNT(*) AS cnt FROM dim_newcomer_batch WHERE reviewer_name = %s AND batch_name = %s",
+                                [name, batch]
+                            )
+                            if existing and existing["cnt"] > 0:
+                                skipped += 1
+                                continue
 
                         repo.execute("""
-                            INSERT INTO dim_newcomer_batch 
+                            INSERT IGNORE INTO dim_newcomer_batch 
                             (batch_name, reviewer_name, reviewer_alias, team_name, join_date,
                              team_leader, delivery_pm, mentor_name, owner, status)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'training')
