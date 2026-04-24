@@ -33,11 +33,32 @@ def get_filter_options() -> dict:
         SELECT DISTINCT
             COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) AS group_name,
             COALESCE(NULLIF(TRIM(queue_name), ''), NULLIF(TRIM(sub_biz), '')) AS queue_name,
-            reviewer_name,
-            error_type
+            reviewer_name
         FROM fact_qa_event
         WHERE COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) IS NOT NULL
     """)
+    
+    # 查询1b: 单独查错误类型（可能来自不同字段或不同表）
+    error_type_df = repo.fetch_df("""
+        SELECT DISTINCT NULLIF(TRIM(error_type), '') AS error_type
+        FROM fact_qa_event
+        WHERE error_type IS NOT NULL AND TRIM(error_type) != '' AND TRIM(error_type) != '正常'
+        ORDER BY error_type
+        LIMIT 500
+    """)
+    
+    # 如果 fact_qa_event 中没有错误类型数据，尝试从 mart 错误主题表获取
+    if error_type_df.empty or error_type_df["error_type"].dropna().empty:
+        try:
+            error_type_df = repo.fetch_df("""
+                SELECT DISTINCT NULLIF(TRIM(error_type), '') AS error_type
+                FROM mart_day_error_topic
+                WHERE error_type IS NOT NULL AND TRIM(error_type) != ''
+                ORDER BY error_type
+                LIMIT 500
+            """)
+        except Exception:
+            pass
     
     # 查询2: 日期范围（聚合查询，极快）
     date_row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
@@ -55,7 +76,7 @@ def get_filter_options() -> dict:
     groups = sorted(dims["group_name"].dropna().unique().tolist())
     queues = dims[["group_name", "queue_name"]].dropna().drop_duplicates().sort_values(["group_name", "queue_name"])
     reviewers = sorted(dims["reviewer_name"].dropna().unique().tolist())
-    error_types = sorted([e for e in dims["error_type"].dropna().unique().tolist() if e.strip()])
+    error_types = sorted([e for e in error_type_df["error_type"].dropna().unique().tolist() if e.strip()]) if not error_type_df.empty else []
 
     min_d = date_row.get("min_d") if date_row else None
     max_d = date_row.get("max_d") if date_row else None

@@ -336,6 +336,7 @@ for idx, (_, row) in enumerate(display_groups.iterrows()):
     final_change = calc_change(final_rate, prev_final_rate)
     
     # 使用设计系统的卡片样式方案
+    is_selected = (group_name == selected_group)
     style = ds.group_card_style(raw_rate, is_selected)
     display_name = "B组（整体）" if group_name == "B组" else group_name
     
@@ -457,11 +458,10 @@ with trend_col:
             hovertemplate="<b>%{x|%Y-%m-%d}</b><br>原始正确率: %{text}<extra></extra>"
         ))
         fig.add_hline(y=99.0, line_dash="dash", line_color=COLOR_WARN, annotation_text="目标 99%", annotation_position="right")
-        fig.update_layout(
-            **ds.chart_layout(height=300),
-            yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
-            xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
-        )
+        _layout_trend = ds.chart_layout(height=300)
+        _layout_trend["yaxis"] = {**_layout_trend.get("yaxis", {}), "range": [95, 100.5], "title": "正确率 (%)"}
+        _layout_trend["xaxis"] = {**_layout_trend.get("xaxis", {}), "tickformat": "%Y-%m-%d", "tickangle": -45}
+        fig.update_layout(**_layout_trend)
         # 支持点击交互
         clicked = st.plotly_chart(fig, use_container_width=True, on_select="rerun", key="trend_chart")
         

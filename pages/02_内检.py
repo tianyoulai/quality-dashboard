@@ -94,11 +94,10 @@ def _build_group_trend(df: pd.DataFrame, date_col: str, grain_label: str, key_su
                 fig.add_hline(y=avg_final, line_dash="dot", line_color=COLORS.chart_palette[4],
                               annotation_text=f"均值 {avg_final:.2f}%",
                               annotation_position="bottom right")
-            fig.update_layout(
-                **ds.chart_layout(height=400),
-                yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
-                xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
-            )
+            _layout = ds.chart_layout(height=400)
+            _layout["yaxis"] = {**_layout.get("yaxis", {}), "range": [95, 100.5], "title": "正确率 (%)"}
+            _layout["xaxis"] = {**_layout.get("xaxis", {}), "tickformat": "%Y-%m-%d", "tickangle": -45}
+            fig.update_layout(**_layout)
             st.plotly_chart(fig, use_container_width=True)
 
             # 最新数据指标 + 环比变化
@@ -264,12 +263,12 @@ with tab_grain[0]:
                     color_continuous_scale="Reds",
                 )
                 fig_et.update_traces(textposition="outside", textfont_size=12)
-                fig_et.update_layout(
-                    **ds.chart_layout(height=280),
-                    xaxis_title="错误数量", yaxis_title="",
-                    showlegend=False, coloraxis_showscale=False,
-                    yaxis=dict(autorange="reversed"),
-                )
+                _layout_et = ds.chart_layout(height=280)
+                _layout_et["yaxis"] = {**_layout_et.get("yaxis", {}), "autorange": "reversed"}
+                _layout_et.update({"showlegend": False, "coloraxis_showscale": False})
+                _layout_et["xaxis"] = {**_layout_et.get("xaxis", {}), "title": "错误数量"}
+                _layout_et["yaxis"]["title"] = ""
+                fig_et.update_layout(**_layout_et)
                 st.plotly_chart(fig_et, use_container_width=True)
 
                 total_errors = error_type_df["cnt"].sum()
