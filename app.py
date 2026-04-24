@@ -1,4 +1,4 @@
-"""质培运营看板 — Streamlit 入口页（自动跳转到总览）。"""
+"""质培运营看板 — Streamlit 入口页。"""
 from __future__ import annotations
 
 import streamlit as st
@@ -8,6 +8,9 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+
+# 全宽CSS
+st.markdown("""<style>.block-container { max-width: 100% !important; }</style>""", unsafe_allow_html=True)
 
 # 自动跳转到总览页面
 try:
