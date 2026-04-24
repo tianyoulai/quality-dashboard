@@ -241,6 +241,43 @@ with tab_grain[0]:
             else:
                 st.info("所选日期范围内无审核人数据")
 
+        # ---- 错误类型 TOP5 分布 ----
+        with st.expander("🏷️ 错误类型 TOP5 分布", expanded=False):
+            error_type_sql = """
+                SELECT COALESCE(error_type, '未标注') AS error_type,
+                       COUNT(*) AS cnt
+                FROM vw_qa_base
+                WHERE biz_date BETWEEN %s AND %s
+                  AND raw_judgement != '正确'
+                GROUP BY error_type
+                ORDER BY cnt DESC
+                LIMIT 10
+            """
+            error_type_df = repo.fetch_df(error_type_sql, (date_start, date_end))
+            if not error_type_df.empty:
+                import plotly.express as px
+                fig_et = px.bar(
+                    error_type_df.head(5),
+                    x="cnt", y="error_type", orientation="h",
+                    text="cnt", color="cnt",
+                    color_continuous_scale="Reds",
+                )
+                fig_et.update_traces(textposition="outside", textfont_size=12)
+                fig_et.update_layout(
+                    height=280, margin=dict(l=20, r=60, t=10, b=20),
+                    xaxis_title="错误数量", yaxis_title="",
+                    showlegend=False, coloraxis_showscale=False,
+                    yaxis=dict(autorange="reversed"),
+                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                )
+                st.plotly_chart(fig_et, use_container_width=True)
+
+                total_errors = error_type_df["cnt"].sum()
+                top5_pct = error_type_df.head(5)["cnt"].sum() / total_errors * 100 if total_errors > 0 else 0
+                st.caption(f"共 {total_errors:,} 个错误，TOP5 占比 {top5_pct:.1f}%")
+            else:
+                st.success("🎉 所选日期范围内无错误记录")
+
 
 # ==================== 周维度 ====================
 with tab_grain[1]:

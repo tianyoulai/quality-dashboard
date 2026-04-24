@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from datetime import date
+
 import streamlit as st
 
 
@@ -55,4 +57,20 @@ def inject_global_css() -> None:
         h3 { margin-top: 1.5rem; margin-bottom: 1rem; }
         hr { margin: 1.5rem 0; border-color: #E5E7EB; }
     </style>
+    """, unsafe_allow_html=True)
+
+    # 侧边栏品牌标识
+    _render_sidebar_brand()
+
+
+def _render_sidebar_brand() -> None:
+    """在侧边栏底部渲染品牌信息和数据时间。"""
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"""
+    <div style="text-align:center; padding: 0.5rem; opacity: 0.7;">
+        <div style="font-size: 0.75rem; color: #6B7280;">
+            📊 质培运营看板 v2.0<br>
+            🕐 {date.today().strftime('%Y-%m-%d')}
+        </div>
+    </div>
     """, unsafe_allow_html=True)

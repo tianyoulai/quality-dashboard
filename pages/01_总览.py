@@ -23,7 +23,24 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from services.dashboard_service import DashboardService
-from storage.repository import DashboardRepository
+
+# 从拆分后的模块导入数据加载函数和共享常量
+from views.dashboard import (
+    get_data_date_range,
+    load_group_overview,
+    load_group_detail,
+    load_queue_overview_data,
+    load_alert_history,
+    load_qa_label_distribution_cached,
+    load_qa_owner_distribution_cached,
+    GRAIN_LABELS,
+    ALERT_STATUS_OPTIONS,
+    COLOR_P0, COLOR_P1, COLOR_P2,
+    COLOR_SUCCESS, COLOR_GOOD, COLOR_BAD, COLOR_WARN,
+    calc_change,
+    build_export_file_name,
+    to_csv_bytes,
+)
 
 # 全局CSS + 总览页特有样式
 from utils.styles import inject_global_css
@@ -43,193 +60,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 service = DashboardService()
-repo = DashboardRepository()
 
-GRAIN_LABELS = {
-    "day": "日监控",
-    "week": "周复盘",
-    "month": "月管理",
-}
-ALERT_STATUS_OPTIONS = ["open", "claimed", "ignored", "resolved"]
-
-# 颜色常量
-COLOR_P0 = "#DC2626"
-COLOR_P1 = "#F59E0B"
-COLOR_P2 = "#3B82F6"
-COLOR_SUCCESS = "#10B981"
-COLOR_GOOD = "#10B981"
-COLOR_BAD = "#EF4444"
-COLOR_WARN = "#F59E0B"
+# 颜色常量和工具函数已移至 views/dashboard/_shared.py
+# 数据加载函数已移至 views/dashboard/_data.py
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def get_data_date_range() -> tuple[date, date]:
-    """获取数据库中的日期范围, 用于设置默认日期"""
-    row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
-    if not row or row.get("min_d") is None:
-        return date.today(), date.today()
-    min_val = row["min_d"]
-    max_val = row["max_d"]
-    if hasattr(min_val, "date"):
-        min_val = min_val.date()
-    if hasattr(max_val, "date"):
-        max_val = max_val.date()
-    return min_val, max_val
+# 数据加载函数已移至 views/dashboard/_data.py
 
 
-@st.cache_data(show_spinner=False, ttl=300)
-def load_group_overview(grain: str, selected_date: date) -> dict:
-    return service.load_dashboard_payload(grain, selected_date)
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def load_group_detail(
-    grain: str,
-    selected_date: date,
-    group_name: str,
-    queue_name: str | None,
-    reviewer_name: str | None,
-    focus_rule_code: str | None,
-    focus_error_type: str | None,
-) -> dict:
-    return service.load_group_payload(
-        grain,
-        selected_date,
-        group_name,
-        queue_name,
-        reviewer_name,
-        focus_rule_code,
-        focus_error_type,
-    )
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def load_queue_overview_data(
-    grain: str,
-    start_date: date,
-    end_date: date,
-    group_name: str | None = None,
-) -> dict:
-    """加载队列概览数据"""
-    if grain == "day":
-        time_filter = "biz_date BETWEEN %s AND %s"
-        anchor_col = "biz_date"
-    elif grain == "week":
-        time_filter = "week_begin_date BETWEEN %s AND %s"
-        anchor_col = "week_begin_date"
-    else:
-        time_filter = "month_begin_date BETWEEN %s AND %s"
-        anchor_col = "month_begin_date"
-    
-    # 选择对应的 mart 表
-    if grain == "day":
-        queue_table = "mart_day_queue"
-        group_table = "mart_day_group"
-    elif grain == "week":
-        queue_table = "mart_week_queue"
-        group_table = "mart_week_group"
-    else:
-        queue_table = "mart_month_queue"
-        group_table = "mart_month_group"
-    
-    # 队列数据
-    queue_sql = f"""
-    SELECT
-        group_name,
-        queue_name,
-        SUM(qa_cnt) AS total_qa_cnt,
-        ROUND(SUM(raw_correct_cnt) * 100.0 / NULLIF(SUM(qa_cnt), 0), 2) AS raw_accuracy_rate,
-        ROUND(SUM(final_correct_cnt) * 100.0 / NULLIF(SUM(qa_cnt), 0), 2) AS final_accuracy_rate,
-        ROUND(SUM(misjudge_cnt) * 100.0 / NULLIF(SUM(qa_cnt), 0), 2) AS misjudge_rate,
-        ROUND(SUM(missjudge_cnt) * 100.0 / NULLIF(SUM(qa_cnt), 0), 2) AS missjudge_rate
-    FROM {queue_table}
-    WHERE {time_filter}
-    """
-    params = [start_date, end_date]
-    if group_name:
-        if group_name == "B组":
-            # B组整体：过滤所有 B组开头的队列
-            queue_sql += " AND group_name LIKE %s"
-            params.append("B组%")
-        else:
-            queue_sql += " AND group_name = %s"
-            params.append(group_name)
-    queue_sql += " GROUP BY group_name, queue_name ORDER BY total_qa_cnt DESC"
-    queue_df = repo.fetch_df(queue_sql, params)
-    
-    # 趋势数据
-    trend_sql = f"""
-    SELECT 
-        {anchor_col} AS anchor_date,
-        SUM(qa_cnt) AS total_qa_cnt,
-        ROUND(SUM(raw_correct_cnt) * 100.0 / NULLIF(SUM(qa_cnt), 0), 2) AS raw_accuracy_rate,
-        ROUND(SUM(final_correct_cnt) * 100.0 / NULLIF(SUM(qa_cnt), 0), 2) AS final_accuracy_rate
-    FROM {group_table}
-    WHERE {time_filter}
-    """
-    params_trend = [start_date, end_date]
-    if group_name:
-        if group_name == "B组":
-            # B组整体：过滤所有 B组开头的组
-            trend_sql += " AND group_name LIKE %s"
-            params_trend.append("B组%")
-        else:
-            trend_sql += " AND group_name = %s"
-            params_trend.append(group_name)
-    trend_sql += f" GROUP BY {anchor_col} ORDER BY {anchor_col}"
-    trend_df = repo.fetch_df(trend_sql, params_trend)
-    
-    return {"queue_df": queue_df, "trend_df": trend_df}
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def load_alert_history(alert_id: str | None) -> pd.DataFrame:
-    if not alert_id:
-        return pd.DataFrame()
-    return service.load_alert_history(alert_id)
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def load_qa_label_distribution_cached(grain: str, selected_date: date, group_name: str | None = None, top_n: int = 10) -> pd.DataFrame:
-    """获取质检标签分布(缓存5分钟)"""
-    return service.load_qa_label_distribution(grain, selected_date, group_name, top_n)
-
-
-@st.cache_data(show_spinner=False, ttl=300)
-def load_qa_owner_distribution_cached(grain: str, selected_date: date, group_name: str | None = None, top_n: int = 10) -> pd.DataFrame:
-    """获取质检员工作量分布(缓存5分钟)"""
-    return service.load_qa_owner_distribution(grain, selected_date, group_name, top_n)
-
-
-# to_csv_bytes 已统一到 utils/helpers.py
-from utils.helpers import to_csv_bytes
-
-
-def safe_file_part(value: str | None) -> str:
-    text = (value or "").strip()
-    if not text:
-        return ""
-    for old in ["/", "\\", " ", "|", ":"]:
-        text = text.replace(old, "-")
-    return text
-
-
-def build_export_file_name(
-    prefix: str,
-    grain: str,
-    anchor_date: date,
-    group_name: str | None = None,
-    queue_name: str | None = None,
-    rule_code: str | None = None,
-    reviewer_name: str | None = None,
-    error_type: str | None = None,
-) -> str:
-    parts = [prefix, grain, str(anchor_date)]
-    for value in [rule_code, group_name, queue_name, reviewer_name, error_type]:
-        safe_value = safe_file_part(value)
-        if safe_value:
-            parts.append(safe_value)
-    return "_".join(parts) + ".csv"
+# 工具函数已移至 views/dashboard/_shared.py
 
 
 # ==================== Hero 区 ====================
