@@ -18,6 +18,93 @@ inject_global_css()
 
 repo = DashboardRepository()
 
+from utils.helpers import to_csv_bytes
+
+
+def _build_group_ranking(df: pd.DataFrame, date_col: str, grain_label: str) -> None:
+    """通用的组别排名渲染函数，消除日/周/月三个维度的重复代码。"""
+    if df.empty:
+        st.warning(f"暂无{grain_label}数据。")
+        return
+
+    group_agg = df.groupby("group_name").agg(
+        qa_cnt=("qa_cnt", "sum"),
+    ).reset_index()
+    # 加权平均正确率
+    for grp in group_agg["group_name"]:
+        grp_data = df[df["group_name"] == grp]
+        total_qa = grp_data["qa_cnt"].sum()
+        group_agg.loc[group_agg["group_name"] == grp, "raw_accuracy_rate"] = (
+            (grp_data["raw_accuracy_rate"] * grp_data["qa_cnt"]).sum() / total_qa
+        )
+        group_agg.loc[group_agg["group_name"] == grp, "final_accuracy_rate"] = (
+            (grp_data["final_accuracy_rate"] * grp_data["qa_cnt"]).sum() / total_qa
+        )
+    group_agg["raw_error_cnt"] = (group_agg["qa_cnt"] * (100 - group_agg["raw_accuracy_rate"]) / 100).round(0).astype(int)
+    group_agg["final_error_cnt"] = (group_agg["qa_cnt"] * (100 - group_agg["final_accuracy_rate"]) / 100).round(0).astype(int)
+    group_agg = group_agg.sort_values("final_accuracy_rate", ascending=False)
+
+    total_all_qa = group_agg["qa_cnt"].sum()
+    group_show = pd.DataFrame({
+        "组别": group_agg["group_name"],
+        "总质检量": group_agg["qa_cnt"].apply(lambda x: f"{int(x):,}"),
+        "抽检占比": group_agg["qa_cnt"].apply(lambda x: f"{x / total_all_qa * 100:.1f}%" if total_all_qa > 0 else "—"),
+        "原始正确率": group_agg["raw_accuracy_rate"].apply(lambda x: f"{x:.2f}%"),
+        "最终正确率": group_agg["final_accuracy_rate"].apply(lambda x: f"{x:.2f}%"),
+        "原始错误量": group_agg["raw_error_cnt"].apply(lambda x: f"{x:,}"),
+        "最终错误量": group_agg["final_error_cnt"].apply(lambda x: f"{x:,}"),
+    })
+
+    st.dataframe(group_show, use_container_width=True, hide_index=True, column_config={
+        "组别": st.column_config.TextColumn("组别", width="medium"),
+    })
+
+    # CSV 导出
+    csv_data = to_csv_bytes(group_show)
+    st.download_button(f"📥 导出{grain_label}组别排名", csv_data, file_name=f"group_ranking_{grain_label}.csv", mime="text/csv", key=f"dl_grp_{grain_label}")
+
+
+def _build_group_trend(df: pd.DataFrame, date_col: str, grain_label: str, key_suffix: str) -> str | None:
+    """通用的组别趋势渲染函数，返回选中的组别名。"""
+    groups = sorted(df["group_name"].unique().tolist())
+    sel_group = st.selectbox("选择组别", options=groups, key=f"{key_suffix}_group")
+
+    if sel_group:
+        trend = df[df["group_name"] == sel_group].sort_values(date_col)
+        if not trend.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=trend[date_col], y=trend["final_accuracy_rate"],
+                mode="lines+markers", name="最终正确率",
+                line=dict(color="#10B981", width=3), marker=dict(size=8),
+                text=[f"{v:.2f}%" for v in trend["final_accuracy_rate"]],
+                hovertemplate="<b>%{x}</b><br>最终正确率: %{text}<extra></extra>"
+            ))
+            fig.add_trace(go.Scatter(
+                x=trend[date_col], y=trend["raw_accuracy_rate"],
+                mode="lines+markers", name="原始正确率",
+                line=dict(color="#94A3B8", width=2, dash="dot"), marker=dict(size=6),
+                text=[f"{v:.2f}%" for v in trend["raw_accuracy_rate"]],
+                hovertemplate="<b>%{x}</b><br>原始正确率: %{text}<extra></extra>"
+            ))
+            fig.add_hline(y=99.0, line_dash="dash", line_color="#F59E0B", annotation_text="目标 99%", annotation_position="right")
+            fig.update_layout(
+                height=400, margin=dict(l=20, r=20, t=30, b=30),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
+                xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # 最新数据指标
+            row_latest = trend.iloc[-1]
+            m1, m2, m3 = st.columns(3)
+            m1.metric("原始正确率", f"{row_latest['raw_accuracy_rate']:.2f}%")
+            m2.metric("最终正确率", f"{row_latest['final_accuracy_rate']:.2f}%")
+            m3.metric("质检量", f"{int(row_latest['qa_cnt']):,}")
+    return sel_group
+
 
 @st.cache_data(show_spinner=False, ttl=300)
 def get_date_range() -> tuple[date, date]:
@@ -116,90 +203,13 @@ with tab_grain[0]:
         if filtered.empty:
             st.warning("所选日期范围内没有数据。")
         else:
-            # 全量组别排名（使用加权平均）
+            # 全量组别排名（通用函数）
             st.markdown("### 🏆 全量组别排名")
-            group_agg = filtered.groupby("group_name").agg(
-                qa_cnt=("qa_cnt", "sum"),
-            ).reset_index()
-            # 计算加权平均正确率
-            for grp in group_agg["group_name"]:
-                grp_data = filtered[filtered["group_name"] == grp]
-                group_agg.loc[group_agg["group_name"] == grp, "raw_accuracy_rate"] = (
-                    (grp_data["raw_accuracy_rate"] * grp_data["qa_cnt"]).sum() / grp_data["qa_cnt"].sum()
-                )
-                group_agg.loc[group_agg["group_name"] == grp, "final_accuracy_rate"] = (
-                    (grp_data["final_accuracy_rate"] * grp_data["qa_cnt"]).sum() / grp_data["qa_cnt"].sum()
-                )
-            group_agg = group_agg.sort_values("final_accuracy_rate", ascending=False)
+            _build_group_ranking(filtered, "biz_date", "日维度")
             
-            group_show = pd.DataFrame()
-            group_show["组别"] = group_agg["group_name"]
-            group_show["总质检量"] = group_agg["qa_cnt"].apply(lambda x: f"{int(x):,}")
-            total_all_qa = group_agg["qa_cnt"].sum()
-            group_show["抽检占比"] = group_agg["qa_cnt"].apply(lambda x: f"{x / total_all_qa * 100:.1f}%" if total_all_qa > 0 else "—")
-            group_show["原始正确率"] = group_agg["raw_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-            group_show["最终正确率"] = group_agg["final_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-            
-            st.dataframe(
-                group_show, 
-                use_container_width=True, 
-                hide_index=True,
-                column_config={
-                    "组别": st.column_config.TextColumn("组别", width="medium"),
-                    "总质检量": st.column_config.TextColumn("总质检量", width="medium"),
-                    "原始正确率": st.column_config.TextColumn("原始正确率", width="medium"),
-                    "最终正确率": st.column_config.TextColumn("最终正确率", width="medium"),
-                }
-            )
-            
-            # 组别趋势
+            # 组别趋势（通用函数）
             st.markdown("### 📊 组别趋势图")
-            groups = sorted(filtered["group_name"].unique().tolist())
-            sel_group = st.selectbox("选择组别", options=groups, key="day_group")
-            
-            if sel_group:
-                trend = filtered[filtered["group_name"] == sel_group].sort_values("biz_date")
-                if not trend.empty:
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=trend["biz_date"], y=trend["final_accuracy_rate"],
-                        mode="lines+markers", name="最终正确率",
-                        line=dict(color="#10B981", width=3), marker=dict(size=8),
-                        text=[f"{v:.2f}%" for v in trend["final_accuracy_rate"]],
-                        hovertemplate="<b>%{x}</b><br>最终正确率: %{text}<extra></extra>"
-                    ))
-                    fig.add_trace(go.Scatter(
-                        x=trend["biz_date"], y=trend["raw_accuracy_rate"],
-                        mode="lines+markers", name="原始正确率",
-                        line=dict(color="#94A3B8", width=2, dash="dot"), marker=dict(size=6),
-                        text=[f"{v:.2f}%" for v in trend["raw_accuracy_rate"]],
-                        hovertemplate="<b>%{x}</b><br>原始正确率: %{text}<extra></extra>"
-                    ))
-                    fig.add_hline(y=99.0, line_dash="dash", line_color="#F59E0B", annotation_text="目标 99%", annotation_position="right")
-                    fig.update_layout(
-                        height=400, margin=dict(l=20, r=20, t=30, b=30),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                        yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
-                        xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        plot_bgcolor='rgba(0,0,0,0)'
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 最新数据指标（优化样式）
-                    row_latest = trend.iloc[-1]
-                    st.markdown("#### 📈 最新数据快照")
-                    m1, m2, m3, m4 = st.columns(4)
-                    m1.metric("最新原始正确率", f"{row_latest['raw_accuracy_rate']:.2f}%")
-                    m2.metric("最新最终正确率", f"{row_latest['final_accuracy_rate']:.2f}%")
-                    m3.metric("质检量", f"{int(row_latest['qa_cnt']):,}")
-                    # 安全访问申诉改判率字段
-                    appeal_rate = row_latest.get('appeal_reverse_rate')
-                    if pd.notna(appeal_rate):
-                        m4.metric("申诉改判率", f"{appeal_rate:.2f}%", help="基于联表匹配数据计算，当前联表命中率极低，仅供参考")
-                    else:
-                        m4.metric("申诉改判率", "—", help="暂无联表匹配数据")
-
+            sel_group = _build_group_trend(filtered, "biz_date", "日维度", "day")
         # ---- 审核人排名（日维度汇总） ----
         with st.expander("👤 审核人正确率排名", expanded=False):
             auditor_sql = """
@@ -243,71 +253,13 @@ with tab_grain[1]:
         if inspect_type_value and "inspect_type" in df_weekly.columns:
             df_weekly = df_weekly[df_weekly["inspect_type"] == inspect_type_value]
         
-        # 全量组别周度排名（使用加权平均）
+        # 全量组别周度排名（通用函数）
         st.markdown("### 🏆 全量组别周度排名")
-        group_agg_w = df_weekly.groupby("group_name").agg(
-            qa_cnt=("qa_cnt", "sum"),
-        ).reset_index()
-        # 计算加权平均正确率
-        for grp in group_agg_w["group_name"]:
-            grp_data = df_weekly[df_weekly["group_name"] == grp]
-            group_agg_w.loc[group_agg_w["group_name"] == grp, "raw_accuracy_rate"] = (
-                (grp_data["raw_accuracy_rate"] * grp_data["qa_cnt"]).sum() / grp_data["qa_cnt"].sum()
-            )
-            group_agg_w.loc[group_agg_w["group_name"] == grp, "final_accuracy_rate"] = (
-                (grp_data["final_accuracy_rate"] * grp_data["qa_cnt"]).sum() / grp_data["qa_cnt"].sum()
-            )
-        group_agg_w = group_agg_w.sort_values("final_accuracy_rate", ascending=False)
+        _build_group_ranking(df_weekly, "week_begin_date", "周维度")
         
-        group_show_w = pd.DataFrame()
-        group_show_w["组别"] = group_agg_w["group_name"]
-        group_show_w["总质检量"] = group_agg_w["qa_cnt"].apply(lambda x: f"{int(x):,}")
-        group_show_w["平均原始正确率"] = group_agg_w["raw_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        group_show_w["平均最终正确率"] = group_agg_w["final_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        
-        st.dataframe(
-            group_show_w, 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "组别": st.column_config.TextColumn("组别", width="medium"),
-                "总质检量": st.column_config.TextColumn("总质检量", width="medium"),
-            }
-        )
-        
-        # 组别趋势
+        # 组别趋势（通用函数）
         st.markdown("### 📊 组别周趋势")
-        groups_w = sorted(df_weekly["group_name"].unique().tolist())
-        sel_group_w = st.selectbox("选择组别", options=groups_w, key="week_group")
-        
-        if sel_group_w:
-            trend_w = df_weekly[df_weekly["group_name"] == sel_group_w].sort_values("week_begin_date")
-            if not trend_w.empty:
-                fig_w = go.Figure()
-                fig_w.add_trace(go.Scatter(
-                    x=trend_w["week_begin_date"], y=trend_w["final_accuracy_rate"],
-                    mode="lines+markers", name="最终正确率",
-                    line=dict(color="#10B981", width=3), marker=dict(size=8),
-                    text=[f"{v:.2f}%" for v in trend_w["final_accuracy_rate"]],
-                    hovertemplate="<b>%{x}</b><br>最终正确率: %{text}<extra></extra>"
-                ))
-                fig_w.add_trace(go.Scatter(
-                    x=trend_w["week_begin_date"], y=trend_w["raw_accuracy_rate"],
-                    mode="lines+markers", name="原始正确率",
-                    line=dict(color="#94A3B8", width=2, dash="dot"), marker=dict(size=6),
-                    text=[f"{v:.2f}%" for v in trend_w["raw_accuracy_rate"]],
-                    hovertemplate="<b>%{x}</b><br>原始正确率: %{text}<extra></extra>"
-                ))
-                fig_w.add_hline(y=99.0, line_dash="dash", line_color="#F59E0B", annotation_text="目标 99%", annotation_position="right")
-                fig_w.update_layout(
-                    height=400, margin=dict(l=20, r=20, t=30, b=30),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
-                    xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_w, use_container_width=True)
+        _build_group_trend(df_weekly, "week_begin_date", "周维度", "week")
 
 
 # ==================== 月维度 ====================
@@ -321,68 +273,10 @@ with tab_grain[2]:
         if inspect_type_value and "inspect_type" in df_monthly.columns:
             df_monthly = df_monthly[df_monthly["inspect_type"] == inspect_type_value]
         
-        # 全量组别月度排名（使用加权平均）
+        # 全量组别月度排名（通用函数）
         st.markdown("### 🏆 全量组别月度排名")
-        group_agg_m = df_monthly.groupby("group_name").agg(
-            qa_cnt=("qa_cnt", "sum"),
-        ).reset_index()
-        # 计算加权平均正确率
-        for grp in group_agg_m["group_name"]:
-            grp_data = df_monthly[df_monthly["group_name"] == grp]
-            group_agg_m.loc[group_agg_m["group_name"] == grp, "raw_accuracy_rate"] = (
-                (grp_data["raw_accuracy_rate"] * grp_data["qa_cnt"]).sum() / grp_data["qa_cnt"].sum()
-            )
-            group_agg_m.loc[group_agg_m["group_name"] == grp, "final_accuracy_rate"] = (
-                (grp_data["final_accuracy_rate"] * grp_data["qa_cnt"]).sum() / grp_data["qa_cnt"].sum()
-            )
-        group_agg_m = group_agg_m.sort_values("final_accuracy_rate", ascending=False)
+        _build_group_ranking(df_monthly, "month_begin_date", "月维度")
         
-        group_show_m = pd.DataFrame()
-        group_show_m["组别"] = group_agg_m["group_name"]
-        group_show_m["总质检量"] = group_agg_m["qa_cnt"].apply(lambda x: f"{int(x):,}")
-        group_show_m["平均原始正确率"] = group_agg_m["raw_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        group_show_m["平均最终正确率"] = group_agg_m["final_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
-        
-        st.dataframe(
-            group_show_m, 
-            use_container_width=True, 
-            hide_index=True,
-            column_config={
-                "组别": st.column_config.TextColumn("组别", width="medium"),
-                "总质检量": st.column_config.TextColumn("总质检量", width="medium"),
-            }
-        )
-        
-        # 组别趋势
+        # 组别趋势（通用函数）
         st.markdown("### 📊 组别月趋势")
-        groups_m = sorted(df_monthly["group_name"].unique().tolist())
-        sel_group_m = st.selectbox("选择组别", options=groups_m, key="month_group")
-        
-        if sel_group_m:
-            trend_m = df_monthly[df_monthly["group_name"] == sel_group_m].sort_values("month_begin_date")
-            if not trend_m.empty:
-                fig_m = go.Figure()
-                fig_m.add_trace(go.Scatter(
-                    x=trend_m["month_begin_date"], y=trend_m["final_accuracy_rate"],
-                    mode="lines+markers", name="最终正确率",
-                    line=dict(color="#10B981", width=3), marker=dict(size=10),
-                    text=[f"{v:.2f}%" for v in trend_m["final_accuracy_rate"]],
-                    hovertemplate="<b>%{x}</b><br>最终正确率: %{text}<extra></extra>"
-                ))
-                fig_m.add_trace(go.Scatter(
-                    x=trend_m["month_begin_date"], y=trend_m["raw_accuracy_rate"],
-                    mode="lines+markers", name="原始正确率",
-                    line=dict(color="#94A3B8", width=2, dash="dot"), marker=dict(size=8),
-                    text=[f"{v:.2f}%" for v in trend_m["raw_accuracy_rate"]],
-                    hovertemplate="<b>%{x}</b><br>原始正确率: %{text}<extra></extra>"
-                ))
-                fig_m.add_hline(y=99.0, line_dash="dash", line_color="#F59E0B", annotation_text="目标 99%", annotation_position="right")
-                fig_m.update_layout(
-                    height=400, margin=dict(l=20, r=20, t=30, b=30),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    yaxis_range=[95, 100.5], yaxis_title="正确率 (%)",
-                    xaxis=dict(tickformat="%Y-%m-%d", tickangle=-45),
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig_m, use_container_width=True)
+        _build_group_trend(df_monthly, "month_begin_date", "月维度", "month")
