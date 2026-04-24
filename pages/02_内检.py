@@ -139,6 +139,8 @@ with tab_grain[0]:
             group_show = pd.DataFrame()
             group_show["组别"] = group_agg["group_name"]
             group_show["总质检量"] = group_agg["qa_cnt"].apply(lambda x: f"{int(x):,}")
+            total_all_qa = group_agg["qa_cnt"].sum()
+            group_show["抽检占比"] = group_agg["qa_cnt"].apply(lambda x: f"{x / total_all_qa * 100:.1f}%" if total_all_qa > 0 else "—")
             group_show["原始正确率"] = group_agg["raw_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
             group_show["最终正确率"] = group_agg["final_accuracy_rate"].apply(lambda x: f"{x:.2f}%")
             

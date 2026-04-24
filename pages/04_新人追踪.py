@@ -718,17 +718,23 @@ view_options = {
     "⚠️ 异常告警": "alert",
 }
 
-with st.container(border=True):
-    st.markdown("#### 查看模块")
-    st.caption("模块切换放在新人追踪页内，侧边栏只保留筛选条件。")
-    active_view_label = st.radio(
-        "查看模块",
-        options=list(view_options.keys()),
-        key="nc_view_filter",
-        horizontal=True,
-        label_visibility="collapsed",
-    )
+# 使用 selectbox 替代 radio 进行模块切换，视觉更简洁
+st.markdown("#### 📂 查看模块")
+_tab_labels = list(view_options.keys())
+_tab_cols = st.columns(len(_tab_labels))
+# 获取当前活跃模块
+if "nc_active_tab" not in st.session_state:
+    st.session_state["nc_active_tab"] = _tab_labels[0]
 
+for i, label in enumerate(_tab_labels):
+    with _tab_cols[i]:
+        is_active = st.session_state["nc_active_tab"] == label
+        btn_type = "primary" if is_active else "secondary"
+        if st.button(label, key=f"nc_tab_{i}", use_container_width=True, type=btn_type):
+            st.session_state["nc_active_tab"] = label
+            st.rerun()
+
+active_view_label = st.session_state["nc_active_tab"]
 active_view = view_options[active_view_label]
 need_dimension_detail = active_view == "dimension"
 need_alert_detail = active_view == "alert"

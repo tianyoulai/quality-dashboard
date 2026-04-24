@@ -303,6 +303,19 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# 获取数据日期范围，设置默认日期为数据最新日期
+_data_min_date, _data_max_date = get_data_date_range()
+_default_date = _data_max_date if _data_max_date <= date.today() else date.today()
+
+# 数据更新时间标注
+st.markdown(f"""
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+    <div style="font-size: 0.78rem; color: #9CA3AF;">
+        📅 数据范围 <strong>{_data_min_date}</strong> ~ <strong>{_data_max_date}</strong> &nbsp;·&nbsp; 🕐 页面加载于 <strong>{date.today().strftime('%Y-%m-%d')}</strong>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
 # 快捷入口按钮（增强版）
 st.markdown("#### ⚡ 快捷入口")
 quick_col1, quick_col2, quick_col3, quick_col4 = st.columns([1, 1, 1, 1])
@@ -321,10 +334,6 @@ with quick_col3:
 with quick_col4:
     if st.button("📊 数据总览", use_container_width=True, help="跳转到数据总览页"):
         st.switch_page("pages/02_数据总览.py")
-
-# 获取数据日期范围，设置默认日期为数据最新日期
-_data_min_date, _data_max_date = get_data_date_range()
-_default_date = _data_max_date if _data_max_date <= date.today() else date.today()
 
 # 模式切换 + 日期选择（一行搞定）
 mode_col1, mode_col2, mode_col3, mode_col4 = st.columns([1, 1, 1, 2])
@@ -466,7 +475,7 @@ with metric_col5:
         </div>
     """, unsafe_allow_html=True)
 
-st.markdown("---")
+st.markdown("")  # 轻量间距
 
 # ==================== 第二行：告警区域（紧凑版） ====================
 st.markdown("#### 🚨 实时告警监控")
@@ -547,8 +556,11 @@ if not alerts_df.empty:
             st.dataframe(alert_show, use_container_width=True, hide_index=True)
         else:
             st.info("当前筛选条件下无告警")
+else:
+    # 无告警时显示规则说明
+    st.caption("💡 当前无活跃告警。告警规则：原始正确率 < 99% 触发 P1，< 98% 触发 P0。告警自动按日生成。")
 
-st.markdown("---")
+st.markdown("")  # 轻量间距
 
 # ==================== 第三行：组别卡片 ====================
 st.markdown("#### 🏢 组别经营视图")
@@ -761,7 +773,7 @@ with trend_col:
     else:
         st.info("暂无趋势数据")
 
-st.markdown("---")
+st.markdown("")  # 轻量间距
 
 # ==================== 第五行：队列排名 + 下探 ====================
 st.markdown("### 🔍 数据下探分析")
@@ -801,23 +813,33 @@ with select_col3:
         </div>
     """, unsafe_allow_html=True)
 
-# 快捷筛选按钮（优化样式）
+# 快捷筛选按钮（带选中状态高亮）
 st.markdown("##### ⚡ 快捷筛选")
+_current_filter = st.session_state.get("quick_filter")
 quick_filter_col1, quick_filter_col2, quick_filter_col3, quick_filter_col4, _ = st.columns([1.2, 1.2, 1.2, 1.2, 0.8])
 with quick_filter_col1:
-    if st.button("🔴 错误量TOP5", use_container_width=True, help="筛选错误量最多的5个队列"):
+    if st.button("🔴 错误量TOP5", use_container_width=True, help="筛选错误量最多的5个队列", type="primary" if _current_filter == "error_top5" else "secondary"):
         st.session_state["quick_filter"] = "error_top5"
+        st.rerun()
 with quick_filter_col2:
-    if st.button("📉 正确率<99%", use_container_width=True, help="筛选正确率低于99%的队列"):
+    if st.button("📉 正确率<99%", use_container_width=True, help="筛选正确率低于99%的队列", type="primary" if _current_filter == "low_rate" else "secondary"):
         st.session_state["quick_filter"] = "low_rate"
+        st.rerun()
 with quick_filter_col3:
-    if st.button("⚠️ 有错判/漏判", use_container_width=True, help="筛选有错判或漏判的队列"):
+    if st.button("⚠️ 有错判/漏判", use_container_width=True, help="筛选有错判或漏判的队列", type="primary" if _current_filter == "has_judge_error" else "secondary"):
         st.session_state["quick_filter"] = "has_judge_error"
+        st.rerun()
 with quick_filter_col4:
     if st.button("🔄 重置筛选", use_container_width=True, help="清除所有筛选条件"):
         st.session_state["quick_filter"] = None
         st.session_state["queue_selector"] = "(全部)"
         st.session_state["auditor_selector"] = "(全部)"
+        st.rerun()
+
+# 快捷筛选当前状态提示
+if _current_filter:
+    filter_labels = {"error_top5": "错误量TOP5", "low_rate": "正确率<99%", "has_judge_error": "有错判/漏判"}
+    st.caption(f"🔸 当前筛选：**{filter_labels.get(_current_filter, _current_filter)}**")
 
 # 根据选择重新加载数据
 if selected_queue != "(全部)" or selected_auditor != "(全部)":
@@ -894,6 +916,9 @@ with auditor_col:
                 "漏判量": st.column_config.NumberColumn("漏判量", width="small", format="d"),
             }
         )
+        # 跳转到明细查询（下探最后一层）
+        if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，查看具体问题样本"):
+            st.switch_page("pages/03_明细查询.py")
     else:
         st.info("暂无审核人数据")
 
