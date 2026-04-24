@@ -660,3 +660,18 @@ INSERT INTO dim_alert_rule (rule_code, rule_name, grain, target_level, metric_na
 ('MISS_RATE_SPIKE_GT_0P2_QUEUE_WEEK', '周队列漏判率较上周上升超0.2个百分点', 'week', 'queue', 'missjudge_rate_spike_pp', '>', 0.20, 'P1', 1, '队列周度漏判波动异常'),
 ('TOP_ERROR_SHARE_GT_35_QUEUE_MONTH', '月队列单一错误类型占比高于35%', 'month', 'queue', 'top_error_type_share', '>', 35.00, 'P2', 1, '队列月度问题结构过度集中'),
 ('ERROR_TYPE_SHARE_GT_15_QUEUE_WEEK', '周队列同类错误连续两周未收敛', 'week', 'queue', 'error_type_issue_share', '>', 15.00, 'P1', 1, '队列周度同类错误持续高位');
+
+-- ═══════════════════════════════════════════════════════════════
+--  审计日志
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS sys_audit_log (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    action VARCHAR(64) NOT NULL COMMENT '操作类型: upload/delete/modify/refresh/clear',
+    target VARCHAR(128) COMMENT '操作目标: 表名/规则编码/文件名',
+    detail TEXT COMMENT '操作详情',
+    operator VARCHAR(64) DEFAULT 'system' COMMENT '操作人',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sal_created_at ON sys_audit_log (created_at);

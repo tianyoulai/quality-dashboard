@@ -12,6 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from storage.repository import DashboardRepository
+from utils.audit import log_action
 
 # 项目根目录（所有 subprocess 调用都用绝对路径）
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -315,6 +316,7 @@ with tab_import[0]:
 
             if success_count > 0:
                 st.success(f"成功导入 {success_count} 个文件，已自动刷新数仓和告警" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
+                log_action("upload", "fact_qa_event", f"质检Excel导入 {success_count}个文件")
             elif skip_count > 0:
                 st.warning(f"所有文件均已上传过，跳过 {skip_count} 个文件")
             else:
@@ -445,6 +447,7 @@ with tab_import[1]:
 
         if success_count > 0:
             st.success(f"成功导入 {success_count} 个文件，已自动刷新数仓和告警" + (f"，{skip_count} 个跳过" if skip_count > 0 else "") + (f"，{fail_count} 个失败" if fail_count > 0 else ""))
+            log_action("upload", "fact_appeal_event", f"申诉CSV导入 {success_count}个文件")
         elif skip_count > 0:
             st.warning(f"所有文件均已上传过，跳过 {skip_count} 个文件")
         else:
@@ -918,6 +921,8 @@ with tab_import[6]:
                                     [new_threshold, new_severity, 1 if new_enabled else 0, rule_code],
                                 )
                                 st.success(f"✅ 规则 `{rule_code}` 已更新")
+                                log_action("modify", f"dim_alert_rule/{rule_code}",
+                                           f"阈值→{new_threshold}, 等级→{new_severity}, 启用→{new_enabled}")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"保存失败: {e}")
@@ -984,6 +989,33 @@ with tab_import[9]:
             file_name=f"upload_history_{date.today():%Y%m%d}.csv",
             mime="text/csv"
         )
+
+    # 审计日志
+    st.markdown("---")
+    st.markdown("### 📋 操作审计日志")
+    st.caption("记录数据上传、规则修改、数据清除等关键操作，最近 100 条。")
+    try:
+        audit_df = repo.fetch_df("""
+            SELECT created_at, action, target, detail, operator
+            FROM sys_audit_log
+            ORDER BY created_at DESC
+            LIMIT 100
+        """)
+        if audit_df.empty:
+            st.info("暂无操作记录")
+        else:
+            audit_df["created_at"] = pd.to_datetime(audit_df["created_at"]).dt.strftime("%Y-%m-%d %H:%M:%S")
+            action_map = {"upload": "📤 上传", "delete": "🗑️ 删除", "modify": "✏️ 修改", "refresh": "🔄 刷新", "clear": "🧹 清除"}
+            audit_df["action"] = audit_df["action"].map(action_map).fillna(audit_df["action"])
+            st.dataframe(
+                audit_df.rename(columns={
+                    "created_at": "时间", "action": "操作", "target": "目标",
+                    "detail": "详情", "operator": "操作人",
+                }),
+                use_container_width=True, hide_index=True, height=400,
+            )
+    except Exception:
+        st.info("审计日志表尚未创建，请运行 schema 初始化。")
 
 # ==================== 清除缓存 ====================
 with tab_import[9]:
@@ -1081,6 +1113,7 @@ with tab_import[9]:
                     repo.execute("DELETE FROM fact_upload_log")
 
                     st.success(f"已删除 {preview_cnt:,} 条数据！请点击「一键刷新」重新生成数仓和告警。")
+                    log_action("delete", "fact_qa_event", f"按日期删除 {preview_cnt}条, 范围: {delete_start}~{delete_end}")
                     st.cache_data.clear()
 
     else:  # 全部清除
@@ -1121,6 +1154,7 @@ with tab_import[9]:
                 try:
                     repo.execute_in_transaction(sql_list)
                     st.success("数据已全部清空！请重新上传数据并刷新。")
+                    log_action("delete", "ALL_TABLES", f"全部清空 {total_cnt}条质检数据")
                     st.cache_data.clear()
                 except Exception as e:
                     st.error(f"清空数据失败：{str(e)}")
