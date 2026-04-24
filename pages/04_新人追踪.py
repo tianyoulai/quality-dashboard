@@ -22,6 +22,7 @@ import streamlit as st
 from services.newcomer_aggregates import build_newcomer_aggregate_payload
 from storage.repository import DashboardRepository
 
+st.set_page_config(page_title="质培运营看板-新人追踪", page_icon="👶", layout="wide")
 
 # 全局CSS
 st.markdown("""
