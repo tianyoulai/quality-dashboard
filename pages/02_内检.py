@@ -22,7 +22,7 @@ st.markdown("""
         border: 1px solid #E5E7EB;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
     h1 { margin-bottom: 0.5rem; }
     h3 { margin-top: 1.5rem; margin-bottom: 1rem; }
     hr { margin: 1.5rem 0; border-color: #E5E7EB; }
@@ -65,12 +65,12 @@ min_d, max_d = get_date_range()
 
 # Hero 区域
 st.markdown("""
-<div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+<div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #8B5CF6; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">📈 数据总览</h1>
+        <h1 style="margin: 0; font-size: 2rem; font-weight: 700; color: #1a1a1a;">🔍 内检分析</h1>
     </div>
     <div style="font-size: 0.9rem; color: #4b5563; line-height: 1.6;">
-        跨周期趋势对比 · 全量组别排名 · 数据全景洞察
+        跨周期趋势对比 · 全量组别排名 · 审核一致性分析
     </div>
 </div>
 """, unsafe_allow_html=True)

@@ -71,7 +71,6 @@ st.markdown("""
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
-        max-width: 100% !important;
     }
     
     /* 标题样式优化 */
@@ -247,13 +246,8 @@ def load_qa_owner_distribution_cached(grain: str, selected_date: date, group_nam
     return service.load_qa_owner_distribution(grain, selected_date, group_name, top_n)
 
 
-@st.cache_data(show_spinner=False)
-def to_csv_bytes(df: pd.DataFrame) -> bytes:
-    export_df = df.copy()
-    for column in export_df.columns:
-        if pd.api.types.is_datetime64_any_dtype(export_df[column]):
-            export_df[column] = export_df[column].astype(str)
-    return export_df.to_csv(index=False).encode("utf-8-sig")
+# to_csv_bytes 已统一到 utils/helpers.py
+from utils.helpers import to_csv_bytes
 
 
 def safe_file_part(value: str | None) -> str:

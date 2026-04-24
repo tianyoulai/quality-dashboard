@@ -32,7 +32,7 @@ st.markdown("""
         transform: translateY(-1px);
         box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
     }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
     h1 { margin-bottom: 0.5rem; }
 </style>
 """, unsafe_allow_html=True)
@@ -57,10 +57,23 @@ st.markdown("""
 def get_filter_options() -> dict:
     """获取筛选选项（缓存 10 分钟）。
     
-    优化：从 fact_qa_event 直表查询 DISTINCT，避免扫描 vw_qa_base 视图（122 万行）。
+    优化：使用与 vw_qa_base 一致的 group_name 逻辑，
+    但从 fact_qa_event 直表查询 DISTINCT 避免扫描全量视图。
     """
-    groups = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name FROM fact_qa_event WHERE sub_biz IS NOT NULL ORDER BY 1")
-    queues = repo.fetch_df("SELECT DISTINCT sub_biz AS group_name, queue_name FROM fact_qa_event WHERE queue_name IS NOT NULL ORDER BY 1, 2")
+    groups = repo.fetch_df("""
+        SELECT DISTINCT COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) AS group_name 
+        FROM fact_qa_event 
+        WHERE COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) IS NOT NULL 
+        ORDER BY 1
+    """)
+    queues = repo.fetch_df("""
+        SELECT DISTINCT 
+            COALESCE(NULLIF(TRIM(group_name), ''), NULLIF(TRIM(mother_biz), ''), NULLIF(TRIM(sub_biz), '')) AS group_name, 
+            COALESCE(NULLIF(TRIM(queue_name), ''), NULLIF(TRIM(sub_biz), '')) AS queue_name 
+        FROM fact_qa_event 
+        WHERE queue_name IS NOT NULL 
+        ORDER BY 1, 2
+    """)
     reviewers = repo.fetch_df("SELECT DISTINCT reviewer_name FROM fact_qa_event WHERE reviewer_name IS NOT NULL ORDER BY 1")
     error_types = repo.fetch_df("SELECT DISTINCT error_type FROM fact_qa_event WHERE error_type IS NOT NULL AND error_type <> '' ORDER BY 1")
     dates = repo.fetch_df("SELECT DISTINCT biz_date FROM fact_qa_event ORDER BY 1")
@@ -118,7 +131,7 @@ def query_detail(
     sql = f"""
     SELECT
         biz_date AS 业务日期,
-        COALESCE(sub_biz, '—') AS 组别,
+        COALESCE(group_name, '—') AS 组别,
         COALESCE(queue_name, '—') AS 队列,
         COALESCE(reviewer_name, '—') AS 审核人,
         COALESCE(content_type, '—') AS 内容类型,
@@ -137,21 +150,17 @@ def query_detail(
         COALESCE(qa_note, '—') AS 备注,
         join_key AS 关联主键,
         qa_time AS 质检时间
-    FROM fact_qa_event
+    FROM vw_qa_base
     WHERE {where}
     ORDER BY qa_time IS NULL, qa_time DESC, biz_date DESC
-    LIMIT {int(limit)}
+    LIMIT %s
     """
+    params.append(int(limit))
     return repo.fetch_df(sql, params)
 
 
-@st.cache_data(show_spinner=False)
-def to_csv_bytes(df: pd.DataFrame) -> bytes:
-    export_df = df.copy()
-    for column in export_df.columns:
-        if pd.api.types.is_datetime64_any_dtype(export_df[column]):
-            export_df[column] = export_df[column].astype(str)
-    return export_df.to_csv(index=False).encode("utf-8-sig")
+# to_csv_bytes 已统一到 utils/helpers.py
+from utils.helpers import to_csv_bytes
 
 
 opts = get_filter_options()

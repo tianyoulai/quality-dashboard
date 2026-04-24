@@ -144,11 +144,7 @@ def render_module_page(module_key: str):
     """渲染一个模块的完整页面（供各独立页面调用）。"""
     meta = QC_MODULE_META[module_key]
 
-    # CSS
-    st.markdown("""<style>
-        .main > div { padding-top: 1rem; }
-        .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; }
-    </style>""", unsafe_allow_html=True)
+    # CSS 已由 app.py 的 layout="wide" 全局设置，此处不再重复注入
 
     # Hero
     st.markdown(f"""

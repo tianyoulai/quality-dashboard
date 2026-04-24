@@ -124,11 +124,23 @@ class TiDBManager:
     """TiDB 数据库操作封装，提供连接池、查询、执行等基础方法。
     
     连接池延迟初始化：只有在首次使用时才创建，确保 st.secrets 已就绪。
+    使用单例模式：全进程共享一个连接池，避免 Streamlit 多页面各自创建连接池耗尽连接。
     """
 
+    _instance: "TiDBManager | None" = None
+
+    def __new__(cls, config: TiDBConfig | None = None) -> "TiDBManager":
+        """单例模式：全进程共享同一个 TiDBManager 实例。"""
+        if cls._instance is None:
+            instance = super().__new__(cls)
+            instance.config = config
+            instance._pool = None
+            cls._instance = instance
+        return cls._instance
+
     def __init__(self, config: TiDBConfig | None = None):
-        self.config = config
-        self._pool: pooling.MySQLConnectionPool | None = None
+        # __new__ 已完成初始化，避免重复覆盖
+        pass
 
     def _ensure_pool(self) -> pooling.MySQLConnectionPool:
         """延迟初始化连接池。"""

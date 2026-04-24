@@ -1,4 +1,5 @@
 # === 敏感配置（含密钥，绝不提交） ===
+.env
 config/settings.json
 config/gsheet_service_account.json
 

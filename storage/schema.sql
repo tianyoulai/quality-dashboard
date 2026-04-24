@@ -17,7 +17,7 @@
 -- ═══════════════════════════════════════════════════════════════
 
 CREATE TABLE IF NOT EXISTS fact_qa_event (
-    event_id VARCHAR(64),
+    event_id VARCHAR(64) PRIMARY KEY,
     biz_date DATE,
     qa_time DATETIME,
     import_date DATE,

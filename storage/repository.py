@@ -119,7 +119,8 @@ class DashboardRepository:
         return self._manager.insert_dataframe(table_name, df)
 
     def truncate_table(self, table_name: str) -> None:
-        self._manager.execute(f"DELETE FROM `{table_name}`")
+        """清空表数据。使用 TRUNCATE 比 DELETE 快且不产生 binlog。"""
+        self._manager.execute(f"TRUNCATE TABLE `{table_name}`")
 
     # ========== 告警管理 ==========
 
@@ -659,19 +660,15 @@ class DashboardRepository:
 
     @staticmethod
     def _anchor_column(grain: str) -> str:
+        """返回 MART 表中的锚点日期列名。"""
         return {
             "day": "biz_date",
             "week": "week_begin_date",
             "month": "month_begin_date",
         }[grain]
 
-    @staticmethod
-    def _grain_column(grain: str) -> str:
-        return {
-            "day": "biz_date",
-            "week": "week_begin_date",
-            "month": "month_begin_date",
-        }[grain]
+    # _grain_column 与 _anchor_column 功能相同，保留别名兼容旧代码
+    _grain_column = _anchor_column
 
     @staticmethod
     def _biz_date_filter_sql(column_name: str, grain: str) -> str:
