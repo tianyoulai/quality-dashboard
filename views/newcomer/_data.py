@@ -169,8 +169,10 @@ def create_data_loaders(repo: "DashboardRepository", helpers: dict):
         return repo.fetch_df(sql, params)
 
     def load_newcomer_error_detail(reviewer_alias: str, limit: int = 100) -> pd.DataFrame:
+        """查询近期错误明细——同时查新人内/外检 + 正式阶段，合并后返回。"""
         short_name = reviewer_alias.replace("云雀联营-", "") if "云雀联营-" in reviewer_alias else reviewer_alias
-        return repo.fetch_df("""
+        # 1. 新人内/外检错误
+        newcomer_errors = repo.fetch_df("""
             SELECT biz_date, stage, queue_name, content_type,
                    training_topic, risk_level, comment_text,
                    raw_judgement, final_judgement, error_type, qa_note,
@@ -181,6 +183,26 @@ def create_data_loaders(repo: "DashboardRepository", helpers: dict):
             ORDER BY biz_date DESC, qa_time DESC
             LIMIT %s
         """, [reviewer_alias, short_name, short_name, limit])
+        # 2. 正式阶段错误（vw_qa_base）
+        formal_errors = repo.fetch_df("""
+            SELECT biz_date, 'formal' AS stage, queue_name, content_type,
+                   training_topic, risk_level, comment_text,
+                   raw_judgement,
+                   COALESCE(final_review_result, raw_judgement) AS final_judgement,
+                   error_type, qa_note,
+                   is_final_correct AS is_correct,
+                   0 AS is_misjudge, 0 AS is_missjudge
+            FROM vw_qa_base
+            WHERE (reviewer_name = %s OR reviewer_name = %s)
+              AND is_final_correct = 0
+            ORDER BY biz_date DESC, qa_time DESC
+            LIMIT %s
+        """, [reviewer_alias, short_name, limit])
+        frames = [df for df in [newcomer_errors, formal_errors] if df is not None and not df.empty]
+        if not frames:
+            return pd.DataFrame()
+        combined = pd.concat(frames, ignore_index=True)
+        return combined.sort_values("biz_date", ascending=False).head(limit)
 
     def load_person_all_qa_records(reviewer_alias: str, limit: int = 200) -> pd.DataFrame:
         short_name = reviewer_alias.replace("云雀联营-", "") if "云雀联营-" in reviewer_alias else reviewer_alias

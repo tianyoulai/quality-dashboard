@@ -71,7 +71,10 @@ st.markdown("""
     .block-container {
         padding-top: 2rem;
         padding-bottom: 2rem;
+        max-width: 100% !important;
+        width: 100% !important;
     }
+    section[data-testid="stSidebar"] ~ div.main .block-container { max-width: 100% !important; }
     
     /* 标题样式优化 */
     h3 {

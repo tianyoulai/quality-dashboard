@@ -32,7 +32,8 @@ st.markdown("""
         transform: translateY(-1px);
         box-shadow: 0 2px 8px rgba(46, 125, 50, 0.3);
     }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 100% !important; width: 100% !important; }
+    section[data-testid="stSidebar"] ~ div.main .block-container { max-width: 100% !important; }
     h1 { margin-bottom: 0.5rem; }
 </style>
 """, unsafe_allow_html=True)

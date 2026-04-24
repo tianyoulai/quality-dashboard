@@ -9,3 +9,6 @@ textColor = "#1E293B"
 
 [browser]
 gatherUsageStats = false
+
+[runner]
+fastReruns = true

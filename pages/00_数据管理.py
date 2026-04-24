@@ -18,6 +18,14 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 repo = DashboardRepository()
 
+# 全宽CSS
+st.markdown("""
+<style>
+    .block-container { max-width: 100% !important; width: 100% !important; }
+    section[data-testid="stSidebar"] ~ div.main .block-container { max-width: 100% !important; }
+</style>
+""", unsafe_allow_html=True)
+
 # Hero 区域
 st.markdown("""
 <div style="margin-bottom: 1.5rem; padding: 1.5rem; background: #ffffff; border-radius: 1rem; border-left: 4px solid #2e7d32; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
