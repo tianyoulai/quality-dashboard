@@ -56,6 +56,48 @@ def inject_global_css() -> None:
         h1 { margin-bottom: 0.5rem; }
         h3 { margin-top: 1.5rem; margin-bottom: 1rem; }
         hr { margin: 1.5rem 0; border-color: #E5E7EB; }
+
+        /* ===== 移动端适配（企微内嵌/手机浏览） ===== */
+        @media (max-width: 768px) {
+            .block-container {
+                padding-left: 0.5rem !important;
+                padding-right: 0.5rem !important;
+                padding-top: 0.5rem !important;
+            }
+            /* 侧边栏默认折叠 */
+            section[data-testid="stSidebar"] {
+                width: 0 !important;
+                min-width: 0 !important;
+            }
+            /* 卡片紧凑化 */
+            .metric-card, [data-testid="stMetricValue"] {
+                font-size: 0.9rem !important;
+            }
+            /* 列布局自动堆叠 */
+            [data-testid="column"] {
+                min-width: 100% !important;
+            }
+            /* 表格横向滚动 */
+            .stDataFrame {
+                overflow-x: auto !important;
+            }
+            /* Hero 区域紧凑 */
+            h1 { font-size: 1.5rem !important; }
+            h3 { font-size: 1.1rem !important; margin-top: 0.75rem !important; }
+            /* 按钮更大的点击区域 */
+            .stButton > button {
+                min-height: 2.5rem;
+                font-size: 0.85rem;
+            }
+        }
+
+        /* ===== 平板适配 ===== */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .block-container {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+        }
     </style>
     """, unsafe_allow_html=True)
 

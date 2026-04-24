@@ -105,6 +105,14 @@ def format_daily_wecom(r: ReportResult) -> str:
             lines.append(f"- {q.queue} **{q.err_cnt}条**{cp_lp}")
         lines.append("")
 
+    # ── 错误类型 TOP3 ──
+    if r.top_error_types:
+        type_items = []
+        for t in r.top_error_types[:3]:
+            type_items.append(f"{t['error_type']}({t['cnt']})")
+        lines.append(f"**错误类型** {' · '.join(type_items)}")
+        lines.append("")
+
     # ── AI 洞察 ──
     if r.ai_insight:
         insight = r.ai_insight

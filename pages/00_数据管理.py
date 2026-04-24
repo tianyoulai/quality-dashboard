@@ -1,7 +1,6 @@
 """数据管理页：上传质检 Excel / 申诉 CSV，一键刷新数仓和告警。"""
 from __future__ import annotations
 
-import hashlib
 import subprocess
 import sys
 import tempfile
@@ -11,16 +10,26 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from storage.repository import DashboardRepository
 from utils.audit import log_action
-
-# 项目根目录（所有 subprocess 调用都用绝对路径）
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-
-repo = DashboardRepository()
+from views.data_mgmt import (
+    preview_file_rows,
+    get_upload_history,
+    check_file_exists,
+    compute_file_hash_from_bytes,
+    compute_file_hash_chunked,
+    PROJECT_ROOT,
+    repo,
+    render_freshness_panel,
+    render_health_check,
+)
 
 from utils.styles import inject_global_css
 inject_global_css()
+
+# 权限控制（可通过 config/settings.json 启用）
+from utils.auth import require_role, render_admin_badge
+render_admin_badge()
+require_role("admin")
 
 # Hero 区域
 st.markdown("""
@@ -36,161 +45,12 @@ st.markdown("""
 
 # ---- 数据新鲜度面板 ----
 with st.expander("📊 数据新鲜度概览", expanded=False):
-    freshness_sql = """
-    SELECT '质检事实表' AS table_cn, 'fact_qa_event' AS tbl,
-           COUNT(*) AS row_cnt, MAX(biz_date) AS latest_date
-    FROM fact_qa_event
-    UNION ALL
-    SELECT '申诉事实表', 'fact_appeal_event', COUNT(*), MAX(biz_date)
-    FROM fact_appeal_event
-    UNION ALL
-    SELECT '新人质检表', 'fact_newcomer_qa', COUNT(*), MAX(biz_date)
-    FROM fact_newcomer_qa
-    UNION ALL
-    SELECT '新人名单表', 'dim_newcomer_batch', COUNT(*), NULL
-    FROM dim_newcomer_batch
-    UNION ALL
-    SELECT '日聚合-组', 'mart_day_group', COUNT(*), MAX(biz_date)
-    FROM mart_day_group
-    UNION ALL
-    SELECT '日聚合-队列', 'mart_day_queue', COUNT(*), MAX(biz_date)
-    FROM mart_day_queue
-    """
-    try:
-        freshness_df = repo.fetch_df(freshness_sql)
-        if not freshness_df.empty:
-            show_fresh = pd.DataFrame()
-            show_fresh["数据表"] = freshness_df["table_cn"]
-            show_fresh["记录数"] = freshness_df["row_cnt"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "0")
-            show_fresh["最新日期"] = freshness_df["latest_date"].apply(
-                lambda x: str(x)[:10] if pd.notna(x) else "—"
-            )
-            # 新鲜度标记
-            from datetime import datetime
-            today = date.today()
-
-            def freshness_badge(d):
-                if pd.isna(d) or str(d) == "—":
-                    return "—"
-                try:
-                    d_date = pd.to_datetime(d).date()
-                    gap = (today - d_date).days
-                    if gap <= 1:
-                        return "🟢 当日"
-                    elif gap <= 3:
-                        return "🟡 近3天"
-                    elif gap <= 7:
-                        return "🟠 近1周"
-                    else:
-                        return f"🔴 {gap}天前"
-                except Exception:
-                    return "—"
-
-            show_fresh["新鲜度"] = freshness_df["latest_date"].apply(freshness_badge)
-            st.dataframe(show_fresh, use_container_width=True, hide_index=True)
-        else:
-            st.info("暂无数据表信息")
-    except Exception as e:
-        st.warning(f"获取新鲜度信息失败: {e}")
+    render_freshness_panel()
 
 tab_import = st.tabs(["质检数据", "申诉数据", "Google Sheet", "新人质检数据", "新人批次管理", "一键刷新", "告警规则", "上传记录", "清除缓存", "清除数据"])
 
 
-def preview_file_rows(file_obj, file_type: str) -> dict:
-    """预览文件数据量（只读一次，避免大文件性能问题）。
-    
-    Returns:
-        dict: {rows: int, columns: int, preview_df: DataFrame, error: str|None}
-    """
-    try:
-        if file_type == "qa":
-            full_df = pd.read_excel(file_obj, dtype=str)
-            file_obj.seek(0)
-        else:
-            try:
-                full_df = pd.read_csv(file_obj, encoding="utf-8-sig", dtype=str)
-            except UnicodeDecodeError:
-                file_obj.seek(0)
-                full_df = pd.read_csv(file_obj, encoding="gb18030", dtype=str)
-            file_obj.seek(0)
-        
-        return {
-            "rows": len(full_df),
-            "columns": len(full_df.columns),
-            "preview_df": full_df.head(5),
-            "error": None
-        }
-    except Exception as e:
-        return {"rows": 0, "columns": 0, "preview_df": None, "error": str(e)}
-
-
-def get_upload_history(limit: int = 20) -> list[dict]:
-    """获取最近的上传记录。"""
-    try:
-        result = repo.fetch_df(
-            """
-            SELECT
-                upload_id,
-                upload_time,
-                file_name,
-                file_type,
-                file_size_bytes,
-                source_rows,
-                inserted_rows,
-                dedup_rows,
-                business_line,
-                upload_status,
-                error_message
-            FROM fact_upload_log
-            ORDER BY upload_time DESC
-            LIMIT %s
-            """,
-            [limit]
-        )
-        return result.to_dict(orient="records") if result is not None and not result.empty else []
-    except Exception:
-        return []
-
-
-def check_file_exists(file_hash: str) -> dict | None:
-    """检查文件是否已存在（用于前端提示）。"""
-    try:
-        result = repo.fetch_one(
-            """
-            SELECT file_name, first_upload_time, upload_count
-            FROM fact_file_dedup
-            WHERE file_hash = %s
-            """,
-            [file_hash]
-        )
-        return result if result else None
-    except Exception:
-        return None
-
-
-def compute_file_hash_from_bytes(data: bytes) -> str:
-    """计算文件内容哈希（适用于小文件）。"""
-    return hashlib.sha256(data).hexdigest()
-
-
-def compute_file_hash_chunked(file_obj, chunk_size: int = 8192) -> str:
-    """分块计算文件哈希，避免大文件内存溢出。
-    
-    Args:
-        file_obj: 文件对象（需支持 read() 和 seek()）
-        chunk_size: 每次读取的块大小（字节），默认 8KB
-    
-    Returns:
-        SHA256 哈希值（十六进制字符串）
-    """
-    hasher = hashlib.sha256()
-    while True:
-        chunk = file_obj.read(chunk_size)
-        if not chunk:
-            break
-        hasher.update(chunk)
-    file_obj.seek(0)  # 重置文件指针，允许后续读取
-    return hasher.hexdigest()
+# 工具函数已迁移至 views/data_mgmt/_shared.py
 
 
 # ==================== 质检数据 ====================
@@ -1166,76 +1026,4 @@ with tab_import[9]:
     st.markdown("---")
     st.markdown("### 🩺 数据健康检查")
     st.caption("自动检测常见的数据质量问题，帮助定位异常")
-
-    if st.button("🔍 执行数据健康检查", use_container_width=True, key="health_check"):
-        with st.spinner("正在检查..."):
-            checks = []
-
-            # 1. fact_qa_event 总量
-            total_row = repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_qa_event")
-            total_cnt = total_row["cnt"] if total_row else 0
-            checks.append(("fact_qa_event 总记录数", f"{total_cnt:,}", "✅" if total_cnt > 0 else "⚠️ 无数据"))
-
-            # 2. 关键字段缺失率
-            null_checks = [
-                ("group_name 为空", "SELECT COUNT(*) AS cnt FROM fact_qa_event WHERE group_name IS NULL OR TRIM(group_name) = ''"),
-                ("queue_name 为空", "SELECT COUNT(*) AS cnt FROM fact_qa_event WHERE queue_name IS NULL OR TRIM(queue_name) = ''"),
-                ("reviewer_name 为空", "SELECT COUNT(*) AS cnt FROM fact_qa_event WHERE reviewer_name IS NULL OR TRIM(reviewer_name) = ''"),
-                ("biz_date 为空", "SELECT COUNT(*) AS cnt FROM fact_qa_event WHERE biz_date IS NULL"),
-            ]
-            for label, sql in null_checks:
-                r = repo.fetch_one(sql)
-                cnt = r["cnt"] if r else 0
-                pct = cnt / total_cnt * 100 if total_cnt > 0 else 0
-                status = "✅" if pct < 1 else ("⚠️" if pct < 10 else "❌")
-                checks.append((label, f"{cnt:,} ({pct:.1f}%)", status))
-
-            # 3. mart 表是否有数据
-            mart_tables = ["mart_day_group", "mart_day_queue", "mart_day_auditor", "mart_week_group", "mart_month_group"]
-            for tbl in mart_tables:
-                try:
-                    r = repo.fetch_one(f"SELECT COUNT(*) AS cnt FROM {tbl}")
-                    cnt = r["cnt"] if r else 0
-                    checks.append((f"{tbl} 记录数", f"{cnt:,}", "✅" if cnt > 0 else "⚠️ 需刷新数仓"))
-                except Exception:
-                    checks.append((f"{tbl} 记录数", "表不存在", "❌"))
-
-            # 4. 日期连续性检查
-            date_gaps = repo.fetch_df("""
-                SELECT a.d AS gap_date FROM (
-                    SELECT DATE_ADD(MIN(biz_date), INTERVAL seq DAY) AS d
-                    FROM fact_qa_event,
-                    (SELECT 0 AS seq UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
-                     UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
-                     UNION ALL SELECT 10 UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14) seqs
-                    WHERE DATE_ADD(MIN(biz_date), INTERVAL seq DAY) <= (SELECT MAX(biz_date) FROM fact_qa_event)
-                ) a
-                LEFT JOIN (SELECT DISTINCT biz_date FROM fact_qa_event) b ON a.d = b.biz_date
-                WHERE b.biz_date IS NULL
-                LIMIT 10
-            """)
-            gap_cnt = len(date_gaps) if date_gaps is not None else 0
-            checks.append(("日期连续性（最近15天）", f"缺失 {gap_cnt} 天" if gap_cnt > 0 else "连续", "⚠️" if gap_cnt > 0 else "✅"))
-
-            # 5. 新人数据检查
-            newcomer_total = repo.fetch_one("SELECT COUNT(*) AS cnt FROM dim_newcomer_batch")
-            newcomer_cnt = newcomer_total["cnt"] if newcomer_total else 0
-            checks.append(("新人名单（dim_newcomer_batch）", f"{newcomer_cnt:,} 人", "✅" if newcomer_cnt > 0 else "💡 可选"))
-
-            newcomer_qa = repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_newcomer_qa")
-            newcomer_qa_cnt = newcomer_qa["cnt"] if newcomer_qa else 0
-            checks.append(("新人质检（fact_newcomer_qa）", f"{newcomer_qa_cnt:,} 条", "✅" if newcomer_qa_cnt > 0 else "💡 可选"))
-
-            # 展示结果
-            health_df = pd.DataFrame(checks, columns=["检查项", "结果", "状态"])
-            st.dataframe(health_df, use_container_width=True, hide_index=True, height=400)
-
-            # 汇总
-            error_cnt = sum(1 for _, _, s in checks if "❌" in s)
-            warn_cnt = sum(1 for _, _, s in checks if "⚠️" in s)
-            if error_cnt > 0:
-                st.error(f"发现 {error_cnt} 个严重问题，请尽快处理。")
-            elif warn_cnt > 0:
-                st.warning(f"发现 {warn_cnt} 个需注意的问题。")
-            else:
-                st.success("🎉 数据健康检查通过，所有指标正常！")
+    render_health_check()

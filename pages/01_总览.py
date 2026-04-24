@@ -781,6 +781,64 @@ with auditor_col:
     else:
         st.info("暂无审核人数据")
 
+# ==================== 第五点五行：问题样本预览（下探闭环） ====================
+st.markdown("---")
+st.markdown("#### 🔬 问题样本预览")
+st.caption("💡 选择队列和审核人后，自动展示对应的错误样本，完成下探闭环")
+
+# 构建样本查询参数
+_sample_group = selected_group
+_sample_queue = selected_queue if selected_queue != "(全部)" else None
+_sample_auditor = selected_auditor if selected_auditor != "(全部)" else None
+
+# 只在选择了具体队列或审核人时展示样本
+if _sample_queue or _sample_auditor:
+    _sample_payload = load_group_detail(
+        grain, selected_date, _sample_group,
+        _sample_queue, _sample_auditor, None, None
+    )
+    _sample_df = _sample_payload.get("sample_df", pd.DataFrame())
+    _error_df = _sample_payload.get("error_df", pd.DataFrame())
+
+    if not _sample_df.empty:
+        _sc1, _sc2, _sc3 = st.columns(3)
+        _sc1.metric("样本总量", f"{len(_sample_df):,}")
+        _raw_err_cnt = (_sample_df["is_raw_correct"] == 0).sum() if "is_raw_correct" in _sample_df.columns else 0
+        _sc2.metric("原始错误", f"{_raw_err_cnt:,}")
+        _appeal_rev = (_sample_df["is_appeal_reversed"] == 1).sum() if "is_appeal_reversed" in _sample_df.columns else 0
+        _sc3.metric("申诉改判", f"{_appeal_rev:,}")
+
+        # 错误类型 TOP5
+        if not _error_df.empty:
+            with st.expander("📊 错误类型分布", expanded=False):
+                _err_show = pd.DataFrame()
+                _err_show["错误类型"] = _error_df["error_type"]
+                _err_show["数量"] = _error_df["issue_cnt"]
+                st.dataframe(_err_show.head(10), use_container_width=True, hide_index=True)
+
+        # 样本明细表
+        with st.expander(f"📋 样本明细（共 {len(_sample_df)} 条）", expanded=True):
+            _cols_map = {
+                "biz_date": "日期", "queue_name": "队列", "reviewer_name": "审核人",
+                "raw_judgement": "审核人判定", "final_review_result": "质检判定",
+                "error_type": "错误类型", "error_reason": "错误归因",
+                "comment_text": "评论文本",
+            }
+            _avail_cols = [c for c in _cols_map if c in _sample_df.columns]
+            _show_df = _sample_df[_avail_cols].rename(columns=_cols_map).head(50)
+            st.dataframe(_show_df, use_container_width=True, hide_index=True, height=350)
+
+            if len(_sample_df) > 50:
+                st.caption(f"💡 仅展示前 50 条，完整数据请前往「明细查询」页面")
+
+            # 跳转到明细查询的按钮
+            if st.button("🔍 在明细查询中查看完整数据", key="goto_detail_from_sample", use_container_width=True):
+                st.switch_page("pages/03_明细查询.py")
+    else:
+        st.info("当前筛选条件下无样本数据")
+else:
+    st.info("👆 请在上方选择具体的队列或审核人，查看问题样本")
+
 # ==================== 第六行：质检标签分布 + 质检员工作量 ====================
 st.markdown("---")
 st.markdown("### 📊 质检维度分析")
@@ -894,6 +952,47 @@ with owner_col:
 
 # ==================== 底部说明 ====================
 st.markdown("---")
+
+# 导出中心
+with st.expander("📥 导出中心", expanded=False):
+    st.caption("一键导出当前看板数据为 Excel 文件")
+    _exp_col1, _exp_col2 = st.columns(2)
+    with _exp_col1:
+        if st.button("📊 导出当日报表 (Excel)", key="export_daily", use_container_width=True):
+            try:
+                from utils.export_center import export_daily_excel
+                _export_data = load_group_overview(grain, selected_date)
+                _xlsx_bytes = export_daily_excel(_export_data, selected_date)
+                st.download_button(
+                    "⬇️ 下载日报 Excel",
+                    data=_xlsx_bytes,
+                    file_name=f"quality_daily_{selected_date}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_daily_xlsx",
+                )
+            except Exception as e:
+                st.error(f"导出失败: {e}")
+    with _exp_col2:
+        if st.button("📈 导出本周报表 (Excel)", key="export_weekly", use_container_width=True):
+            try:
+                from utils.export_center import export_weekly_excel
+                _week_start = selected_date - timedelta(days=selected_date.weekday())
+                _daily_list = []
+                for i in range(7):
+                    _d = _week_start + timedelta(days=i)
+                    if _d <= selected_date:
+                        _daily_list.append(load_group_overview("day", _d))
+                _xlsx_bytes = export_weekly_excel(_daily_list, _week_start, selected_date)
+                st.download_button(
+                    "⬇️ 下载周报 Excel",
+                    data=_xlsx_bytes,
+                    file_name=f"quality_weekly_{_week_start}_{selected_date}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="dl_weekly_xlsx",
+                )
+            except Exception as e:
+                st.error(f"导出失败: {e}")
+
 st.markdown("""
 <div style='background: linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 100%); padding: 1.25rem; border-radius: 0.75rem; border: 1px solid #E5E7EB; margin-top: 1rem;'>
     <div style='font-size: 0.85rem; color: #475569; line-height: 1.8;'>
