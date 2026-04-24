@@ -699,13 +699,30 @@ if not unmatched_df.empty:
 
     if not practice_df.empty:
         practice_count = int(practice_df["row_cnt"].sum())
-        practice_names = "、".join(practice_df["reviewer_name"].tolist())
-        st.info(f"检测到 {practice_count} 条正式人力下线学习记录：{practice_names}。此类样例会写入 is_practice_sample=1，不计入新人批次统计，仅用于练习样例排查。")
+        practice_names_list = practice_df["reviewer_name"].tolist()
+        st.info(f"检测到 {practice_count} 条正式人力下线学习记录（共 {len(practice_names_list)} 人）。此类样例会写入 is_practice_sample=1，不计入新人批次统计，仅用于练习样例排查。")
+        if len(practice_names_list) > 5:
+            with st.expander(f"📋 查看 {len(practice_names_list)} 位正式人力名单", expanded=False):
+                st.write("、".join(practice_names_list))
+        else:
+            st.caption("涉及：" + "、".join(practice_names_list))
 
     if not true_unmatched_df.empty:
         unmatched_count = int(true_unmatched_df["row_cnt"].sum())
-        unmatched_names = "、".join(true_unmatched_df["reviewer_name"].tolist())
-        st.warning(f"当前仍有 {unmatched_count} 条新人质检记录未关联到批次：{unmatched_names}。建议补齐名单后再看批次汇总。")
+        unmatched_names_list = true_unmatched_df["reviewer_name"].tolist()
+        st.warning(f"当前仍有 {unmatched_count} 条新人质检记录未关联到批次（共 {len(unmatched_names_list)} 人）。建议补齐名单后再看批次汇总。")
+        if len(unmatched_names_list) > 5:
+            with st.expander(f"📋 查看 {len(unmatched_names_list)} 位未关联人员名单", expanded=False):
+                # 分列展示，提高可读性
+                _cols_per_row = 4
+                for i in range(0, len(unmatched_names_list), _cols_per_row):
+                    _row_names = unmatched_names_list[i:i + _cols_per_row]
+                    _exp_cols = st.columns(_cols_per_row)
+                    for j, name in enumerate(_row_names):
+                        with _exp_cols[j]:
+                            st.write(name)
+        else:
+            st.caption("涉及：" + "、".join(unmatched_names_list))
 
 # ==================== 页面模块切换 + 侧边栏筛选 ====================
 
@@ -1195,19 +1212,21 @@ if active_view == "overview":
         weak_batch_name = weak_batch_row["batch_name"]
         weak_batch_acc = float(weak_batch_row["sample_accuracy"])
 
-    mc1, mc2, mc3, mc4, mc5, mc6 = st.columns(6)
+    mc1, mc2, mc3 = st.columns(3)
     with mc1:
         st.metric("👥 当前新人数", overview_total_people)
     with mc2:
         st.metric("🏫 内部样本正确率", f"{internal_sample_acc:.1f}%", delta=f"人均 {internal_per_capita_acc:.1f}%")
     with mc3:
         st.metric("🔍 外部样本正确率", f"{external_sample_acc:.1f}%", delta=f"人均 {external_per_capita_acc:.1f}%")
+
+    mc4, mc5, mc6 = st.columns(3)
     with mc4:
         st.metric("✅ 正式样本正确率", f"{formal_sample_acc:.1f}%", delta=f"人均 {formal_per_capita_acc:.1f}%")
     with mc5:
         st.metric("📅 平均培训天数", f"{avg_training_days}天")
     with mc6:
-        st.metric("📏 最大基地样本差值", f"{max_gap_value:.1f}%", delta=f"人均差值 {max_per_capita_gap:.1f}% · {weak_batch_name} {weak_batch_acc:.1f}%")
+        st.metric("📏 最大基地样本差值", f"{max_gap_value:.1f}%", delta=f"人均差值 {max_per_capita_gap:.1f}%")
 
     st.markdown("""
     <div style="margin:-0.25rem 0 1rem; padding:0.85rem 1rem; border-radius:0.75rem; background:#eff6ff; border-left:4px solid #2563eb; font-size:0.82rem; color:#1d4ed8; line-height:1.7;">
@@ -1295,7 +1314,7 @@ if active_view == "overview":
                         <div style="padding:0.28rem 0.8rem; border-radius:999px; background:{stage_bg}; color:{stage_color}; font-size:0.8rem; font-weight:700; border:1px solid {stage_color};">{stage_label}</div>
                     </div>
                 </div>
-                <div style="display:grid; grid-template-columns:repeat(6, 1fr); gap:0.75rem;">
+                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:0.75rem;">
                     <div style="background:white; padding:0.75rem; border-radius:0.65rem; text-align:center; border:1px solid #E5E7EB;">
                         <div style="font-size:0.72rem; color:#64748B;">人数</div>
                         <div style="font-size:1.25rem; font-weight:700; color:#0F172A;">{cnt}</div>
