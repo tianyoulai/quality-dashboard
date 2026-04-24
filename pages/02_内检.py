@@ -88,6 +88,12 @@ def _build_group_trend(df: pd.DataFrame, date_col: str, grain_label: str, key_su
                 hovertemplate="<b>%{x}</b><br>原始正确率: %{text}<extra></extra>"
             ))
             fig.add_hline(y=99.0, line_dash="dash", line_color="#F59E0B", annotation_text="目标 99%", annotation_position="right")
+            # 增加区间均值参考线
+            if len(trend) > 1:
+                avg_final = trend["final_accuracy_rate"].mean()
+                fig.add_hline(y=avg_final, line_dash="dot", line_color="#8B5CF6",
+                              annotation_text=f"均值 {avg_final:.2f}%",
+                              annotation_position="bottom right")
             fig.update_layout(
                 height=400, margin=dict(l=20, r=20, t=30, b=30),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -97,12 +103,21 @@ def _build_group_trend(df: pd.DataFrame, date_col: str, grain_label: str, key_su
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # 最新数据指标
+            # 最新数据指标 + 环比变化
             row_latest = trend.iloc[-1]
             m1, m2, m3 = st.columns(3)
-            m1.metric("原始正确率", f"{row_latest['raw_accuracy_rate']:.2f}%")
-            m2.metric("最终正确率", f"{row_latest['final_accuracy_rate']:.2f}%")
-            m3.metric("质检量", f"{int(row_latest['qa_cnt']):,}")
+            if len(trend) >= 2:
+                prev = trend.iloc[-2]
+                delta_raw = row_latest['raw_accuracy_rate'] - prev['raw_accuracy_rate']
+                delta_final = row_latest['final_accuracy_rate'] - prev['final_accuracy_rate']
+                delta_qa = int(row_latest['qa_cnt'] - prev['qa_cnt'])
+                m1.metric("原始正确率", f"{row_latest['raw_accuracy_rate']:.2f}%", delta=f"{delta_raw:+.2f}%")
+                m2.metric("最终正确率", f"{row_latest['final_accuracy_rate']:.2f}%", delta=f"{delta_final:+.2f}%")
+                m3.metric("质检量", f"{int(row_latest['qa_cnt']):,}", delta=f"{delta_qa:+,}")
+            else:
+                m1.metric("原始正确率", f"{row_latest['raw_accuracy_rate']:.2f}%")
+                m2.metric("最终正确率", f"{row_latest['final_accuracy_rate']:.2f}%")
+                m3.metric("质检量", f"{int(row_latest['qa_cnt']):,}")
     return sel_group
 
 

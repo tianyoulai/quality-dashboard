@@ -165,13 +165,29 @@ with st.container(border=True):
     st.markdown("### 🎯 筛选条件")
     st.caption("💡 提示：选择组别后会自动过滤队列列表，缩小查询范围可提高查询速度")
     
+    # ---- 快速时间范围 ----
+    quick_cols = st.columns(6)
+    quick_ranges = {
+        "今天": 0, "近3天": 2, "近7天": 6, "近14天": 13, "近30天": 29, "全部": None
+    }
+    for i, (label, days) in enumerate(quick_ranges.items()):
+        with quick_cols[i]:
+            if st.button(label, key=f"quick_{label}", use_container_width=True):
+                if days is not None:
+                    st.session_state["detail_quick_start"] = opts["max_date"] - timedelta(days=days)
+                else:
+                    st.session_state["detail_quick_start"] = opts["min_date"]
+                st.session_state["detail_quick_end"] = opts["max_date"]
+                st.rerun()
+
     c1, c2, c3 = st.columns(3)
     with c1:
         # 默认查最近7天，减少首次加载时间
-        default_start = max(opts["min_date"], opts["max_date"] - timedelta(days=6))
+        default_start = st.session_state.get("detail_quick_start", max(opts["min_date"], opts["max_date"] - timedelta(days=6)))
         date_start = st.date_input("起始日期", value=default_start, key="detail_start")
     with c2:
-        date_end = st.date_input("截止日期", value=opts["max_date"], key="detail_end")
+        default_end = st.session_state.get("detail_quick_end", opts["max_date"])
+        date_end = st.date_input("截止日期", value=default_end, key="detail_end")
     with c3:
         group_sel = st.selectbox("组别", options=["(全部)"] + opts["groups"], key="detail_group")
 
@@ -298,6 +314,49 @@ else:
         mime="text/csv",
         use_container_width=True,
     )
+
+    # ---- 数据洞察 ----
+    with st.expander("💡 数据洞察", expanded=True):
+        insights = []
+        # 洞察1: 正确率
+        raw_acc = (total - raw_err) / total * 100 if total > 0 else 0
+        if raw_acc < 95:
+            insights.append(f"⚠️ 原始正确率 **{raw_acc:.2f}%**，低于95%基准线，需重点关注")
+        elif raw_acc < 99:
+            insights.append(f"📊 原始正确率 **{raw_acc:.2f}%**，接近目标但仍有优化空间")
+        else:
+            insights.append(f"✅ 原始正确率 **{raw_acc:.2f}%**，表现优秀")
+
+        # 洞察2: 集中度分析
+        if raw_err > 0 and "审核人" in df.columns:
+            err_df = df[df["原始判断"] == "错误"]
+            top_reviewer = err_df["审核人"].value_counts()
+            if len(top_reviewer) > 0:
+                top_name = top_reviewer.index[0]
+                top_cnt = top_reviewer.iloc[0]
+                top_pct = top_cnt / raw_err * 100
+                if top_pct > 30:
+                    insights.append(f"🎯 错误集中度高：**{top_name}** 贡献了 {top_pct:.1f}% 的原始错误（{top_cnt}条），建议专项关注")
+
+        # 洞察3: 错误类型集中
+        if raw_err > 0 and "错误类型" in df.columns:
+            err_types = df[df["错误类型"] != "—"]["错误类型"].value_counts()
+            if len(err_types) > 0:
+                top_type = err_types.index[0]
+                type_cnt = err_types.iloc[0]
+                type_pct = type_cnt / raw_err * 100
+                if type_pct > 25:
+                    insights.append(f"🏷️ 高频错误类型：**{top_type}** 占比 {type_pct:.1f}%（{type_cnt}条），可考虑专题培训")
+
+        # 洞察4: 申诉改判率
+        appeal_cnt = (df["申诉改判"] == "是").sum() if "申诉改判" in df.columns else 0
+        if appeal_cnt > 0:
+            appeal_rate = appeal_cnt / total * 100
+            if appeal_rate > 1:
+                insights.append(f"📝 申诉改判率 **{appeal_rate:.2f}%**（{appeal_cnt}条），一审与终审口径可能存在偏差")
+
+        for insight in insights:
+            st.markdown(insight)
 
     # 错误类型分布（如果有问题样本）
     if only_issues or raw_err > 0:
