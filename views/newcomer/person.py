@@ -30,14 +30,19 @@ def render_person(ctx: dict) -> None:
         return
 
     person_options = members_df.apply(
-        lambda r: f"{r['reviewer_alias']} ({r['batch_name']} · {r['team_name']})", axis=1
+        lambda r: f"{r['reviewer_alias'] or r['reviewer_name']} ({r['batch_name']} · {r['team_name'] or '未分组'})", axis=1
     ).tolist()
     selected_person = st.selectbox("选择审核人", options=person_options, key="nc_person_select")
     if not selected_person:
         return
 
     alias = selected_person.split(" (")[0]
-    person_info = members_df[members_df["reviewer_alias"] == alias].iloc[0]
+    # 同时匹配 reviewer_alias 和 reviewer_name（兼容 alias 为空的情况）
+    _match_mask = (members_df["reviewer_alias"] == alias) | (members_df["reviewer_name"] == alias)
+    if not _match_mask.any():
+        st.warning(f"未找到审核人：{alias}")
+        return
+    person_info = members_df[_match_mask].iloc[0]
     _short_alias = alias.replace("云雀联营-", "") if "云雀联营-" in alias else alias
     _dim_name = person_info["reviewer_name"]
     _match_names = {alias, _short_alias, _dim_name}
