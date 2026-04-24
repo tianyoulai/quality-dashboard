@@ -92,7 +92,7 @@ with st.expander("📊 数据新鲜度概览", expanded=False):
     except Exception as e:
         st.warning(f"获取新鲜度信息失败: {e}")
 
-tab_import = st.tabs(["质检数据", "申诉数据", "Google Sheet", "新人质检数据", "新人批次管理", "一键刷新", "上传记录", "清除缓存", "清除数据"])
+tab_import = st.tabs(["质检数据", "申诉数据", "Google Sheet", "新人质检数据", "新人批次管理", "一键刷新", "告警规则", "上传记录", "清除缓存", "清除数据"])
 
 
 def preview_file_rows(file_obj, file_type: str) -> dict:
@@ -839,8 +839,103 @@ with tab_import[5]:
     st.markdown("---")
     st.caption("💡 提示：定时任务每天 13:00 自动同步企微文件并刷新，通常不需要手动操作。")
 
-# ==================== 上传记录 ====================
+# ==================== 告警规则管理 ====================
 with tab_import[6]:
+    st.markdown("### 🚨 告警规则管理")
+    st.caption("在线查看和编辑告警触发规则。修改后下次刷新告警时生效。")
+
+    try:
+        rules_df = repo.fetch_df("""
+            SELECT rule_code, rule_name, grain, target_level, metric_name,
+                   compare_op, threshold_value, severity, enabled, rule_desc
+            FROM dim_alert_rule
+            ORDER BY severity, rule_code
+        """)
+
+        if rules_df.empty:
+            st.info("暂无告警规则，请先运行 schema 初始化。")
+        else:
+            # 规则概览卡片
+            enabled_cnt = int(rules_df["enabled"].sum())
+            total_cnt = len(rules_df)
+            p0_cnt = len(rules_df[rules_df["severity"] == "P0"])
+            p1_cnt = len(rules_df[rules_df["severity"] == "P1"])
+            p2_cnt = len(rules_df[rules_df["severity"] == "P2"])
+
+            rc1, rc2, rc3, rc4, rc5 = st.columns(5)
+            rc1.metric("总规则数", total_cnt)
+            rc2.metric("已启用", enabled_cnt)
+            rc3.metric("P0", p0_cnt)
+            rc4.metric("P1", p1_cnt)
+            rc5.metric("P2", p2_cnt)
+
+            st.markdown("---")
+
+            # 规则列表 - 可编辑
+            for idx, rule in rules_df.iterrows():
+                rule_code = rule["rule_code"]
+                is_on = bool(rule["enabled"])
+                sev_icon = {"P0": "🔴", "P1": "🟠", "P2": "🔵"}.get(rule["severity"], "⚪")
+
+                with st.expander(
+                    f"{sev_icon} **{rule['rule_name']}** | `{rule_code}` | "
+                    f"阈值: {rule['threshold_value']} | {'✅ 启用' if is_on else '⏸️ 停用'}",
+                    expanded=False,
+                ):
+                    col_info, col_edit = st.columns([1, 1])
+                    with col_info:
+                        st.markdown(f"""
+| 属性 | 值 |
+|------|------|
+| **规则编码** | `{rule_code}` |
+| **粒度** | {rule['grain']} |
+| **目标层级** | {rule['target_level']} |
+| **指标名** | {rule['metric_name']} |
+| **比较符** | {rule['compare_op']} |
+| **描述** | {rule['rule_desc'] or '—'} |
+""")
+                    with col_edit:
+                        new_threshold = st.number_input(
+                            "阈值", value=float(rule["threshold_value"]),
+                            step=0.1, key=f"threshold_{rule_code}",
+                            help="修改后点击下方按钮保存"
+                        )
+                        new_severity = st.selectbox(
+                            "严重等级", options=["P0", "P1", "P2"],
+                            index=["P0", "P1", "P2"].index(rule["severity"]),
+                            key=f"severity_{rule_code}"
+                        )
+                        new_enabled = st.toggle(
+                            "启用", value=is_on, key=f"enabled_{rule_code}"
+                        )
+
+                        if st.button("💾 保存修改", key=f"save_{rule_code}", use_container_width=True):
+                            try:
+                                repo.execute(
+                                    """UPDATE dim_alert_rule
+                                       SET threshold_value = %s, severity = %s, enabled = %s
+                                       WHERE rule_code = %s""",
+                                    [new_threshold, new_severity, 1 if new_enabled else 0, rule_code],
+                                )
+                                st.success(f"✅ 规则 `{rule_code}` 已更新")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"保存失败: {e}")
+
+            st.markdown("---")
+            st.markdown("##### 📝 操作说明")
+            st.markdown("""
+- **阈值修改**：直接修改数值后点击「保存修改」，下次告警刷新时生效
+- **启用/停用**：关闭 toggle 可暂停某条规则，不会删除历史告警
+- **等级调整**：修改 P0/P1/P2 影响告警展示优先级和 SLA 时限
+- 如需新增规则，请联系管理员在数据库中添加
+""")
+
+    except Exception as e:
+        st.error(f"加载告警规则失败: {e}")
+
+# ==================== 上传记录 ====================
+with tab_import[9]:
     st.markdown("### 📜 上传记录")
     st.caption("查看最近 50 条文件上传记录。")
 
@@ -891,7 +986,7 @@ with tab_import[6]:
         )
 
 # ==================== 清除缓存 ====================
-with tab_import[7]:
+with tab_import[9]:
     st.markdown("### 清除 Streamlit 缓存")
     st.caption("如果看板数据展示异常（如组别名称未更新），可以清除缓存后刷新页面。")
 
@@ -903,7 +998,7 @@ with tab_import[7]:
     st.warning("⚠️ 清除缓存不会影响数据库数据，只是清除 Streamlit 的展示缓存。")
 
 # ==================== 清除数据 ====================
-with tab_import[8]:
+with tab_import[9]:
     st.markdown("### 清除质检数据")
     st.caption("根据日期范围删除质检数据，或全部清空。⚠️ 此操作不可逆，请谨慎操作。")
 
