@@ -10,7 +10,6 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from views.newcomer._shared import (
-    display_text,
     ensure_default_columns,
     format_heatmap_text,
     normalize_numeric_columns,

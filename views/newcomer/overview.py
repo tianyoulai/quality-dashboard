@@ -16,7 +16,6 @@ from views.newcomer._shared import (
     format_heatmap_text,
     get_stage_meta,
     render_plot,
-    safe_pct,
 )
 
 

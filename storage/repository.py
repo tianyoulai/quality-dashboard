@@ -1,7 +1,6 @@
 """质培运营看板 — 数据访问层（TiDB 版）。"""
 from __future__ import annotations
 
-import json
 import re
 import time
 from dataclasses import dataclass, field

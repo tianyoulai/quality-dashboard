@@ -32,18 +32,14 @@ from views.dashboard._data import (
     load_group_overview,
     load_group_detail,
     load_queue_overview_data,
-    load_alert_history,
     load_qa_label_distribution_cached,
     load_qa_owner_distribution_cached,
 )
 from views.dashboard._shared import (
     GRAIN_LABELS,
     ALERT_STATUS_OPTIONS,
-    COLOR_P0, COLOR_P1, COLOR_P2,
-    COLOR_SUCCESS, COLOR_GOOD, COLOR_BAD, COLOR_WARN,
+    COLOR_SUCCESS, COLOR_WARN,
     calc_change,
-    build_export_file_name,
-    to_csv_bytes,
 )
 
 # 设计系统 v3.0（替换旧的 styles.py）
@@ -77,9 +73,6 @@ ds.hero(
     "实时监控 · 智能告警 · 数据驱动",
     badges=["日看异常", "周看复发", "月看治理", "组别→队列→审核人→样本"],
 )
-
-# 全局错误边界
-from utils.error_boundary import safe_section
 
 # 获取数据日期范围，设置默认日期为数据最新日期
 try:
