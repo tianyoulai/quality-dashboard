@@ -1,0 +1,136 @@
+# 代码质量 CI — 每次 push/PR 自动运行测试和语法检查
+name: CI — Tests & Lint
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - 'pytest.ini'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - 'pytest.ini'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  test:
+    name: 🧪 Tests & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      # ── 语法检查 ──
+      - name: 🔍 Syntax check (py_compile)
+        run: |
+          echo "## 🔍 语法检查" >> $GITHUB_STEP_SUMMARY
+          ERRORS=0
+          TOTAL=0
+          for f in $(find . -name "*.py" -not -path "./.venv/*" -not -path "./__pycache__/*"); do
+            TOTAL=$((TOTAL + 1))
+            if ! python -m py_compile "$f" 2>/dev/null; then
+              echo "❌ $f" | tee -a $GITHUB_STEP_SUMMARY
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+          echo "✅ 检查 $TOTAL 个文件，$ERRORS 个错误" | tee -a $GITHUB_STEP_SUMMARY
+          [ $ERRORS -eq 0 ] || exit 1
+
+      # ── 单元测试 ──
+      - name: 🧪 Run tests
+        run: |
+          python -m pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=utils \
+            --cov=services/newcomer_lifecycle.py \
+            --cov-report=term-missing \
+            --cov-report=html:coverage-report \
+            --junitxml=test-results.xml
+
+      # ── 核心模块导入检查 ──
+      - name: 🔗 Import chain check
+        run: |
+          echo "## 🔗 导入链检查" >> $GITHUB_STEP_SUMMARY
+          python << 'PYEOF'
+          import sys, importlib
+          sys.path.insert(0, '.')
+          
+          modules = [
+              'utils.helpers',
+              'utils.date_parser',
+              'utils.design_system',
+              'utils.error_boundary',
+              'utils.constants',
+              'storage.repository',
+              'services.newcomer_lifecycle',
+              'services.dashboard_service',
+              'services.newcomer_aggregates',
+          ]
+          
+          ok = 0
+          fail = 0
+          for mod in modules:
+              try:
+                  importlib.import_module(mod)
+                  print(f"✅ {mod}")
+                  ok += 1
+              except Exception as e:
+                  print(f"❌ {mod}: {e}")
+                  fail += 1
+          
+          print(f"\n{ok}/{ok+fail} 模块导入成功")
+          sys.exit(1 if fail > 0 else 0)
+          PYEOF
+
+      # ── 测试报告上传 ──
+      - name: 📊 Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            test-results.xml
+            coverage-report/
+          retention-days: 14
+
+      # ── 汇总 ──
+      - name: 📋 Summary
+        if: always()
+        run: |
+          echo "## 📋 CI 执行汇总" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| 指标 | 结果 |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Python 版本 | ${{ env.PYTHON_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 运行触发 | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 分支 | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| 提交 | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY

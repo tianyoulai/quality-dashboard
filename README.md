@@ -1,6 +1,10 @@
 # 📊 评论业务质检看板
 
+[![CI — Tests & Lint](https://github.com/YOUR_ORG/quality-dashboard/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_ORG/quality-dashboard/actions/workflows/ci.yml)
+
 基于 Streamlit 的评论审核质检数据分析看板，配合 DeepSeek 4.0 Pro AI 洞察 + 企微群自动推送。
+
+📖 **[用户使用手册](docs/USER_GUIDE.md)** — 面向业务人员的操作指南
 
 ## 功能模块
 
@@ -155,6 +159,16 @@ python -m pytest tests/ --cov=utils --cov-report=term-missing
 - `utils/design_system.py` — 设计系统常量和纯函数
 - `utils/error_boundary.py` — 错误边界上下文管理器
 - `services/newcomer_lifecycle.py` — 新人状态常量和规则
+
+### CI 自动化
+
+每次 push 或 PR 到 main 分支时，GitHub Actions 会自动运行：
+
+1. **语法检查**：对所有 `.py` 文件执行 `py_compile`
+2. **单元测试**：运行 pytest 并生成覆盖率报告
+3. **导入链检查**：验证核心模块导入无断裂
+
+CI 配置文件：`.github/workflows/ci.yml`
 
 ## 部署
 
