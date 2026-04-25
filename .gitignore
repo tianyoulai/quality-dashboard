@@ -47,3 +47,5 @@ Thumbs.db
 *.jpg
 generated-images/
 screenshots/
+.coverage
+.pytest_cache/

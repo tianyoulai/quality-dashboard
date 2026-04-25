@@ -20,3 +20,6 @@ requests>=2.31
 
 # 配置文件解析
 pyyaml>=6.0               # alert_modules.yaml 解析
+
+# 测试（开发环境）
+# pip install pytest pytest-cov

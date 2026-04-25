@@ -134,6 +134,28 @@ python jobs/newcomer_daily_report.py --dry-run
 python jobs/daily_report.py
 ```
 
+## 测试
+
+项目使用 pytest 进行单元测试，覆盖核心纯函数模块。
+
+```bash
+# 安装测试依赖
+pip install pytest pytest-cov
+
+# 运行全部测试
+python -m pytest tests/ -v
+
+# 运行测试 + 覆盖率报告
+python -m pytest tests/ --cov=utils --cov-report=term-missing
+```
+
+测试覆盖模块：
+- `utils/helpers.py` — 数据序列化、CSV 导出、安全百分比（覆盖率 96%）
+- `utils/date_parser.py` — 文件名日期解析（覆盖率 86%）
+- `utils/design_system.py` — 设计系统常量和纯函数
+- `utils/error_boundary.py` — 错误边界上下文管理器
+- `services/newcomer_lifecycle.py` — 新人状态常量和规则
+
 ## 部署
 
 ### Streamlit Cloud（推荐）
