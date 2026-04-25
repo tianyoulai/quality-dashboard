@@ -37,7 +37,10 @@ ds.hero("⚙️", "数据管理", "导入 · 刷新 · 维护", badges=["质检E
 
 # ---- 数据新鲜度面板 ----
 with st.expander("📊 数据新鲜度概览", expanded=False):
-    render_freshness_panel()
+    try:
+        render_freshness_panel()
+    except Exception as _fp_err:
+        st.warning(f"⚠️ 数据新鲜度加载失败：`{_fp_err}`")
 
 tab_import = st.tabs(["质检数据", "申诉数据", "Google Sheet", "新人质检数据", "新人批次管理", "新人状态管理", "一键刷新", "告警规则", "上传记录", "清除缓存", "清除数据"])
 
@@ -359,7 +362,13 @@ with tab_import[3]:
         if st.button("📥 导入新人质检数据", key="import_nc_qa"):
             import subprocess, tempfile, sys as _sys
             total_imported = 0
-            for f in nc_qa_files:
+            total_files = len(nc_qa_files)
+            progress_bar = st.progress(0, text="准备导入...")
+            status_area = st.empty()
+
+            for idx, f in enumerate(nc_qa_files):
+                progress_bar.progress((idx) / total_files, text=f"正在导入 ({idx+1}/{total_files}): {f.name}")
+
                 with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
                     tmp.write(f.getvalue())
                     tmp_path = tmp.name
@@ -374,16 +383,15 @@ with tab_import[3]:
                 elif nc_stage_override == "external（外检）":
                     cmd.extend(["--stage", "external"])
 
-                with st.spinner(f"正在导入 {f.name}..."):
-                    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
+                result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(PROJECT_ROOT))
 
                 if result.returncode == 0:
-                    st.success(f"✅ {f.name} 导入成功")
+                    status_area.success(f"✅ ({idx+1}/{total_files}) {f.name} 导入成功")
                     if result.stdout:
                         st.code(result.stdout, language="text")
                     total_imported += 1
                 else:
-                    st.error(f"❌ {f.name} 导入失败")
+                    status_area.error(f"❌ ({idx+1}/{total_files}) {f.name} 导入失败")
                     if result.stderr:
                         st.code(result.stderr, language="text")
 
@@ -391,9 +399,13 @@ with tab_import[3]:
                 import os
                 os.unlink(tmp_path)
 
+                progress_bar.progress((idx + 1) / total_files, text=f"已完成 {idx+1}/{total_files}")
+
+            progress_bar.progress(1.0, text="全部完成 ✅")
+
             if total_imported > 0:
                 st.cache_data.clear()
-                st.info(f"共成功导入 {total_imported} 个文件，缓存已清除。")
+                st.info(f"共成功导入 {total_imported}/{total_files} 个文件，缓存已清除。")
 
     # 显示当前新人质检数据量
     st.markdown("---")

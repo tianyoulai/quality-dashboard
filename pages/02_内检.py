@@ -144,7 +144,15 @@ def load_all_group_monthly() -> pd.DataFrame:
     return repo.fetch_df("SELECT * FROM mart_month_group ORDER BY month_begin_date, group_name")
 
 
-min_d, max_d = get_date_range()
+min_d, max_d = date.today(), date.today()
+try:
+    min_d, max_d = get_date_range()
+except Exception as _init_err:
+    st.error(f"🚨 数据库连接异常：`{_init_err}`")
+    if st.button("🔄 重试", key="retry_inner"):
+        st.cache_data.clear()
+        st.rerun()
+    st.stop()
 
 # Hero 区域（设计系统 v3.0）
 ds.hero("🔍", "内检分析", "跨周期趋势对比 · 全量组别排名 · 审核一致性分析")

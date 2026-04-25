@@ -78,9 +78,22 @@ ds.hero(
     badges=["日看异常", "周看复发", "月看治理", "组别→队列→审核人→样本"],
 )
 
+# 全局错误边界
+from utils.error_boundary import safe_section
+
 # 获取数据日期范围，设置默认日期为数据最新日期
-_data_min_date, _data_max_date = get_data_date_range()
-_default_date = _data_max_date if _data_max_date <= date.today() else date.today()
+try:
+    _data_min_date, _data_max_date = get_data_date_range()
+    _default_date = _data_max_date if _data_max_date <= date.today() else date.today()
+except Exception as _init_err:
+    st.error(f"🚨 数据库连接异常，请稍后刷新重试。\n\n**错误信息**：`{_init_err}`")
+    with st.expander("🔍 查看详细错误信息", expanded=False):
+        import traceback as _tb
+        st.code(_tb.format_exc(), language="text")
+    if st.button("🔄 重试", key="retry_overview"):
+        st.cache_data.clear()
+        st.rerun()
+    st.stop()
 
 # 数据更新时间标注
 st.markdown(f"""

@@ -154,22 +154,61 @@ def render_person(ctx: dict) -> None:
             limit=20,
         )
         if person_milestones is not None and not person_milestones.empty:
-            with st.expander(f"🏁 状态流转时间线（{len(person_milestones)} 条记录）", expanded=False):
-                for _, ms in person_milestones.iterrows():
-                    from_lbl = get_status_label(ms["from_status"])[0] if ms["from_status"] else "—"
-                    to_lbl = get_status_label(ms["to_status"])[0]
-                    trigger_map = {"auto": "🤖 推荐确认", "manual": "✋ 手动", "system": "⚙️ 自动"}
-                    trigger_lbl = trigger_map.get(ms["trigger_type"], ms["trigger_type"])
-                    note_text = f' · {ms["note"]}' if ms.get("note") else ""
-                    st.markdown(f"""
-                    <div style="display:flex; gap:0.75rem; align-items:flex-start; margin-bottom:0.5rem; padding:0.5rem 0.75rem; background:#F8FAFC; border-radius:0.5rem; border-left:3px solid #3b82f6;">
-                        <div style="font-size:0.75rem; color:#94a3b8; min-width:5.5rem;">{str(ms['created_at'])[:16]}</div>
-                        <div style="font-size:0.85rem; color:#1e293b;">
-                            {from_lbl} → <strong>{to_lbl}</strong>
-                            <span style="font-size:0.75rem; color:#64748B; margin-left:0.5rem;">{trigger_lbl}{note_text}</span>
+            st.markdown("##### 🏁 成长里程碑")
+
+            # 状态颜色映射
+            _status_colors = {
+                "pending": "#94a3b8", "internal_training": "#8b5cf6",
+                "external_training": "#3b82f6", "formal_probation": "#f59e0b",
+                "graduated": "#10b981", "exited": "#6b7280", "training": "#8b5cf6",
+            }
+
+            # 构建可视化时间轴 HTML
+            timeline_html = '<div style="position:relative; padding-left:2rem; margin:0.5rem 0 1rem 0;">'
+            # 垂直线
+            timeline_html += '<div style="position:absolute; left:0.65rem; top:0; bottom:0; width:3px; background:linear-gradient(180deg, #3b82f6 0%, #10b981 100%); border-radius:2px;"></div>'
+
+            for i, (_, ms) in enumerate(person_milestones.iterrows()):
+                from_lbl = get_status_label(ms["from_status"])[0] if ms["from_status"] else "—"
+                to_lbl = get_status_label(ms["to_status"])[0]
+                to_color = _status_colors.get(ms["to_status"], "#3b82f6")
+                trigger_map = {"auto": "🤖 推荐确认", "manual": "✋ 手动", "system": "⚙️ 自动"}
+                trigger_lbl = trigger_map.get(ms["trigger_type"], ms["trigger_type"])
+                note_text = f' · {ms["note"]}' if ms.get("note") else ""
+                time_str = str(ms['created_at'])[:16]
+                is_last = i == len(person_milestones) - 1
+
+                # 节点圆点
+                dot_size = "0.85rem" if is_last else "0.65rem"
+                dot_border = f"3px solid {to_color}" if is_last else f"2px solid {to_color}"
+                dot_bg = to_color if is_last else "#fff"
+                dot_text_color = "#fff" if is_last else to_color
+
+                timeline_html += f'''
+                <div style="position:relative; margin-bottom:{'1rem' if not is_last else '0'}; padding:0.6rem 0.75rem 0.6rem 1.5rem;">
+                    <div style="position:absolute; left:-0.05rem; top:0.75rem; width:{dot_size}; height:{dot_size}; border-radius:50%; background:{dot_bg}; border:{dot_border}; z-index:2;"></div>
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem;">
+                        <div>
+                            <div style="font-size:0.88rem; color:#1e293b; font-weight:{'700' if is_last else '500'};">
+                                {from_lbl} → <span style="color:{to_color}; font-weight:700;">{to_lbl}</span>
+                            </div>
+                            <div style="font-size:0.75rem; color:#64748B; margin-top:0.15rem;">{trigger_lbl}{note_text}</div>
                         </div>
+                        <div style="font-size:0.72rem; color:#94a3b8; white-space:nowrap; padding-top:0.1rem;">🕐 {time_str}</div>
                     </div>
-                    """, unsafe_allow_html=True)
+                </div>
+                '''
+
+            timeline_html += '</div>'
+            st.markdown(timeline_html, unsafe_allow_html=True)
+
+            # 成长耗时统计
+            if len(person_milestones) >= 2:
+                first_time = pd.to_datetime(person_milestones.iloc[-1]["created_at"])
+                last_time = pd.to_datetime(person_milestones.iloc[0]["created_at"])
+                growth_days = (last_time - first_time).days
+                if growth_days > 0:
+                    st.caption(f"📅 从首次状态变更到最近变更，共历时 **{growth_days}** 天")
     except Exception:
         pass  # 里程碑表可能还未创建
 

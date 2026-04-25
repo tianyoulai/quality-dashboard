@@ -303,8 +303,17 @@ def load_newcomer_aggregate_payload(batch_names=None, owner=None, team_name=None
 #  Hero 区
 # ═══════════════════════════════════════════════════════════════
 
-batch_df = load_batch_list()
-unmatched_df = load_unmatched_newcomer_rows()
+batch_df = pd.DataFrame()
+unmatched_df = pd.DataFrame()
+try:
+    batch_df = load_batch_list()
+    unmatched_df = load_unmatched_newcomer_rows()
+except Exception as _init_err:
+    st.error(f"🚨 数据库连接异常：`{_init_err}`")
+    if st.button("🔄 重试", key="retry_newcomer"):
+        st.cache_data.clear()
+        st.rerun()
+    st.stop()
 
 if batch_df is None or batch_df.empty:
     ds.hero("👶", "新人追踪", "暂无新人数据，请先在「数据导入 → 新人映射」上传新人名单。")

@@ -171,7 +171,15 @@ def query_detail(
 from utils.helpers import to_csv_bytes
 
 
-opts = get_filter_options()
+opts = {}
+try:
+    opts = get_filter_options()
+except Exception as _init_err:
+    st.error(f"🚨 数据库连接异常：`{_init_err}`")
+    if st.button("🔄 重试", key="retry_detail"):
+        st.cache_data.clear()
+        st.rerun()
+    st.stop()
 
 # Hero 区域
 with st.container(border=True):
