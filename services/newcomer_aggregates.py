@@ -34,11 +34,7 @@ def _normalize_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataF
     return normalized_df
 
 
-def _safe_pct(numerator: Any, denominator: Any) -> float:
-    denominator_value = float(denominator or 0)
-    if denominator_value <= 0:
-        return 0.0
-    return round(float(numerator or 0) * 100.0 / denominator_value, 2)
+from utils.helpers import safe_pct as _safe_pct
 
 
 def _empty_dual_accuracy_stats() -> dict[str, float | int]:

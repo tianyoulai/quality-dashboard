@@ -148,9 +148,7 @@ def _sf(val, d: int = 2) -> float:
         return 0.0
 
 
-def _safe_pct(num, den) -> float:
-    den_f = float(den or 0)
-    return round(float(num or 0) * 100.0 / den_f, 2) if den_f > 0 else 0.0
+from utils.helpers import safe_pct as _safe_pct
 
 
 # _load_settings 统一使用 jobs/_report_common.py 中的版本

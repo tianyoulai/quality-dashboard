@@ -124,16 +124,9 @@ def load_module_reviewer_detail(selected_date: date, qc_module: str) -> pd.DataF
 
 @st.cache_data(show_spinner=False, ttl=900)
 def get_data_date_range() -> tuple[date, date]:
-    """获取数据库日期范围。"""
-    row = repo.fetch_one("SELECT MIN(biz_date) AS min_d, MAX(biz_date) AS max_d FROM fact_qa_event")
-    if not row or row.get("min_d") is None:
-        return date.today(), date.today()
-    min_val, max_val = row["min_d"], row["max_d"]
-    if hasattr(min_val, "date"):
-        min_val = min_val.date()
-    if hasattr(max_val, "date"):
-        max_val = max_val.date()
-    return min_val, max_val
+    """获取数据库日期范围（委托给 _data.py 统一实现）。"""
+    from views.dashboard._data import get_data_date_range as _get_range
+    return _get_range()
 
 
 # ═══════════════════════════════════════════════════════════════

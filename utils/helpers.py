@@ -77,3 +77,12 @@ def to_csv_bytes(df: pd.DataFrame) -> bytes:
         if pd.api.types.is_datetime64_any_dtype(export_df[column]):
             export_df[column] = export_df[column].astype(str)
     return export_df.to_csv(index=False).encode("utf-8-sig")
+
+
+# ── 安全百分比计算 ─────────────────────────────────────────
+
+
+def safe_pct(numerator: Any, denominator: Any) -> float:
+    """安全计算百分比，分母为0时返回0.0。"""
+    den = float(denominator or 0)
+    return round(float(numerator or 0) * 100.0 / den, 2) if den > 0 else 0.0
