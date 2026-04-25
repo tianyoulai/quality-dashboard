@@ -17,3 +17,6 @@ mysql-connector-python>=9.0   # TiDB (MySQL 兼容) 连接
 
 # HTTP（企微 Webhook 推送 + DeepSeek API 调用）
 requests>=2.31
+
+# 配置文件解析
+pyyaml>=6.0               # alert_modules.yaml 解析

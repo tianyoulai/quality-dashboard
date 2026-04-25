@@ -779,6 +779,16 @@ CREATE TABLE IF NOT EXISTS sys_audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_sal_created_at ON sys_audit_log (created_at);
 
+
+-- ═══════════════════════════════════════════════════════════════
+--  归档表（自动运维使用）
+-- ═══════════════════════════════════════════════════════════════
+
+-- 质检事件归档表（结构与 fact_qa_event 完全一致，用于存放超期数据）
+-- 运行时也会用 CREATE TABLE IF NOT EXISTS ... LIKE fact_qa_event 自动创建
+CREATE TABLE IF NOT EXISTS fact_qa_event_archive LIKE fact_qa_event;
+
+
 -- ═══════════════════════════════════════════════════════════════
 --  性能优化索引（Phase 18）
 -- ═══════════════════════════════════════════════════════════════
