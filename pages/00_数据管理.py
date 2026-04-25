@@ -25,6 +25,7 @@ from views.data_mgmt import (
 
 # 设计系统 v3.0
 from utils.design_system import ds
+from utils.error_boundary import safe_section, run_safe
 ds.inject_theme()
 
 # 权限控制（可通过 config/settings.json 启用）

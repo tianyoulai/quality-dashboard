@@ -5,8 +5,10 @@
 """
 from __future__ import annotations
 
+import functools
 import traceback
 from contextlib import contextmanager
+from typing import Any, Callable
 
 import streamlit as st
 
@@ -30,6 +32,60 @@ def page_error_boundary(page_name: str = "页面"):
         raise
     except Exception as exc:
         _render_error_panel(page_name, exc)
+
+
+def run_safe(label: str, fn: Callable, *args: Any, default: Any = None, **kwargs: Any) -> Any:
+    """安全执行函数调用，捕获异常并展示友好提示。
+
+    用法::
+
+        df = run_safe("加载数据", load_data, date, group)
+        # 如果 load_data 出错，返回 default (None)，页面不会崩溃
+
+    Args:
+        label: 出错时展示的模块标签
+        fn: 要执行的函数
+        *args: 传递给 fn 的位置参数
+        default: 出错时的返回值
+        **kwargs: 传递给 fn 的关键字参数
+
+    Returns:
+        fn 的返回值，出错时返回 default
+    """
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:
+        _is_stop = False
+        try:
+            _is_stop = isinstance(exc, st.runtime.scriptrunner.StopException)
+        except AttributeError:
+            pass
+        if _is_stop or isinstance(exc, (SystemExit, KeyboardInterrupt)):
+            raise
+        st.warning(
+            f"⚠️ 「{label}」加载异常，已跳过该模块。\n\n**错误**：`{exc}`",
+            icon="⚠️",
+        )
+        with st.expander("🔍 详细错误信息", expanded=False):
+            st.code(traceback.format_exc(), language="text")
+        return default
+
+
+def guard(label: str):
+    """装饰器版错误边界，保护函数不崩溃整个页面。
+
+    用法::
+
+        @guard("趋势图渲染")
+        def render_trend_chart(df):
+            ...
+    """
+    def decorator(fn: Callable) -> Callable:
+        @functools.wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            return run_safe(label, fn, *args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def safe_section(label: str):

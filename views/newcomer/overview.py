@@ -17,6 +17,7 @@ from views.newcomer._shared import (
     get_stage_meta,
     render_plot,
 )
+from utils.design_system import COLORS
 
 
 def render_overview(ctx: dict) -> None:
@@ -134,7 +135,7 @@ def render_overview(ctx: dict) -> None:
                 stage_chart, x="batch_name", y="正确率", color="阶段", pattern_shape="口径",
                 barmode="group", text="正确率",
                 labels={"batch_name": "批次", "正确率": "正确率 (%)"},
-                color_discrete_map={"🏫 内部质检": "#8b5cf6", "🔍 外部质检": "#3b82f6", "✅ 正式上线": "#10b981"},
+                color_discrete_map={"🏫 内部质检": COLORS.stage_internal, "🔍 外部质检": COLORS.stage_external, "✅ 正式上线": COLORS.stage_formal},
                 pattern_shape_map={"样本正确率": "", "人均正确率": "/"},
             )
             fig_stage.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
@@ -146,7 +147,7 @@ def render_overview(ctx: dict) -> None:
             stage_volume["阶段"] = stage_volume["stage"].map({"internal": "🏫 内部质检", "external": "🔍 外部质检", "formal": "✅ 正式上线"})
             fig_volume = px.pie(
                 stage_volume, values="qa_cnt", names="阶段", hole=0.55, color="阶段",
-                color_discrete_map={"🏫 内部质检": "#8b5cf6", "🔍 外部质检": "#3b82f6", "✅ 正式上线": "#10b981"},
+                color_discrete_map={"🏫 内部质检": COLORS.stage_internal, "🔍 外部质检": COLORS.stage_external, "✅ 正式上线": COLORS.stage_formal},
             )
             fig_volume.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             render_plot(fig_volume, "overview_stage_volume_pie")
@@ -219,11 +220,11 @@ def render_overview(ctx: dict) -> None:
             fig_gap = go.Figure()
             fig_gap.add_trace(go.Bar(
                 x=gap_chart_df["batch_name"], y=gap_chart_df["gap_pct"], name="基地差值",
-                marker_color="#f59e0b", text=[f"{v:.1f}%" for v in gap_chart_df["gap_pct"]], textposition="outside",
+                marker_color=COLORS.warning, text=[f"{v:.1f}%" for v in gap_chart_df["gap_pct"]], textposition="outside",
             ))
             fig_gap.add_trace(go.Scatter(
                 x=gap_chart_df["batch_name"], y=gap_chart_df["worst_team_acc"], name="最低基地正确率",
-                mode="lines+markers", line=dict(color="#ef4444", width=2.5), marker=dict(size=8), yaxis="y2",
+                mode="lines+markers", line=dict(color=COLORS.danger, width=2.5), marker=dict(size=8), yaxis="y2",
             ))
             fig_gap.update_layout(
                 height=340, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -285,8 +286,8 @@ def _render_batch_card(
 
     watch_row = batch_watch_df[batch_watch_df["batch_name"] == bn].iloc[0] if not batch_watch_df.empty and bn in batch_watch_df["batch_name"].values else None
     risk_label = watch_row["risk_label"] if watch_row is not None else "🟢 稳定批次"
-    risk_color = watch_row["risk_color"] if watch_row is not None else "#059669"
-    risk_bg = watch_row["risk_bg"] if watch_row is not None else "#ecfdf5"
+    risk_color = watch_row["risk_color"] if watch_row is not None else COLORS.success
+    risk_bg = watch_row["risk_bg"] if watch_row is not None else COLORS.success_light
     gap_pct = float(watch_row["gap_pct"]) if watch_row is not None else 0.0
     best_team_name = display_text(watch_row["best_team_name"], default="—") if watch_row is not None else "—"
     worst_team_name = display_text(watch_row["worst_team_name"], default="—") if watch_row is not None else "—"
@@ -357,7 +358,7 @@ def _render_batch_card(
             </div>
         </div>
         <div style="margin-top:0.8rem; height:6px; background:#E2E8F0; border-radius:999px; overflow:hidden;">
-            <div style="width:{progress_width}%; height:100%; background:linear-gradient(90deg, #8b5cf6 0%, #3b82f6 60%, #10b981 100%);"></div>
+            <div style="width:{progress_width}%; height:100%; background:linear-gradient(90deg, {COLORS.stage_internal} 0%, {COLORS.stage_external} 60%, {COLORS.stage_formal} 100%);"></div>
         </div>
     </div>
     """, unsafe_allow_html=True)

@@ -44,6 +44,7 @@ from views.dashboard._shared import (
 
 # 设计系统 v3.0（替换旧的 styles.py）
 from utils.design_system import ds, COLORS
+from utils.error_boundary import safe_section, run_safe
 ds.inject_theme()
 
 service = DashboardService()

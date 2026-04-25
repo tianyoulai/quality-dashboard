@@ -54,10 +54,25 @@ class _Colors:
     text_primary = "#1E293B"
     text_secondary = "#64748B"
     text_muted = "#94A3B8"
+    text_dim = "#6B7280"       # 比 muted 稍深，用于次要文字
     border = "#E2E8F0"
+    border_light = "#E5E7EB"   # 卡片/分隔线边框
     bg_card = "#FFFFFF"
     bg_subtle = "#F8FAFC"
     bg_page = "#F1F5F9"
+    bg_muted = "#F9FAFB"       # 极淡灰背景
+
+    # 新人阶段色系
+    stage_internal = "#8B5CF6"         # 紫 — 内检/内部质检
+    stage_internal_light = "#F5F3FF"
+    stage_external = "#3B82F6"         # 蓝 — 外检/外部质检
+    stage_external_light = "#EFF6FF"
+    stage_formal = "#10B981"           # 绿 — 正式上线
+    stage_formal_light = "#ECFDF5"
+    stage_pending = "#94A3B8"          # 灰 — 待开始
+    stage_pending_light = "#F8FAFC"
+    stage_exited = "#6B7280"           # 深灰 — 已退出
+    stage_exited_light = "#F9FAFB"
 
     # 图表色板（8色渐进）
     chart_palette = [

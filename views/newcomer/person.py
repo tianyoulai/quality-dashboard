@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from views.newcomer._shared import display_text, get_stage_meta, render_plot, safe_pct, STAGE_SHORT_MAP
+from utils.design_system import COLORS
 
 
 def render_person(ctx: dict) -> None:
@@ -77,14 +78,14 @@ def render_person(ctx: dict) -> None:
         db_status = person_info.get("status", "training")
         person_status_label, person_status_color, person_status_bg = get_status_label(db_status)
     except Exception:
-        person_status_label, person_status_color, person_status_bg = "📚 培训中", "#8b5cf6", "#f5f3ff"
+        person_status_label, person_status_color, person_status_bg = "📚 培训中", COLORS.stage_internal, COLORS.stage_internal_light
 
     st.markdown(f"""
-    <div style="background:linear-gradient(135deg, #ffffff 0%, #F8FAFC 100%); border:1px solid #E5E7EB; border-radius:1rem; padding:1rem 1.2rem; margin-bottom:1rem;">
+    <div style="background:linear-gradient(135deg, {COLORS.bg_card} 0%, {COLORS.bg_subtle} 100%); border:1px solid {COLORS.border_light}; border-radius:1rem; padding:1rem 1.2rem; margin-bottom:1rem;">
         <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; flex-wrap:wrap;">
             <div>
-                <div style="font-size:1.4rem; font-weight:700; color:#0F172A;">{person_info['reviewer_name']}</div>
-                <div style="margin-top:0.35rem; font-size:0.84rem; color:#64748B; line-height:1.6;">
+                <div style="font-size:1.4rem; font-weight:700; color:{COLORS.text_primary};">{person_info['reviewer_name']}</div>
+                <div style="margin-top:0.35rem; font-size:0.84rem; color:{COLORS.text_secondary}; line-height:1.6;">
                     {person_info['batch_name']} · {display_text(person_info['team_name'])} · 入职 {days} 天<br>
                     联营管理：{display_text(person_info['team_leader'])} · 交付PM：{display_text(person_info['delivery_pm'])} · 质培owner：{display_text(person_info['owner'])} · 导师/质检：{display_text(person_info['mentor_name'])}
                 </div>
@@ -131,7 +132,7 @@ def render_person(ctx: dict) -> None:
                     mode="lines+markers", name=sname,
                     line=dict(color=scolor, width=2.5), marker=dict(size=7),
                 ))
-            fig_p.add_hline(y=98, line_dash="dash", line_color="#10b981", annotation_text="转正线 98%")
+            fig_p.add_hline(y=98, line_dash="dash", line_color=COLORS.stage_formal, annotation_text="转正线 98%")
             fig_p.update_layout(height=340, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             render_plot(fig_p, f"person_trend_{alias}")
         with detail_col2:
@@ -140,7 +141,7 @@ def render_person(ctx: dict) -> None:
                 person_stage_view["阶段"] = person_stage_view["stage"].map({"internal": "🏫 内部质检", "external": "🔍 外部质检", "formal": "✅ 正式上线"})
                 fig_ps = px.pie(
                     person_stage_view, values="qa_cnt", names="阶段", hole=0.55, color="阶段",
-                    color_discrete_map={"🏫 内部质检": "#8b5cf6", "🔍 外部质检": "#3b82f6", "✅ 正式上线": "#10b981"},
+                    color_discrete_map={"🏫 内部质检": COLORS.stage_internal, "🔍 外部质检": COLORS.stage_external, "✅ 正式上线": COLORS.stage_formal},
                 )
                 fig_ps.update_layout(height=340, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
                 render_plot(fig_ps, f"person_stage_{alias}")
@@ -158,20 +159,20 @@ def render_person(ctx: dict) -> None:
 
             # 状态颜色映射
             _status_colors = {
-                "pending": "#94a3b8", "internal_training": "#8b5cf6",
-                "external_training": "#3b82f6", "formal_probation": "#f59e0b",
-                "graduated": "#10b981", "exited": "#6b7280", "training": "#8b5cf6",
+                "pending": COLORS.stage_pending, "internal_training": COLORS.stage_internal,
+                "external_training": COLORS.stage_external, "formal_probation": COLORS.warning,
+                "graduated": COLORS.stage_formal, "exited": COLORS.stage_exited, "training": COLORS.stage_internal,
             }
 
             # 构建可视化时间轴 HTML
             timeline_html = '<div style="position:relative; padding-left:2rem; margin:0.5rem 0 1rem 0;">'
             # 垂直线
-            timeline_html += '<div style="position:absolute; left:0.65rem; top:0; bottom:0; width:3px; background:linear-gradient(180deg, #3b82f6 0%, #10b981 100%); border-radius:2px;"></div>'
+            timeline_html += f'<div style="position:absolute; left:0.65rem; top:0; bottom:0; width:3px; background:linear-gradient(180deg, {COLORS.stage_external} 0%, {COLORS.stage_formal} 100%); border-radius:2px;"></div>'
 
             for i, (_, ms) in enumerate(person_milestones.iterrows()):
                 from_lbl = get_status_label(ms["from_status"])[0] if ms["from_status"] else "—"
                 to_lbl = get_status_label(ms["to_status"])[0]
-                to_color = _status_colors.get(ms["to_status"], "#3b82f6")
+                to_color = _status_colors.get(ms["to_status"], COLORS.stage_external)
                 trigger_map = {"auto": "🤖 推荐确认", "manual": "✋ 手动", "system": "⚙️ 自动"}
                 trigger_lbl = trigger_map.get(ms["trigger_type"], ms["trigger_type"])
                 note_text = f' · {ms["note"]}' if ms.get("note") else ""
@@ -189,12 +190,12 @@ def render_person(ctx: dict) -> None:
                     <div style="position:absolute; left:-0.05rem; top:0.75rem; width:{dot_size}; height:{dot_size}; border-radius:50%; background:{dot_bg}; border:{dot_border}; z-index:2;"></div>
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem;">
                         <div>
-                            <div style="font-size:0.88rem; color:#1e293b; font-weight:{'700' if is_last else '500'};">
+                            <div style="font-size:0.88rem; color:{COLORS.text_primary}; font-weight:{'700' if is_last else '500'};">
                                 {from_lbl} → <span style="color:{to_color}; font-weight:700;">{to_lbl}</span>
                             </div>
-                            <div style="font-size:0.75rem; color:#64748B; margin-top:0.15rem;">{trigger_lbl}{note_text}</div>
+                            <div style="font-size:0.75rem; color:{COLORS.text_secondary}; margin-top:0.15rem;">{trigger_lbl}{note_text}</div>
                         </div>
-                        <div style="font-size:0.72rem; color:#94a3b8; white-space:nowrap; padding-top:0.1rem;">🕐 {time_str}</div>
+                        <div style="font-size:0.72rem; color:{COLORS.text_muted}; white-space:nowrap; padding-top:0.1rem;">🕐 {time_str}</div>
                     </div>
                 </div>
                 '''

@@ -11,6 +11,7 @@ import pandas as pd
 
 # safe_pct 统一使用 utils/helpers.py 中的版本（消除重复定义）
 from utils.helpers import safe_pct  # noqa: F401 — re-exported for downstream modules
+from utils.design_system import COLORS
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -18,20 +19,20 @@ from utils.helpers import safe_pct  # noqa: F401 — re-exported for downstream 
 # ═══════════════════════════════════════════════════════════════
 
 STAGE_META = {
-    "internal": ("🏫 内部质检", "#8b5cf6", "#f5f3ff", 33),
-    "external": ("🔍 外部质检", "#3b82f6", "#eff6ff", 66),
-    "formal":   ("✅ 正式上线", "#10b981", "#ecfdf5", 100),
+    "internal": ("🏫 内部质检", COLORS.stage_internal, COLORS.stage_internal_light, 33),
+    "external": ("🔍 外部质检", COLORS.stage_external, COLORS.stage_external_light, 66),
+    "formal":   ("✅ 正式上线", COLORS.stage_formal,   COLORS.stage_formal_light,   100),
 }
 
 # 新人生命周期 6 态（对应 dim_newcomer_batch.status）
 STATUS_META = {
-    "pending":           ("⏳ 待开始",    "#94a3b8", "#f8fafc"),
-    "internal_training": ("🏫 内检培训中", "#8b5cf6", "#f5f3ff"),
-    "external_training": ("🔍 外检培训中", "#3b82f6", "#eff6ff"),
-    "formal_probation":  ("✅ 正式队列",  "#f59e0b", "#fffbeb"),
-    "graduated":         ("🎓 已毕业",    "#10b981", "#ecfdf5"),
-    "exited":            ("🚪 已退出",    "#6b7280", "#f9fafb"),
-    "training":          ("📚 培训中",    "#8b5cf6", "#f5f3ff"),  # 兼容旧值
+    "pending":           ("⏳ 待开始",    COLORS.stage_pending,  COLORS.stage_pending_light),
+    "internal_training": ("🏫 内检培训中", COLORS.stage_internal, COLORS.stage_internal_light),
+    "external_training": ("🔍 外检培训中", COLORS.stage_external, COLORS.stage_external_light),
+    "formal_probation":  ("✅ 正式队列",  COLORS.warning,        COLORS.warning_light),
+    "graduated":         ("🎓 已毕业",    COLORS.stage_formal,   COLORS.stage_formal_light),
+    "exited":            ("🚪 已退出",    COLORS.stage_exited,   COLORS.stage_exited_light),
+    "training":          ("📚 培训中",    COLORS.stage_internal, COLORS.stage_internal_light),  # 兼容旧值
 }
 
 STAGE_LABEL_MAP = {
