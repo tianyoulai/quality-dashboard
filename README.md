@@ -8,7 +8,7 @@
 |------|------|
 | **数据管理** | Excel/CSV 批量导入、新人名单管理、告警规则管理、数据健康检查、操作审计日志 |
 | **总览** | 日/周/月维度正确率趋势、组别排名、KPI 达标监控、组别下探分析 |
-| **内检** | 内检质检数据分析、审核人排名、错误类型 TOP5 分布 |
+| **内检** | 内检质检数据分析、审核人排名、错误类型 TOP5 分布、审核一致性分析（一审 vs 终审偏差） |
 | **明细查询** | 多维筛选 + 下钻、快速时间范围、审核人/队列维度统计、数据洞察 |
 | **新人追踪** | 批次概览、成长曲线、阶段对比、个人追踪、异常告警 |
 
@@ -39,6 +39,7 @@ quality-dashboard/
 │   ├── dashboard_service.py        # 主查询服务
 │   ├── module_views.py             # 视图渲染
 │   ├── newcomer_aggregates.py      # 新人聚合
+│   ├── newcomer_lifecycle.py       # 新人生命周期管理
 │   └── wecom_push.py               # 企微推送
 ├── reports/                        # 报告引擎
 │   ├── engine.py                   # 数据采集 + AI 洞察
@@ -60,9 +61,13 @@ quality-dashboard/
 │   ├── audit.py                    # 操作审计日志
 │   ├── auth.py                     # 轻量权限控制
 │   ├── export_center.py            # 导出中心
-│   ├── styles.py                   # 全局 CSS
+│   ├── design_system.py            # 统一设计系统（色彩/排版/组件）
+│   ├── error_boundary.py           # 全局错误边界
 │   ├── cache.py                    # 缓存管理
 │   ├── helpers.py                  # 通用工具
+│   ├── date_parser.py              # 日期解析
+│   ├── constants.py                # 常量定义
+│   ├── logger.py                   # 日志系统
 │   └── alert_module.py             # 告警模块
 ├── config/                         # 配置（不提交 Git）
 │   ├── settings.json               # 数据库/API 密钥

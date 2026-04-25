@@ -14,11 +14,8 @@ from services.newcomer_lifecycle import (
     batch_infer_stages,
     generate_promotion_recommendations,
     update_member_status,
-    load_graduation_rules,
     load_milestones,
     get_status_label,
-    STATUS_LABELS,
-    DEFAULT_RULES,
 )
 
 

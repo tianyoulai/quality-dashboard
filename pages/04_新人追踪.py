@@ -35,7 +35,6 @@ from views.newcomer import (
 )
 from views.newcomer._shared import (
     classify_batch_risk,
-    display_text,
     format_name_list,
     is_non_newcomer_practice_reviewer,
     safe_pct,
