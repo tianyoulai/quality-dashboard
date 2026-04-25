@@ -23,7 +23,7 @@ from reports import generate_daily_report
 from reports.formatters.wecom_card import format_daily_wecom
 from reports.formatters.markdown_file import format_daily_markdown
 from services.wecom_push import send_wecom_webhook_with_split
-from jobs._report_common import load_sent, mark_sent, push_error_notification, save_deliverable
+from jobs._report_common import load_sent, mark_sent, push_error_notification
 
 
 # ── 主流程 ────────────────────────────────────────────────────

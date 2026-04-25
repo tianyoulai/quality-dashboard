@@ -472,7 +472,15 @@ with trend_col:
                 clicked_idx = selection["point_indices"][0]
                 if clicked_idx < len(trend_plot_df):
                     clicked_date = trend_plot_df.iloc[clicked_idx]["anchor_date"]
-                    st.info(f"💡 点击了 {clicked_date.strftime('%Y-%m-%d')}，可切换到对应日期查看详情")
+                    _click_col1, _click_col2 = st.columns([2, 1])
+                    with _click_col1:
+                        st.info(f"💡 选中了 **{clicked_date.strftime('%Y-%m-%d')}**")
+                    with _click_col2:
+                        if st.button("🔍 查看该日明细", key="trend_goto_detail", use_container_width=True):
+                            st.session_state["detail_group_preset"] = selected_group
+                            st.session_state["detail_quick_start"] = clicked_date.date() if hasattr(clicked_date, 'date') else clicked_date
+                            st.session_state["detail_quick_end"] = clicked_date.date() if hasattr(clicked_date, 'date') else clicked_date
+                            st.switch_page("pages/03_明细查询.py")
 
         # 趋势概要统计
         if len(trend_plot_df) >= 2:

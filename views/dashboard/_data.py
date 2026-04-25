@@ -165,14 +165,14 @@ def load_queue_overview_data(
     return {"queue_df": queue_df, "trend_df": trend_df}
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_alert_history(alert_id: str | None) -> pd.DataFrame:
     if not alert_id:
         return pd.DataFrame()
     return service.load_alert_history(alert_id)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_qa_label_distribution_cached(
     grain: str, selected_date: date,
     group_name: str | None = None, top_n: int = 10,
@@ -180,7 +180,7 @@ def load_qa_label_distribution_cached(
     return service.load_qa_label_distribution(grain, selected_date, group_name, top_n)
 
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_qa_owner_distribution_cached(
     grain: str, selected_date: date,
     group_name: str | None = None, top_n: int = 10,

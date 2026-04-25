@@ -254,47 +254,47 @@ _loaders = create_data_loaders(repo, {
 })
 
 # 用 st.cache_data 包裹每个加载器（数据加载层本身不加装饰器）
-@st.cache_data(show_spinner="正在加载批次数据...", ttl=300)
+@st.cache_data(show_spinner="正在加载批次数据...", ttl=600)
 def load_batch_list():
     return _loaders["load_batch_list"]()
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_newcomer_members(batch_names=None, owner=None, team_name=None):
     return _loaders["load_newcomer_members"](batch_names, owner, team_name)
 
-@st.cache_data(show_spinner="正在加载质检数据...", ttl=300)
+@st.cache_data(show_spinner="正在加载质检数据...", ttl=600)
 def load_newcomer_qa_daily(batch_names=None, reviewer_aliases=None, stage=None):
     return _loaders["load_newcomer_qa_daily"](batch_names, reviewer_aliases, stage)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_formal_qa_daily(batch_names=None, reviewer_aliases=None):
     return _loaders["load_formal_qa_daily"](batch_names, reviewer_aliases)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_newcomer_error_detail(reviewer_alias, limit=100):
     return _loaders["load_newcomer_error_detail"](reviewer_alias, limit)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_person_all_qa_records(reviewer_alias, limit=200):
     return _loaders["load_person_all_qa_records"](reviewer_alias, limit)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_newcomer_error_summary(batch_names=None, reviewer_aliases=None):
     return _loaders["load_newcomer_error_summary"](batch_names, reviewer_aliases)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_formal_dimension_detail(batch_names=None, reviewer_aliases=None):
     return _loaders["load_formal_dimension_detail"](batch_names, reviewer_aliases)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_newcomer_dimension_detail(batch_names=None, reviewer_aliases=None):
     return _loaders["load_newcomer_dimension_detail"](batch_names, reviewer_aliases)
 
-@st.cache_data(show_spinner=False, ttl=300)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_unmatched_newcomer_rows():
     return _loaders["load_unmatched_newcomer_rows"]()
 
-@st.cache_data(show_spinner="正在计算新人聚合指标...", ttl=300)
+@st.cache_data(show_spinner="正在计算新人聚合指标...", ttl=600)
 def load_newcomer_aggregate_payload(batch_names=None, owner=None, team_name=None):
     return build_newcomer_aggregate_payload(batch_names=batch_names, owner=owner, team_name=team_name)
 

@@ -24,7 +24,7 @@ from views.data_mgmt import (
 )
 
 # 设计系统 v3.0
-from utils.design_system import ds, COLORS
+from utils.design_system import ds
 ds.inject_theme()
 
 # 权限控制（可通过 config/settings.json 启用）

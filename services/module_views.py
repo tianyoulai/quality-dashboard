@@ -30,7 +30,7 @@ QC_MODULE_META = {
 #  缓存查询函数
 # ═══════════════════════════════════════════════════════════════
 
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_module_summary(selected_date: date) -> pd.DataFrame:
     """按 qc_module 聚合当日指标。"""
     return repo.fetch_df("""
@@ -46,7 +46,7 @@ def load_module_summary(selected_date: date) -> pd.DataFrame:
     """, [selected_date])
 
 
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_module_group_detail(selected_date: date, qc_module: str) -> pd.DataFrame:
     """模块内按组别聚合。"""
     return repo.fetch_df("""
@@ -64,7 +64,7 @@ def load_module_group_detail(selected_date: date, qc_module: str) -> pd.DataFram
     """, [selected_date, qc_module])
 
 
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_module_trend(start_date: date, end_date: date, qc_module: str) -> pd.DataFrame:
     """模块日趋势。"""
     return repo.fetch_df("""
@@ -77,7 +77,7 @@ def load_module_trend(start_date: date, end_date: date, qc_module: str) -> pd.Da
     """, [start_date, end_date, qc_module])
 
 
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_module_queue_detail(selected_date: date, qc_module: str) -> pd.DataFrame:
     """模块内按队列聚合。"""
     return repo.fetch_df("""
@@ -93,7 +93,7 @@ def load_module_queue_detail(selected_date: date, qc_module: str) -> pd.DataFram
     """, [selected_date, qc_module])
 
 
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_module_qa_owner_detail(selected_date: date, qc_module: str) -> pd.DataFrame:
     """模块内质检员工作量。"""
     return repo.fetch_df("""
@@ -106,7 +106,7 @@ def load_module_qa_owner_detail(selected_date: date, qc_module: str) -> pd.DataF
     """, [selected_date, qc_module])
 
 
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data(show_spinner=False, ttl=600)
 def load_module_reviewer_detail(selected_date: date, qc_module: str) -> pd.DataFrame:
     """模块内审核人（被检人）明细。"""
     return repo.fetch_df("""
@@ -122,9 +122,9 @@ def load_module_reviewer_detail(selected_date: date, qc_module: str) -> pd.DataF
     """, [selected_date, qc_module])
 
 
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data(show_spinner=False, ttl=600)
 def get_data_date_range() -> tuple[date, date]:
-    """获取数据库日期范围（委托给 _data.py 统一实现）。"""
+    """获取数据库日期范围（统一实现在 views/dashboard/_data.py）。"""
     from views.dashboard._data import get_data_date_range as _get_range
     return _get_range()
 

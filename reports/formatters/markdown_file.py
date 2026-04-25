@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from reports.engine import ReportResult, ACC_TARGET
+from reports.engine import ReportResult
 
 
 def format_daily_markdown(r: ReportResult) -> str:

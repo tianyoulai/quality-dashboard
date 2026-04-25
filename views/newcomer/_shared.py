@@ -9,6 +9,9 @@ from typing import Any
 
 import pandas as pd
 
+# safe_pct 统一使用 utils/helpers.py 中的版本（消除重复定义）
+from utils.helpers import safe_pct  # noqa: F401 — re-exported for downstream modules
+
 
 # ═══════════════════════════════════════════════════════════════
 #  阶段元数据
@@ -62,14 +65,6 @@ PRACTICE_SHORT_NAMES = {"丁冠鑫", "季晨威", "李阳", "朱明阳", "陈洪
 # ═══════════════════════════════════════════════════════════════
 #  通用工具函数
 # ═══════════════════════════════════════════════════════════════
-
-def safe_pct(numerator: Any, denominator: Any) -> float:
-    """安全百分比计算，分母为 0 时返回 0。"""
-    denom = float(denominator or 0)
-    if denom <= 0:
-        return 0.0
-    return round(float(numerator or 0) * 100.0 / denom, 2)
-
 
 def display_text(value: Any, default: str = "未填写") -> str:
     """安全地将值转为展示文本，空值返回默认值。"""
