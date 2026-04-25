@@ -48,7 +48,32 @@ def get_filter_options() -> dict:
         LIMIT 500
     """)
     
-    # 如果 fact_qa_event 中没有错误类型数据，尝试从 mart 错误主题表获取
+    # 如果 fact_qa_event 中没有错误类型数据，尝试从文本字段推断
+    if error_type_df.empty or error_type_df["error_type"].dropna().empty:
+        try:
+            error_type_df = repo.fetch_df("""
+                SELECT DISTINCT
+                    CASE
+                        WHEN COALESCE(raw_judgement,'') LIKE '%%错判%%'
+                          OR COALESCE(raw_judgement,'') LIKE '%%误判%%'
+                          OR COALESCE(final_judgement,'') LIKE '%%错判%%'
+                        THEN '错判'
+                        WHEN COALESCE(raw_judgement,'') LIKE '%%漏判%%'
+                          OR COALESCE(raw_judgement,'') LIKE '%%漏审%%'
+                          OR COALESCE(final_judgement,'') LIKE '%%漏判%%'
+                        THEN '漏判'
+                        WHEN TRIM(COALESCE(raw_judgement, '')) IN ('', '正常', '通过', 'pass')
+                        THEN '漏判'
+                        ELSE '错判'
+                    END AS error_type
+                FROM fact_qa_event
+                WHERE is_raw_correct = 0
+                LIMIT 500
+            """)
+        except Exception:
+            pass
+    
+    # 最终后备：从 mart 错误主题表获取
     if error_type_df.empty or error_type_df["error_type"].dropna().empty:
         try:
             error_type_df = repo.fetch_df("""

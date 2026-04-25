@@ -334,7 +334,38 @@ def _query_top_error_types(repo: DashboardRepository, d: str) -> list[dict]:
         GROUP BY 1 ORDER BY 2 DESC LIMIT 5
     """
     df = repo.fetch_df(sql, [d])
-    return [{"error_type": r["err_type"], "cnt": _si(r["cnt"])} for _, r in df.iterrows()]
+    result = [{"error_type": r["err_type"], "cnt": _si(r["cnt"])} for _, r in df.iterrows()]
+
+    # 如果结果全为"未标注"（说明 error_type 字段普遍缺失），
+    # 则退化到从 raw_judgement / final_judgement / qa_result 推断
+    if result and all(item["error_type"] == "未标注" for item in result):
+        fallback_sql = """
+            SELECT
+                CASE
+                    WHEN COALESCE(raw_judgement,'') LIKE '%%错判%%'
+                      OR COALESCE(raw_judgement,'') LIKE '%%误判%%'
+                      OR COALESCE(final_judgement,'') LIKE '%%错判%%'
+                      OR COALESCE(qa_result,'') LIKE '%%错判%%'
+                    THEN '错判'
+                    WHEN COALESCE(raw_judgement,'') LIKE '%%漏判%%'
+                      OR COALESCE(raw_judgement,'') LIKE '%%漏审%%'
+                      OR COALESCE(final_judgement,'') LIKE '%%漏判%%'
+                      OR COALESCE(qa_result,'') LIKE '%%漏判%%'
+                    THEN '漏判'
+                    WHEN TRIM(COALESCE(raw_judgement, '')) IN ('', '正常', '通过', 'pass')
+                    THEN '漏判'
+                    ELSE '错判'
+                END AS err_type,
+                COUNT(*) AS cnt
+            FROM vw_qa_base
+            WHERE biz_date = %s AND is_raw_correct = 0
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 5
+        """
+        df2 = repo.fetch_df(fallback_sql, [d])
+        if not df2.empty:
+            result = [{"error_type": r["err_type"], "cnt": _si(r["cnt"])} for _, r in df2.iterrows()]
+
+    return result
 
 
 def _query_alerts(repo: DashboardRepository, d: str) -> AlertSummary:

@@ -486,6 +486,21 @@ def prepare_qa_frame(
     error_type = clean_text(mapped["error_type"])
     error_reason = clean_text(mapped["error_reason"])
 
+    # ── error_type 自动推断 ──────────────────────────────────
+    # 很多 CSV 没有独立的"错误类型"列，错判/漏判信息散落在
+    # "质检判断"、"质检结果"、"一审结果"等字段中。
+    # 在后续确定 is_misjudge / is_missjudge 后，会再做一次回填。
+    # 这里先从文本字段做初步推断。
+    _infer_et_sources = [raw_judgement, final_judgement, qa_result, qa_note]
+    _infer_et = pd.Series(pd.NA, index=index, dtype="string")
+    for _src in _infer_et_sources:
+        _has_cuopan = _src.str.contains(r"错判|误判", na=False, case=False)
+        _has_loupan = _src.str.contains(r"漏判|漏审", na=False, case=False)
+        _infer_et = _infer_et.mask(_infer_et.isna() & _has_cuopan, "错判")
+        _infer_et = _infer_et.mask(_infer_et.isna() & _has_loupan, "漏判")
+    # 合并：优先用 CSV 原始 error_type，其次用推断值
+    error_type = error_type.fillna(_infer_et)
+
     # 质检判断字段：正确/漏判/错判
     qa_judgement = clean_text(mapped["is_raw_correct"])
     
@@ -527,6 +542,18 @@ def prepare_qa_frame(
         keyword_flag(index, mapped["appeal_status"], mapped["qa_result"], keywords=["改判", "申诉成功"]),
         dtype="boolean",
     ).fillna(False)
+
+    # ── error_type 最终回填（基于已确定的 is_misjudge / is_missjudge） ──
+    # 对于仍为空的 error_type，根据判定结果补充分类
+    _still_empty = error_type.isna()
+    error_type = error_type.mask(_still_empty & is_misjudge, "错判")
+    error_type = error_type.mask(error_type.isna() & is_missjudge, "漏判")
+    # 对于不正确但既非错判也非漏判的记录，根据一审标签推断：
+    # 一审=正常/空 → 漏判（漏掉了违规内容）；一审=具体违规标签 → 错判（误判为违规）
+    _is_error_no_type = error_type.isna() & ~is_raw_correct
+    _rj_is_normal = raw_judgement.str.lower().isin(["正常", "通过", "pass", ""]) | raw_judgement.isna()
+    error_type = error_type.mask(_is_error_no_type & _rj_is_normal, "漏判")
+    error_type = error_type.mask(_is_error_no_type & ~_rj_is_normal, "错判")
 
     prepared = pd.DataFrame(
         {
