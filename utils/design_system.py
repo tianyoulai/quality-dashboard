@@ -114,21 +114,35 @@ class DesignSystem:
     def inject_theme(self) -> None:
         """注入全局CSS主题 + 侧边栏品牌 + 导航。
         
-        使用 session_state 标记避免同一页面重复注入 CSS，减少 DOM 操作。
+        注意：Streamlit 每次页面切换/刷新都会清空 DOM，因此 CSS **必须每次注入**。
+        这里不能用 session_state 缓存，否则切换页面后样式会丢失导致布局变窄。
         """
-        if not st.session_state.get("_ds_theme_injected"):
-            st.markdown(self._global_css(), unsafe_allow_html=True)
-            st.session_state["_ds_theme_injected"] = True
+        st.markdown(self._global_css(), unsafe_allow_html=True)
         self._render_sidebar()
 
     def _global_css(self) -> str:
         return f"""
         <style>
-            /* ===== 全局布局 ===== */
+            /* ===== 全局布局（强制全宽） ===== */
             .main > div {{ padding-top: 0.75rem; }}
             .block-container {{
                 padding-top: 1.5rem;
                 padding-bottom: 2rem;
+                max-width: 100% !important;
+                width: 100% !important;
+                padding-left: 2rem !important;
+                padding-right: 2rem !important;
+            }}
+            /* 覆盖 Streamlit 内部的嵌套宽度限制 */
+            .main .block-container {{
+                max-width: 100% !important;
+                width: 100% !important;
+            }}
+            section[data-testid="stSidebar"] ~ div.main .block-container {{
+                max-width: 100% !important;
+                width: 100% !important;
+            }}
+            .appview-container .main .block-container {{
                 max-width: 100% !important;
             }}
 

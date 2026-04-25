@@ -443,12 +443,21 @@ load_newcomer_stage = stage_code in (None, "internal", "external")
 load_formal_stage = stage_code in (None, "formal")
 newcomer_stage = stage_code if stage_code in {"internal", "external"} else None
 
-newcomer_qa_df = load_newcomer_qa_daily(
-    selected_batches if selected_batches else None, reviewer_aliases=reviewer_aliases, stage=newcomer_stage,
-) if reviewer_aliases and load_newcomer_stage else pd.DataFrame()
-formal_qa_df = load_formal_qa_daily(
-    selected_batches if selected_batches else None, reviewer_aliases=reviewer_aliases,
-) if reviewer_aliases and load_formal_stage else pd.DataFrame()
+# === 按需加载优化 ===
+# overview 模块仅需聚合层数据，不需要加载全量质检明细
+# 只有进入 growth/compare/person/dimension/alert 时才加载 combined_qa_df
+need_combined_qa = active_view in ("growth", "compare", "person", "dimension", "alert")
+
+if need_combined_qa and reviewer_aliases:
+    newcomer_qa_df = load_newcomer_qa_daily(
+        selected_batches if selected_batches else None, reviewer_aliases=reviewer_aliases, stage=newcomer_stage,
+    ) if load_newcomer_stage else pd.DataFrame()
+    formal_qa_df = load_formal_qa_daily(
+        selected_batches if selected_batches else None, reviewer_aliases=reviewer_aliases,
+    ) if load_formal_stage else pd.DataFrame()
+else:
+    newcomer_qa_df = pd.DataFrame()
+    formal_qa_df = pd.DataFrame()
 
 newcomer_qa_df = ensure_accuracy_columns(newcomer_qa_df)
 formal_qa_df = ensure_accuracy_columns(formal_qa_df)
@@ -527,29 +536,35 @@ stage_team_accuracy_df = team_accuracy_df = team_issue_df = pd.DataFrame()
 management_perf_df = batch_compare_df = batch_gap_df = pd.DataFrame()
 recent_person_perf_df = batch_watch_df = team_summary_df = team_alert_df = pd.DataFrame()
 
-# 从聚合层加载
-for src_key, target_name in [
-    ("stage_summary", "overall_stage_df"), ("batch_stage_summary", "stage_summary_df"),
-    ("stage_team_accuracy", "stage_team_accuracy_df"), ("team_accuracy", "team_accuracy_df"),
-    ("batch_compare", "batch_compare_df"), ("batch_gap", "batch_gap_df"),
-    ("batch_watch", "batch_watch_df"), ("team_alert", "team_alert_df"),
-    ("management_summary", "management_perf_df"),
-]:
+# 从聚合层加载（使用字典映射，避免 locals() 赋值的 CPython 陷阱）
+_agg_mapping = {
+    "stage_summary": "overall_stage_df",
+    "batch_stage_summary": "stage_summary_df",
+    "stage_team_accuracy": "stage_team_accuracy_df",
+    "team_accuracy": "team_accuracy_df",
+    "batch_compare": "batch_compare_df",
+    "batch_gap": "batch_gap_df",
+    "batch_watch": "batch_watch_df",
+    "team_alert": "team_alert_df",
+    "management_summary": "management_perf_df",
+}
+_agg_results = {}
+for src_key, target_name in _agg_mapping.items():
     agg_df = ensure_accuracy_columns(pd.DataFrame(aggregate_payload.get(src_key) or []))
     if not agg_df.empty:
-        locals()[target_name] = agg_df
+        _agg_results[target_name] = agg_df
 
-# 刷新局部变量引用（聚合加载后）
-overall_stage_df = locals().get("overall_stage_df", pd.DataFrame())
-stage_summary_df = locals().get("stage_summary_df", pd.DataFrame())
-stage_team_accuracy_df = locals().get("stage_team_accuracy_df", pd.DataFrame())
-team_accuracy_df = locals().get("team_accuracy_df", pd.DataFrame())
-team_issue_df = locals().get("team_issue_df", pd.DataFrame())
-batch_compare_df = locals().get("batch_compare_df", pd.DataFrame())
-batch_gap_df = locals().get("batch_gap_df", pd.DataFrame())
-batch_watch_df = locals().get("batch_watch_df", pd.DataFrame())
-team_alert_df = locals().get("team_alert_df", pd.DataFrame())
-management_perf_df = locals().get("management_perf_df", pd.DataFrame())
+# 从聚合结果中安全赋值
+overall_stage_df = _agg_results.get("overall_stage_df", overall_stage_df)
+stage_summary_df = _agg_results.get("stage_summary_df", stage_summary_df)
+stage_team_accuracy_df = _agg_results.get("stage_team_accuracy_df", stage_team_accuracy_df)
+team_accuracy_df = _agg_results.get("team_accuracy_df", team_accuracy_df)
+team_issue_df = _agg_results.get("team_issue_df", team_issue_df)
+batch_compare_df = _agg_results.get("batch_compare_df", batch_compare_df)
+batch_gap_df = _agg_results.get("batch_gap_df", batch_gap_df)
+batch_watch_df = _agg_results.get("batch_watch_df", batch_watch_df)
+team_alert_df = _agg_results.get("team_alert_df", team_alert_df)
+management_perf_df = _agg_results.get("management_perf_df", management_perf_df)
 
 if not batch_compare_df.empty and "join_date" in batch_compare_df.columns:
     batch_compare_df = batch_compare_df.copy()
