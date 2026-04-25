@@ -12,11 +12,13 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from storage.repository import DashboardRepository
+from utils.constants import RETENTION_DAYS
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="清理 TiDB 中超过保留期的历史数据")
-    parser.add_argument("--retention-days", type=int, default=45, help="保留最近多少天数据，默认 45")
+    parser.add_argument("--retention-days", type=int, default=RETENTION_DAYS,
+                        help=f"保留最近多少天数据，默认 {RETENTION_DAYS}")
     return parser.parse_args()
 
 

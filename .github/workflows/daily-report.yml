@@ -214,12 +214,12 @@ jobs:
           echo "📈 Running: python jobs/weekly_report.py $ARGS"
           python jobs/weekly_report.py $ARGS
 
-      # ── 自动归档（超过90天的数据）──
-      - name: Auto archive old data
+      # ── 自动清理（超过45天的数据直接删除）──
+      - name: Auto prune old data
         if: hashFiles('config/.skip_flag') == ''
         run: |
-          echo "🗄️ Running data archive..."
-          python jobs/auto_maintenance.py --archive --days 90 || echo "::warning::数据归档失败"
+          echo "🧹 Pruning data older than 45 days..."
+          python jobs/auto_maintenance.py --prune --days 45 || echo "::warning::数据清理失败"
 
       # ── 健康检查（异常时推送企微）──
       - name: Health check & push
