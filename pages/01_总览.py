@@ -152,6 +152,32 @@ alert_summary: dict[str, int] = payload["alert_summary"]
 alert_status_summary = service.summarize_alert_status(alerts_df)
 alert_sla_summary = service.summarize_alert_sla(alerts_df)
 
+# ---- 侧边栏：数据健康状态摘要 ----
+with st.sidebar:
+    st.markdown("### 📊 数据状态")
+    _data_freshness = (date.today() - _data_max_date).days if _data_max_date else -1
+    if _data_freshness == 0:
+        st.success("🟢 数据已更新至今日")
+    elif _data_freshness == 1:
+        st.info("🟡 数据更新至昨日（T-1）")
+    elif _data_freshness > 1:
+        st.warning(f"🔴 数据延迟 {_data_freshness} 天，最新：{_data_max_date}")
+    
+    _p0_cnt = alert_summary.get("P0", 0)
+    _p1_cnt = alert_summary.get("P1", 0)
+    if _p0_cnt + _p1_cnt > 0:
+        st.error(f"🚨 告警：P0 × {_p0_cnt}  ·  P1 × {_p1_cnt}")
+    else:
+        st.success("✅ 无活跃告警")
+    
+    _group_cnt = len(group_df["group_name"].unique()) if not group_df.empty else 0
+    st.caption(f"📋 共 {_group_cnt} 个组别  ·  粒度：{GRAIN_LABELS[grain]}  ·  日期：{selected_date}")
+    
+    st.markdown("---")
+    if st.button("🔄 刷新缓存", use_container_width=True, key="sidebar_refresh"):
+        st.cache_data.clear()
+        st.rerun()
+
 # 预先获取选中的组别（用于队列数据过滤）
 selected_group = st.session_state.get("selected_group")
 if not selected_group and not group_df.empty:

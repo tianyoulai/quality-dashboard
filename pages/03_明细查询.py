@@ -276,7 +276,7 @@ issue_mode = issue_filter if only_issues and issue_filter != "全部问题" else
 # 查询按钮 —— 点击后才触发数据查询，避免页面打开时自动加载全量数据
 # 如果从总览页带着筛选条件跳转过来，自动触发查询
 _has_preset = _default_group_idx > 0 or _default_queue_idx > 0 or _default_reviewer_idx > 0
-query_btn_col1, query_btn_col2 = st.columns([1, 3])
+query_btn_col1, query_btn_col2, query_btn_col3 = st.columns([1, 2, 1])
 with query_btn_col1:
     do_query = st.button("🔍 开始查询", type="primary", use_container_width=True)
 with query_btn_col2:
@@ -284,6 +284,12 @@ with query_btn_col2:
         st.caption("✅ 已从总览页带入筛选条件，自动查询中...")
     else:
         st.caption("💡 设定好筛选条件后，点击「开始查询」按钮加载数据")
+with query_btn_col3:
+    if st.button("🗑️ 重置条件", use_container_width=True, help="清除所有筛选条件和查询状态"):
+        for k in list(st.session_state.keys()):
+            if k.startswith("detail_"):
+                del st.session_state[k]
+        st.rerun()
 
 # 使用 session_state 记住是否已执行查询
 if do_query or _has_preset:

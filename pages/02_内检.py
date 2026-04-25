@@ -155,7 +155,7 @@ except Exception as _init_err:
     st.stop()
 
 # Hero 区域（设计系统 v3.0）
-ds.hero("🔍", "内检分析", "跨周期趋势对比 · 全量组别排名 · 审核一致性分析")
+ds.hero("🔍", "内检分析", "跨周期趋势对比 · 全量组别排名 · 审核人排名 · 审核一致性分析")
 
 # 检查数据范围
 if min_d is None or max_d is None:
@@ -284,6 +284,68 @@ with tab_grain[0]:
                 st.caption(f"共 {total_errors:,} 个错误，TOP5 占比 {top5_pct:.1f}%")
             else:
                 st.success("🎉 所选日期范围内无错误记录")
+
+        # ---- 审核一致性分析（一审 vs 终审偏差） ----
+        with st.expander("🔄 审核一致性分析", expanded=False):
+            consistency_sql = """
+                SELECT reviewer_name,
+                       COUNT(*) AS qa_cnt,
+                       SUM(CASE WHEN raw_judgement='正确' THEN 1 ELSE 0 END) AS raw_correct,
+                       SUM(CASE WHEN final_judgement='正确' THEN 1 ELSE 0 END) AS final_correct,
+                       SUM(CASE WHEN is_appeal_reversed=1 THEN 1 ELSE 0 END) AS appeal_cnt,
+                       SUM(CASE WHEN is_misjudge=1 THEN 1 ELSE 0 END) AS misjudge_cnt,
+                       SUM(CASE WHEN is_missjudge=1 THEN 1 ELSE 0 END) AS missjudge_cnt
+                FROM vw_qa_base
+                WHERE biz_date BETWEEN %s AND %s
+                GROUP BY reviewer_name
+                HAVING qa_cnt >= 10
+                ORDER BY qa_cnt DESC
+            """
+            cons_df = repo.fetch_df(consistency_sql, (date_start, date_end))
+            if not cons_df.empty:
+                cons_df["raw_acc"] = cons_df["raw_correct"] / cons_df["qa_cnt"] * 100
+                cons_df["final_acc"] = cons_df["final_correct"] / cons_df["qa_cnt"] * 100
+                cons_df["gap"] = cons_df["final_acc"] - cons_df["raw_acc"]
+                cons_df["appeal_rate"] = cons_df["appeal_cnt"] / cons_df["qa_cnt"] * 100
+
+                # 散点图：X=一审正确率, Y=终审正确率, 点大小=质检量
+                import plotly.express as px
+                fig_cons = px.scatter(
+                    cons_df,
+                    x="raw_acc", y="final_acc",
+                    size="qa_cnt",
+                    hover_name="reviewer_name",
+                    hover_data={"raw_acc": ":.2f", "final_acc": ":.2f", "qa_cnt": True, "gap": ":.2f"},
+                    color="gap",
+                    color_continuous_scale="RdYlGn",
+                    labels={"raw_acc": "原始正确率 (%)", "final_acc": "最终正确率 (%)", "qa_cnt": "质检量", "gap": "偏差"},
+                )
+                # 对角线（一致性参考线）
+                fig_cons.add_shape(type="line", x0=90, y0=90, x1=100.5, y1=100.5,
+                                   line=dict(color="gray", width=1, dash="dash"))
+                _layout_cons = ds.chart_layout(height=380)
+                _layout_cons["xaxis"] = {**_layout_cons.get("xaxis", {}), "range": [90, 100.5], "title": "原始正确率 (%)"}
+                _layout_cons["yaxis"] = {**_layout_cons.get("yaxis", {}), "range": [90, 100.5], "title": "最终正确率 (%)"}
+                fig_cons.update_layout(**_layout_cons)
+                st.plotly_chart(fig_cons, use_container_width=True)
+
+                st.caption("💡 **对角线**表示一审=终审；点在对角线**上方**说明终审比一审宽松（申诉改判多）；点越**大**质检量越高")
+
+                # 偏差最大的审核人
+                high_gap = cons_df[cons_df["gap"].abs() > 2].sort_values("gap", ascending=False)
+                if not high_gap.empty:
+                    st.markdown("##### ⚠️ 一致性偏差 > 2% 的审核人")
+                    gap_show = pd.DataFrame({
+                        "审核人": high_gap["reviewer_name"].apply(lambda x: x.split("-")[-1] if "-" in str(x) else x),
+                        "质检量": high_gap["qa_cnt"].apply(lambda x: f"{int(x):,}"),
+                        "原始正确率": high_gap["raw_acc"].apply(lambda x: f"{x:.2f}%"),
+                        "最终正确率": high_gap["final_acc"].apply(lambda x: f"{x:.2f}%"),
+                        "偏差": high_gap["gap"].apply(lambda x: f"{x:+.2f}%"),
+                        "申诉改判": high_gap["appeal_cnt"].apply(lambda x: f"{int(x)}条"),
+                    })
+                    st.dataframe(gap_show, use_container_width=True, hide_index=True)
+            else:
+                st.info("所选日期范围内数据不足（每人≥10条质检记录才纳入分析）")
 
 
 # ==================== 周维度 ====================

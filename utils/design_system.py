@@ -577,14 +577,29 @@ class DesignSystem:
             """, unsafe_allow_html=True)
 
     # ── 页面底部说明 ──────────────────────────────────────
-    def footer(self, notes: list[str]) -> None:
+    def footer(self, notes: list[str], show_brand: bool = True) -> None:
         """渲染页面底部说明区。"""
         lines = "<br>".join(notes)
+        brand_html = ""
+        if show_brand:
+            from datetime import date as _date
+            brand_html = f"""
+            <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid {COLORS.border};
+                        display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 0.72rem; color: {COLORS.text_muted};">
+                    🏷️ <strong>质培运营看板</strong> v3.0 &nbsp;·&nbsp; Powered by Streamlit + TiDB
+                </div>
+                <div style="font-size: 0.72rem; color: {COLORS.text_muted};">
+                    📅 {_date.today().strftime('%Y-%m-%d')}
+                </div>
+            </div>
+            """
         st.markdown(f"""
         <div class="ds-card" style="margin-top: 1.5rem; background: {COLORS.bg_subtle}; border: 1px solid {COLORS.border};">
             <div style="font-size: 0.82rem; color: {COLORS.text_secondary}; line-height: 1.8;">
                 {lines}
             </div>
+            {brand_html}
         </div>
         """, unsafe_allow_html=True)
 

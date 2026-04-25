@@ -784,6 +784,51 @@ VIEW_ROUTER = {
 VIEW_ROUTER[active_view](ctx)
 
 # ═══════════════════════════════════════════════════════════════
+#  数据导出区
+# ═══════════════════════════════════════════════════════════════
+
+ds.divider()
+with st.expander("📥 数据导出", expanded=False):
+    from utils.helpers import to_csv_bytes
+    exp_c1, exp_c2, exp_c3 = st.columns(3)
+    with exp_c1:
+        if not members_df.empty:
+            _member_csv = to_csv_bytes(members_df)
+            st.download_button(
+                "👥 导出新人名单",
+                data=_member_csv,
+                file_name=f"newcomer_members_{date.today()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.button("👥 新人名单（无数据）", disabled=True, use_container_width=True)
+    with exp_c2:
+        if not combined_qa_df.empty:
+            _qa_csv = to_csv_bytes(combined_qa_df)
+            st.download_button(
+                "📊 导出质检数据",
+                data=_qa_csv,
+                file_name=f"newcomer_qa_{date.today()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.button("📊 质检数据（无数据）", disabled=True, use_container_width=True)
+    with exp_c3:
+        if not filtered_batch_df.empty:
+            _batch_csv = to_csv_bytes(filtered_batch_df)
+            st.download_button(
+                "📋 导出批次概览",
+                data=_batch_csv,
+                file_name=f"newcomer_batch_overview_{date.today()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.button("📋 批次概览（无数据）", disabled=True, use_container_width=True)
+
+# ═══════════════════════════════════════════════════════════════
 #  底部说明
 # ═══════════════════════════════════════════════════════════════
 
