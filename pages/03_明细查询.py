@@ -11,7 +11,6 @@ from storage.repository import DashboardRepository
 
 # 设计系统 v3.0
 from utils.design_system import ds, COLORS
-from utils.error_boundary import safe_section, run_safe
 ds.inject_theme()
 
 repo = DashboardRepository()

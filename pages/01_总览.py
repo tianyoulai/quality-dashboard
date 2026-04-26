@@ -44,7 +44,6 @@ from views.dashboard._shared import (
 
 # 设计系统 v3.0（替换旧的 styles.py）
 from utils.design_system import ds, COLORS
-from utils.error_boundary import safe_section, run_safe
 ds.inject_theme()
 
 service = DashboardService()
@@ -61,10 +60,11 @@ def _jump_to_detail(group: str | None = None, queue: str | None = None, auditor:
         st.session_state["detail_queue_preset"] = queue
     if auditor and auditor != "(全部)":
         st.session_state["detail_reviewer_preset"] = auditor
-    # 传递当前日期范围
-    if "selected_date" in dir():
-        st.session_state["detail_quick_start"] = selected_date
-        st.session_state["detail_quick_end"] = selected_date
+    # 从 session_state 获取当前选中日期（模块级变量不可用于函数作用域的 dir()）
+    _sel_date = st.session_state.get("_current_selected_date")
+    if _sel_date:
+        st.session_state["detail_quick_start"] = _sel_date
+        st.session_state["detail_quick_end"] = _sel_date
     st.switch_page("pages/03_明细查询.py")
 
 
@@ -129,6 +129,7 @@ with mode_col1:
     )
 with mode_col2:
     selected_date = st.date_input("业务日期", value=_default_date, label_visibility="collapsed")
+    st.session_state["_current_selected_date"] = selected_date
 with mode_col3:
     date_start = st.date_input("起始日期", value=selected_date - timedelta(days=6), label_visibility="collapsed", key="start_d")
 with mode_col4:
@@ -704,11 +705,11 @@ else:
                             st.session_state["show_all_auditors"] = False
                             st.rerun()
                 with _btn_col2:
-                    if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
+                    if st.button("📋 在明细查询中查看样本", key="goto_detail_expanded", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
                         _jump_to_detail(selected_group, selected_queue, selected_auditor)
             else:
                 # 审核人不超过20位时只显示跳转按钮
-                if st.button("📋 在明细查询中查看样本", key="goto_detail", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
+                if st.button("📋 在明细查询中查看样本", key="goto_detail_compact", use_container_width=True, help="跳转到明细查询页，自动带入当前筛选条件"):
                     _jump_to_detail(selected_group, selected_queue, selected_auditor)
         else:
             st.info("暂无审核人数据")

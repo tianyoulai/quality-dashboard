@@ -25,7 +25,6 @@ from views.data_mgmt import (
 
 # 设计系统 v3.0
 from utils.design_system import ds
-from utils.error_boundary import safe_section, run_safe
 ds.inject_theme()
 
 # 权限控制（可通过 config/settings.json 启用）
@@ -718,10 +717,14 @@ with tab_import[10]:
             st.error("开始日期不能晚于结束日期")
         else:
             # 预览要删除的数据
-            preview_cnt = repo.fetch_one(
-                "SELECT COUNT(*) AS cnt FROM fact_qa_event WHERE biz_date >= %s AND biz_date <= %s",
-                [date_start, date_end]
-            )["cnt"]
+            try:
+                preview_cnt = repo.fetch_one(
+                    "SELECT COUNT(*) AS cnt FROM fact_qa_event WHERE biz_date >= %s AND biz_date <= %s",
+                    [date_start, date_end]
+                )["cnt"]
+            except Exception:
+                preview_cnt = 0
+                st.warning("⚠️ 无法查询数据量，请检查数据库连接")
 
             st.warning(f"将删除 **{date_start}** 至 **{date_end}** 的质检数据，共 **{preview_cnt:,}** 条")
 
