@@ -688,8 +688,12 @@ with tab_import[10]:
     st.caption("根据日期范围删除质检数据，或全部清空。⚠️ 此操作不可逆，请谨慎操作。")
 
     # 显示当前数据量
-    total_cnt = repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_qa_event")["cnt"]
-    st.info(f"📊 当前质检数据总量：**{total_cnt:,}** 条")
+    try:
+        total_cnt = repo.fetch_one("SELECT COUNT(*) AS cnt FROM fact_qa_event")["cnt"]
+        st.info(f"📊 当前质检数据总量：**{total_cnt:,}** 条")
+    except Exception as e:
+        st.error(f"⚠️ 数据库连接异常，请刷新页面重试。错误：{type(e).__name__}")
+        total_cnt = 0
 
     # 显示新人数据量
     try:

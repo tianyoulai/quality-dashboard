@@ -158,15 +158,56 @@ class TiDBManager:
                 pass  # 预热失败不阻塞，第一次查询时自然会重试
         return self._pool
 
+    def _reset_pool(self) -> None:
+        """销毁当前连接池，下次 _ensure_pool 时会重建。"""
+        self._pool = None
+
     @contextmanager
     def get_connection(self) -> Generator[mysql.connector.MySQLConnection, None, None]:
-        """从连接池获取一个连接，使用后自动归还。"""
-        pool = self._ensure_pool()
-        conn = pool.get_connection()
+        """从连接池获取一个连接，使用后自动归还。
+
+        TiDB Serverless 空闲连接会被服务端主动断开，
+        mysql-connector-python 的连接池不会自动剔除坏连接，
+        因此这里加入重试：首次 InterfaceError 时重建连接池再试一次。
+        """
+        max_retries = 2
+        last_err: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                pool = self._ensure_pool()
+                conn = pool.get_connection()
+                # 用 ping 验证连接是否存活
+                try:
+                    conn.ping(reconnect=True, attempts=1, delay=0)
+                except Exception:
+                    # ping 失败，关掉坏连接，重建池
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    self._reset_pool()
+                    continue
+                break
+            except (mysql.connector.errors.InterfaceError,
+                    mysql.connector.errors.OperationalError,
+                    mysql.connector.errors.PoolError) as e:
+                last_err = e
+                self._reset_pool()
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(0.5)  # 短暂等待后重试
+                    continue
+                raise
+        else:
+            raise last_err or mysql.connector.errors.InterfaceError("连接池重试耗尽")
+
         try:
             yield conn
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass  # 归还失败不抛异常
 
     def fetch_df(self, sql: str, params: Iterable[Any] | None = None) -> pd.DataFrame:
         """执行 SQL 并返回 DataFrame。
