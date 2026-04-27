@@ -730,16 +730,19 @@ def insert_new_rows(
     insert_columns: list[str],
     stage_df: pd.DataFrame,
 ) -> tuple[int, int]:
-    """插入数据到 fact 表，不做文件内去重，保持与原始文件一致。
+    """插入数据到 fact 表，使用 INSERT IGNORE 保证重复上传时的幂等性。
 
-    注意：仍保留文件级去重（通过 fact_file_dedup 表），避免同一文件重复上传。
+    - 遇到主键/唯一键冲突时跳过该行（而不是整批失败）
+    - 返回 (实际插入行数, 去重跳过行数)
+    - 文件级去重仍由 fact_file_dedup 表控制，防止同一文件被完整重复处理
     """
     if stage_df.empty:
         return 0, 0
 
-    # 使用 TiDB insert_dataframe 批量插入
-    inserted_rows = conn.insert_dataframe(table_name, stage_df)
-    dedup_rows = 0
+    source_rows = len(stage_df)
+    # 使用 INSERT IGNORE，重复主键自动跳过
+    inserted_rows = conn.insert_dataframe(table_name, stage_df, ignore_duplicates=True)
+    dedup_rows = max(source_rows - inserted_rows, 0)
     return inserted_rows, dedup_rows
 
 

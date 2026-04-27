@@ -371,7 +371,7 @@ def import_file(file_path: str, source_name: str | None = None, force_stage: str
         # 清理 NaN
         insert_df = insert_df.where(insert_df.notna(), None)
 
-        inserted_rows = repo.insert_dataframe("fact_newcomer_qa", insert_df)
+        inserted_rows = repo.insert_dataframe("fact_newcomer_qa", insert_df, ignore_duplicates=True)
 
     return {
         "source_file": display_name,

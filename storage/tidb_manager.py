@@ -328,18 +328,22 @@ class TiDBManager:
                 cursor.close()
 
     def insert_dataframe(self, table_name: str, df: pd.DataFrame,
-                         batch_size: int = 10000) -> int:
+                         batch_size: int = 10000,
+                         ignore_duplicates: bool = False) -> int:
         """将 DataFrame 分批插入到指定表。返回插入行数。
         
         使用向量化转换代替 iterrows，大幅提升 3 万+ 行数据的写入速度。
         batch_size=10000: TiDB Serverless 延迟高(~500ms/次)，大批次减少 roundtrip。
+        ignore_duplicates=True 时使用 INSERT IGNORE，遇主键/唯一键冲突则跳过该行，
+        常用于支持重复上传场景的幂等性。
         """
         if df.empty:
             return 0
         columns = list(df.columns)
         placeholders = ", ".join(["%s"] * len(columns))
         col_sql = ", ".join(f"`{c}`" for c in columns)
-        sql = f"INSERT INTO `{table_name}` ({col_sql}) VALUES ({placeholders})"
+        ignore_kw = "IGNORE " if ignore_duplicates else ""
+        sql = f"INSERT {ignore_kw}INTO `{table_name}` ({col_sql}) VALUES ({placeholders})"
 
         # 向量化转换：统一转 object 类型，确保 pd.NA/NaT 全部变 None
         clean_df = df.copy()

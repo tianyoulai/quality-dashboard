@@ -114,8 +114,9 @@ class DashboardRepository:
     def execute_in_transaction(self, sql_list: list[tuple[str, Iterable[Any] | None]]) -> None:
         self._manager.execute_in_transaction(sql_list)
 
-    def insert_dataframe(self, table_name: str, df: pd.DataFrame) -> int:
-        return self._manager.insert_dataframe(table_name, df)
+    def insert_dataframe(self, table_name: str, df: pd.DataFrame,
+                         ignore_duplicates: bool = False) -> int:
+        return self._manager.insert_dataframe(table_name, df, ignore_duplicates=ignore_duplicates)
 
     def truncate_table(self, table_name: str) -> None:
         """清空表数据。使用 TRUNCATE 比 DELETE 快且不产生 binlog。"""

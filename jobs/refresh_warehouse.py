@@ -383,16 +383,46 @@ def main() -> None:
         except ValueError:
             print(f"⚠️ 无效日期: {args.target_date}，将刷新最近 {args.recent_days} 天")
 
+    # mart 表 → (其日期列名, 是否日级别) 映射
+    # 用于"聚合前先清理同日期范围的脏数据"（解决 inspect_type 变更残留的幽灵行）
+    MART_DATE_COLS = {
+        "mart_day_group": ("biz_date", "day"),
+        "mart_day_queue": ("biz_date", "day"),
+        "mart_day_auditor": ("biz_date", "day"),
+        "mart_day_error_topic": ("biz_date", "day"),
+        "mart_day_content_type": ("biz_date", "day"),
+        "mart_week_group": ("week_begin_date", "week"),
+        "mart_week_queue": ("week_begin_date", "week"),
+        "mart_week_error_topic": ("week_begin_date", "week"),
+        "mart_month_group": ("month_begin_date", "month"),
+        "mart_month_queue": ("month_begin_date", "month"),
+        "mart_month_error_topic": ("month_begin_date", "month"),
+    }
+
     if target_date:
         where_clause = f"biz_date = '{target_date.isoformat()}'"
+        day_delete_filter = f"= '{target_date.isoformat()}'"
+        # 周/月维度需展开到包含该日的范围
+        wk_begin = (target_date - timedelta(days=target_date.weekday())).isoformat()
+        mo_begin = target_date.replace(day=1).isoformat()
+        week_delete_filter = f"= '{wk_begin}'"
+        month_delete_filter = f"= '{mo_begin}'"
         print(f"📅 刷新目标日期: {target_date.isoformat()}")
     elif args.all:
         where_clause = "1=1"
+        day_delete_filter = week_delete_filter = month_delete_filter = ">= '1970-01-01'"
         print("📅 ⚠️ 全量刷新（高RU消耗模式）")
     else:
         # 默认只刷新最近 N 天，避免全量扫描耗尽 RU 配额
-        recent_start = (date.today() - timedelta(days=args.recent_days)).isoformat()
+        recent_start_date = date.today() - timedelta(days=args.recent_days)
+        recent_start = recent_start_date.isoformat()
         where_clause = f"biz_date >= '{recent_start}'"
+        # 周/月维度清理边界：退到包含 recent_start 的周一/月初
+        wk_begin = (recent_start_date - timedelta(days=recent_start_date.weekday())).isoformat()
+        mo_begin = recent_start_date.replace(day=1).isoformat()
+        day_delete_filter = f">= '{recent_start}'"
+        week_delete_filter = f">= '{wk_begin}'"
+        month_delete_filter = f">= '{mo_begin}'"
         print(f"📅 增量刷新最近 {args.recent_days} 天（{recent_start} ~ 今天）")
 
     # 3. 逐表刷新 mart
@@ -401,6 +431,12 @@ def main() -> None:
     for table_name, sql_template in ALL_MART_REFRESH:
         sql = sql_template.format(where_clause=where_clause)
         try:
+            # 3.1 先 DELETE 同日期范围的旧数据，避免 inspect_type/queue_name 变更时的幽灵残留
+            if table_name in MART_DATE_COLS:
+                date_col, grain = MART_DATE_COLS[table_name]
+                del_filter = {"day": day_delete_filter, "week": week_delete_filter, "month": month_delete_filter}[grain]
+                repo.execute(f"DELETE FROM {table_name} WHERE {date_col} {del_filter}")
+            # 3.2 REPLACE INTO 写入聚合结果
             repo.execute(sql)
             count_result = repo.fetch_one(f"SELECT COUNT(*) AS cnt FROM {table_name}")
             cnt = int(list(count_result.values())[0]) if count_result else 0
