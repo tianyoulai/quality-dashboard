@@ -236,7 +236,7 @@ class DashboardRepository:
             e.metric_value,
             e.threshold_value,
             COALESCE(s.alert_status, CASE WHEN e.is_resolved = 1 THEN 'resolved' ELSE 'open' END) AS alert_status,
-            COALESCE(s.owner_name, r.owner_name, '待分配') AS owner_name,
+            COALESCE(s.owner_name, '待分配') AS owner_name,
             COALESCE(s.handle_note, '') AS handle_note,
             s.updated_at AS status_updated_at,
             e.created_at AS alert_created_at,
