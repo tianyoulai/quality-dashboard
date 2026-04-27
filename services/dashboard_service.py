@@ -168,11 +168,15 @@ class DashboardService:
         """轻量首屏加载：只查 group_df + alerts_df，不查 queue/auditor/sample。
         
         用于首页首屏渲染，后续下探按需调 load_group_payload。
-        将 7 次 DB 查询降为 2 次，首屏加载时间从 4s 降到 ~1s。
+        将 7 次 DB 查询降为 2 次，并用线程池并发，在东京跨境延迟下再减半。
         """
+        from concurrent.futures import ThreadPoolExecutor
         anchor_date = self.normalize_anchor_date(grain, selected_date)
-        alerts_df = self.repo.get_alerts(grain, anchor_date)
-        group_df = self.repo.get_group_overview(grain, anchor_date)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_alerts = ex.submit(self.repo.get_alerts, grain, anchor_date)
+            fut_group = ex.submit(self.repo.get_group_overview, grain, anchor_date)
+            alerts_df = fut_alerts.result()
+            group_df = fut_group.result()
         return {
             "anchor_date": anchor_date,
             "group_df": group_df,

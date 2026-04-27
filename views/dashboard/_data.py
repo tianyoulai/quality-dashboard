@@ -139,7 +139,6 @@ def load_queue_overview_data(
             queue_sql += " AND group_name = %s"
             params.append(group_name)
     queue_sql += " GROUP BY group_name, queue_name ORDER BY total_qa_cnt DESC"
-    queue_df = repo.fetch_df(queue_sql, params)
 
     # 趋势数据
     trend_sql = f"""
@@ -160,7 +159,14 @@ def load_queue_overview_data(
             trend_sql += " AND group_name = %s"
             params_trend.append(group_name)
     trend_sql += f" GROUP BY {anchor_col} ORDER BY {anchor_col}"
-    trend_df = repo.fetch_df(trend_sql, params_trend)
+
+    # 并发执行两个查询，在东京跨境延迟场景下减半耗时
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        fut_q = ex.submit(repo.fetch_df, queue_sql, params)
+        fut_t = ex.submit(repo.fetch_df, trend_sql, params_trend)
+        queue_df = fut_q.result()
+        trend_df = fut_t.result()
 
     return {"queue_df": queue_df, "trend_df": trend_df}
 
