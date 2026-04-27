@@ -201,8 +201,9 @@ try:
     opts = get_filter_options()
 except Exception as _init_err:
     st.error(f"🚨 数据库连接异常：`{_init_err}`")
-    if st.button("🔄 重试", key="retry_detail"):
-        st.cache_data.clear()
+    if st.button("🔄 重试（硬刷新）", key="retry_detail"):
+        from utils.error_boundary import hard_reset
+        hard_reset()
         st.rerun()
     st.stop()
 

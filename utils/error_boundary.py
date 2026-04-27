@@ -147,11 +147,37 @@ def _render_error_panel(page_name: str, exc: Exception) -> None:
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("🔄 刷新页面", key="err_refresh", use_container_width=True):
-            st.cache_data.clear()
+            hard_reset()
             st.rerun()
     with col2:
         if st.button("🗑️ 清除缓存", key="err_clear_cache", use_container_width=True):
-            st.cache_data.clear()
+            hard_reset()
             st.success("缓存已清除，请刷新页面。")
     with col3:
         st.button("🏠 返回首页", key="err_home", use_container_width=True, on_click=lambda: st.switch_page("pages/01_总览.py"))
+
+
+def hard_reset() -> None:
+    """硬重置：同时清空数据缓存、资源缓存，并重建 TiDB 连接池。
+
+    适用场景：
+    - TiDB 配额恢复后，看板仍缓存着旧的异常
+    - 连接池中残留坏连接，导致查询持续失败
+    - 用户点击"重试"按钮期望完全刷新状态
+    """
+    # 1. 清数据缓存（@st.cache_data）
+    try:
+        st.cache_data.clear()
+    except Exception:
+        pass
+    # 2. 清资源缓存（@st.cache_resource，如果有）
+    try:
+        st.cache_resource.clear()
+    except Exception:
+        pass
+    # 3. 重建 TiDB 连接池（单例销毁）
+    try:
+        from storage.tidb_manager import TiDBManager
+        TiDBManager.reset_singleton()
+    except Exception:
+        pass

@@ -162,6 +162,20 @@ class TiDBManager:
         """销毁当前连接池，下次 _ensure_pool 时会重建。"""
         self._pool = None
 
+    def reset_pool(self) -> None:
+        """公开方法：手动重建连接池。用于用户点击"重试"按钮时强制刷新。"""
+        self._reset_pool()
+
+    @classmethod
+    def reset_singleton(cls) -> None:
+        """彻底销毁单例实例，连同连接池。下次实例化时会完全重建。"""
+        if cls._instance is not None:
+            try:
+                cls._instance._pool = None
+            except Exception:
+                pass
+            cls._instance = None
+
     @contextmanager
     def get_connection(self) -> Generator[mysql.connector.MySQLConnection, None, None]:
         """从连接池获取一个连接，使用后自动归还。

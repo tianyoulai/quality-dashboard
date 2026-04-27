@@ -84,8 +84,9 @@ except Exception as _init_err:
     with st.expander("🔍 查看详细错误信息", expanded=False):
         import traceback as _tb
         st.code(_tb.format_exc(), language="text")
-    if st.button("🔄 重试", key="retry_overview"):
-        st.cache_data.clear()
+    if st.button("🔄 重试（硬刷新：清缓存 + 重建连接池）", key="retry_overview"):
+        from utils.error_boundary import hard_reset
+        hard_reset()
         st.rerun()
     st.stop()
 

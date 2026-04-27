@@ -395,7 +395,11 @@ class DesignSystem:
             """, unsafe_allow_html=True)
 
             if st.button("🔄 刷新缓存", key="ds_refresh_cache", use_container_width=True):
-                st.cache_data.clear()
+                try:
+                    from utils.error_boundary import hard_reset
+                    hard_reset()
+                except Exception:
+                    st.cache_data.clear()
                 st.rerun()
 
             st.markdown("---")
