@@ -53,7 +53,7 @@ def fetch_scalar(repo: DashboardRepository, sql: str, params: list[Any] | None =
 def insert_group_raw_accuracy_alerts(repo: DashboardRepository, cutoff_date) -> None:
     repo.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -83,7 +83,7 @@ def insert_group_raw_accuracy_alerts(repo: DashboardRepository, cutoff_date) -> 
 def insert_queue_final_accuracy_alerts(repo: DashboardRepository, cutoff_date) -> None:
     repo.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -113,7 +113,7 @@ def insert_queue_final_accuracy_alerts(repo: DashboardRepository, cutoff_date) -
 def insert_queue_missjudge_alerts(repo: DashboardRepository, cutoff_date) -> None:
     repo.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -143,7 +143,7 @@ def insert_queue_missjudge_alerts(repo: DashboardRepository, cutoff_date) -> Non
 def insert_group_appeal_reverse_alerts(repo: DashboardRepository, cutoff_date) -> None:
     repo.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -173,7 +173,7 @@ def insert_group_appeal_reverse_alerts(repo: DashboardRepository, cutoff_date) -
 def insert_system_join_match_alerts(conn: TiDBManager, cutoff_date) -> None:
     conn.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -211,7 +211,7 @@ def insert_system_join_match_alerts(conn: TiDBManager, cutoff_date) -> None:
 def insert_system_missing_key_alerts(repo: DashboardRepository, cutoff_date) -> None:
     repo.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -249,7 +249,7 @@ def insert_system_missing_key_alerts(repo: DashboardRepository, cutoff_date) -> 
 def insert_group_week_raw_drop_alerts(conn: TiDBManager, cutoff_date) -> None:
     conn.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -294,7 +294,7 @@ def insert_group_week_raw_drop_alerts(conn: TiDBManager, cutoff_date) -> None:
 def insert_queue_week_missjudge_spike_alerts(conn: TiDBManager, cutoff_date) -> None:
     conn.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -342,7 +342,7 @@ def insert_queue_week_missjudge_spike_alerts(conn: TiDBManager, cutoff_date) -> 
 def insert_queue_month_top_error_share_alerts(repo: DashboardRepository, cutoff_date) -> None:
     repo.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )
@@ -393,7 +393,7 @@ def insert_queue_month_top_error_share_alerts(repo: DashboardRepository, cutoff_
 def insert_queue_week_error_repeat_alerts(conn: TiDBManager, cutoff_date) -> None:
     conn.execute(
         """
-        INSERT INTO fact_alert_event (
+        REPLACE INTO fact_alert_event (
             alert_id, alert_date, grain, target_level, target_key, rule_code,
             severity, metric_name, metric_value, threshold_value, is_resolved, alert_message
         )

@@ -246,15 +246,111 @@ WHERE {where_clause}
 GROUP BY LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY, sub_biz, COALESCE(queue_name, '未知'), COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
 """
 
+# ==========================================================
+# 错误类型 & 内容类型（追加）
+# ==========================================================
+
+REFRESH_MART_DAY_ERROR_TOPIC = """
+REPLACE INTO mart_day_error_topic (
+    biz_date, group_name, queue_name, error_type, error_reason, inspect_type,
+    issue_cnt, affected_reviewer_cnt
+)
+SELECT
+    biz_date,
+    sub_biz AS group_name,
+    COALESCE(queue_name, '未知') AS queue_name,
+    COALESCE(NULLIF(TRIM(error_type), ''), '未分类') AS error_type,
+    COALESCE(NULLIF(TRIM(error_reason), ''), '') AS error_reason,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
+    COUNT(*) AS issue_cnt,
+    COUNT(DISTINCT reviewer_name) AS affected_reviewer_cnt
+FROM fact_qa_event
+WHERE is_final_correct = 0 AND {where_clause}
+GROUP BY biz_date, sub_biz, COALESCE(queue_name, '未知'),
+         COALESCE(NULLIF(TRIM(error_type), ''), '未分类'),
+         COALESCE(NULLIF(TRIM(error_reason), ''), ''),
+         COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
+"""
+
+REFRESH_MART_WEEK_ERROR_TOPIC = """
+REPLACE INTO mart_week_error_topic (
+    week_begin_date, group_name, queue_name, error_type, error_reason, inspect_type,
+    issue_cnt, affected_reviewer_cnt
+)
+SELECT
+    DATE_SUB(biz_date, INTERVAL WEEKDAY(biz_date) DAY) AS week_begin_date,
+    sub_biz AS group_name,
+    COALESCE(queue_name, '未知') AS queue_name,
+    COALESCE(NULLIF(TRIM(error_type), ''), '未分类') AS error_type,
+    COALESCE(NULLIF(TRIM(error_reason), ''), '') AS error_reason,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
+    COUNT(*) AS issue_cnt,
+    COUNT(DISTINCT reviewer_name) AS affected_reviewer_cnt
+FROM fact_qa_event
+WHERE is_final_correct = 0 AND {where_clause}
+GROUP BY DATE_SUB(biz_date, INTERVAL WEEKDAY(biz_date) DAY), sub_biz, COALESCE(queue_name, '未知'),
+         COALESCE(NULLIF(TRIM(error_type), ''), '未分类'),
+         COALESCE(NULLIF(TRIM(error_reason), ''), ''),
+         COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
+"""
+
+REFRESH_MART_MONTH_ERROR_TOPIC = """
+REPLACE INTO mart_month_error_topic (
+    month_begin_date, group_name, queue_name, error_type, error_reason, inspect_type,
+    issue_cnt, affected_reviewer_cnt
+)
+SELECT
+    LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY AS month_begin_date,
+    sub_biz AS group_name,
+    COALESCE(queue_name, '未知') AS queue_name,
+    COALESCE(NULLIF(TRIM(error_type), ''), '未分类') AS error_type,
+    COALESCE(NULLIF(TRIM(error_reason), ''), '') AS error_reason,
+    COALESCE(NULLIF(TRIM(inspect_type), ''), 'external') AS inspect_type,
+    COUNT(*) AS issue_cnt,
+    COUNT(DISTINCT reviewer_name) AS affected_reviewer_cnt
+FROM fact_qa_event
+WHERE is_final_correct = 0 AND {where_clause}
+GROUP BY LAST_DAY(biz_date - INTERVAL 1 MONTH) + INTERVAL 1 DAY, sub_biz, COALESCE(queue_name, '未知'),
+         COALESCE(NULLIF(TRIM(error_type), ''), '未分类'),
+         COALESCE(NULLIF(TRIM(error_reason), ''), ''),
+         COALESCE(NULLIF(TRIM(inspect_type), ''), 'external')
+"""
+
+REFRESH_MART_DAY_CONTENT_TYPE = """
+REPLACE INTO mart_day_content_type (
+    biz_date, group_name, content_type,
+    qa_cnt, raw_correct_cnt, final_correct_cnt, raw_error_cnt, final_error_cnt,
+    raw_accuracy_rate, final_accuracy_rate
+)
+SELECT
+    biz_date,
+    sub_biz AS group_name,
+    COALESCE(NULLIF(TRIM(content_type), ''), '未分类') AS content_type,
+    COUNT(*) AS qa_cnt,
+    SUM(is_raw_correct) AS raw_correct_cnt,
+    SUM(is_final_correct) AS final_correct_cnt,
+    COUNT(*) - SUM(is_raw_correct) AS raw_error_cnt,
+    COUNT(*) - SUM(is_final_correct) AS final_error_cnt,
+    ROUND(SUM(is_raw_correct) * 100.0 / NULLIF(COUNT(*), 0), 2) AS raw_accuracy_rate,
+    ROUND(SUM(is_final_correct) * 100.0 / NULLIF(COUNT(*), 0), 2) AS final_accuracy_rate
+FROM fact_qa_event
+WHERE {where_clause}
+GROUP BY biz_date, sub_biz, COALESCE(NULLIF(TRIM(content_type), ''), '未分类')
+"""
+
 # 所有 mart 刷新 SQL（按执行顺序）
 ALL_MART_REFRESH = [
     ("mart_day_group", REFRESH_MART_DAY_GROUP),
     ("mart_day_queue", REFRESH_MART_DAY_QUEUE),
     ("mart_day_auditor", REFRESH_MART_DAY_AUDITOR),
+    ("mart_day_error_topic", REFRESH_MART_DAY_ERROR_TOPIC),
+    ("mart_day_content_type", REFRESH_MART_DAY_CONTENT_TYPE),
     ("mart_week_group", REFRESH_MART_WEEK_GROUP),
     ("mart_week_queue", REFRESH_MART_WEEK_QUEUE),
+    ("mart_week_error_topic", REFRESH_MART_WEEK_ERROR_TOPIC),
     ("mart_month_group", REFRESH_MART_MONTH_GROUP),
     ("mart_month_queue", REFRESH_MART_MONTH_QUEUE),
+    ("mart_month_error_topic", REFRESH_MART_MONTH_ERROR_TOPIC),
 ]
 
 
