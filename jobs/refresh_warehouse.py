@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -264,6 +264,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--schema-path", default=None, help="可选，自定义 schema.sql 路径")
     parser.add_argument("--target-date", type=str, default=None, help="目标日期 (YYYY-MM-DD)，只刷新该日期")
     parser.add_argument("--today", action="store_true", help="只刷新今天")
+    parser.add_argument("--all", action="store_true", help="全量刷新（谨慎使用，RU消耗大）")
+    parser.add_argument("--recent-days", type=int, default=3, help="无指定日期时，默认刷新最近N天（默认3天）")
     return parser.parse_args()
 
 
@@ -283,14 +285,19 @@ def main() -> None:
         try:
             target_date = date.fromisoformat(args.target_date)
         except ValueError:
-            print(f"⚠️ 无效日期: {args.target_date}，将刷新全量")
+            print(f"⚠️ 无效日期: {args.target_date}，将刷新最近 {args.recent_days} 天")
 
     if target_date:
         where_clause = f"biz_date = '{target_date.isoformat()}'"
         print(f"📅 刷新目标日期: {target_date.isoformat()}")
-    else:
+    elif args.all:
         where_clause = "1=1"
-        print("📅 刷新全量数据")
+        print("📅 ⚠️ 全量刷新（高RU消耗模式）")
+    else:
+        # 默认只刷新最近 N 天，避免全量扫描耗尽 RU 配额
+        recent_start = (date.today() - timedelta(days=args.recent_days)).isoformat()
+        where_clause = f"biz_date >= '{recent_start}'"
+        print(f"📅 增量刷新最近 {args.recent_days} 天（{recent_start} ~ 今天）")
 
     # 3. 逐表刷新 mart
     print("\n📊 刷新 mart 聚合表...")

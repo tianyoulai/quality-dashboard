@@ -152,10 +152,12 @@ jobs:
       - name: Refresh warehouse & alerts
         if: hashFiles('config/.skip_flag') == ''
         run: |
-          echo "🔄 Refreshing warehouse..."
-          python jobs/refresh_warehouse.py || echo "::warning::数仓刷新失败，使用现有数据"
-          echo "🔔 Refreshing alerts..."
-          python jobs/refresh_alerts.py || echo "::warning::告警刷新失败，使用现有数据"
+          # 只刷新昨天和今天的数据，避免全量扫描耗尽 RU 配额
+          TARGET_DATE=$(date -u -d '-1 day' '+%Y-%m-%d')
+          echo "🔄 Refreshing warehouse for recent 2 days..."
+          python jobs/refresh_warehouse.py --recent-days 2 || echo "::warning::数仓刷新失败，使用现有数据"
+          echo "🔔 Refreshing alerts (lookback 7 days)..."
+          python jobs/refresh_alerts.py --lookback-days 7 || echo "::warning::告警刷新失败，使用现有数据"
 
       # ── 日报 ──
       - name: Daily report
