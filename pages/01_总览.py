@@ -310,6 +310,39 @@ st.markdown("")  # 轻量间距
 ds.section("🏢 组别经营视图")
 st.caption("💡 点击组别卡片可切换查看详细数据，卡片颜色代表达标状态")
 
+# ── 合并 external + internal：同一 group_name 可能因 inspect_type 拆成多行，需先汇总 ──
+def _aggregate_group(df: pd.DataFrame) -> pd.DataFrame:
+    """将同名 group 的 external/internal 行加权汇总为单行。"""
+    if df.empty or df["group_name"].is_unique:
+        return df
+    rows = []
+    for gname, sub in df.groupby("group_name", sort=False):
+        if len(sub) == 1:
+            rows.append(sub.iloc[0].to_dict())
+            continue
+        total_qa = sub["qa_cnt"].sum()
+        raw_correct = sub["raw_correct_cnt"].sum() if "raw_correct_cnt" in sub.columns else (sub["raw_accuracy_rate"] * sub["qa_cnt"] / 100).sum()
+        final_correct = sub["final_correct_cnt"].sum() if "final_correct_cnt" in sub.columns else (sub["final_accuracy_rate"] * sub["qa_cnt"] / 100).sum()
+        raw_err = sub["raw_error_cnt"].sum() if "raw_error_cnt" in sub.columns else (total_qa - raw_correct)
+        final_err = sub["final_error_cnt"].sum() if "final_error_cnt" in sub.columns else (total_qa - final_correct)
+        row = {
+            "group_name": gname,
+            "qa_cnt": int(total_qa),
+            "raw_correct_cnt": int(raw_correct),
+            "final_correct_cnt": int(final_correct),
+            "raw_error_cnt": int(raw_err),
+            "final_error_cnt": int(final_err),
+            "raw_accuracy_rate": raw_correct / total_qa * 100 if total_qa > 0 else 0,
+            "final_accuracy_rate": final_correct / total_qa * 100 if total_qa > 0 else 0,
+            "misjudge_rate": (sub["misjudge_rate"] * sub["qa_cnt"] / 100).sum() / total_qa * 100 if total_qa > 0 and "misjudge_rate" in sub.columns else 0,
+            "missjudge_rate": (sub["missjudge_rate"] * sub["qa_cnt"] / 100).sum() / total_qa * 100 if total_qa > 0 and "missjudge_rate" in sub.columns else 0,
+        }
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+group_df = _aggregate_group(group_df)
+prev_group_df = _aggregate_group(prev_group_df) if not prev_group_df.empty else prev_group_df
+
 # 计算 B 组整体
 b_groups = group_df[group_df["group_name"].str.startswith("B组")]
 if not b_groups.empty:
@@ -407,7 +440,7 @@ for idx, (_, row) in enumerate(display_groups.iterrows()):
             """,
             unsafe_allow_html=True,
         )
-        if st.button(f"🔍 查看详情", key=f"btn_{group_name}", use_container_width=True):
+        if st.button(f"🔍 查看详情", key=f"btn_{group_name}_{idx}", use_container_width=True):
             st.session_state["selected_group"] = group_name
             st.rerun()
 
