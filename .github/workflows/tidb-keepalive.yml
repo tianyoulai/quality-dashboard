@@ -1,0 +1,156 @@
+# TiDB Serverless 保活 & 数据运维
+# =================================
+# 功能：
+#   1. Keep-alive：工作时段每 15 分钟 ping TiDB，防止冷启动 25 秒惩罚
+#   2. 每周运维：每周日 2:00 UTC 执行 auto_maintenance --prune（清理 45 天前数据）
+#   3. 每日健康检查：每天 1:00 UTC（北京 9:00）跑 --health --push
+#
+# 设计理由：
+#   - 工作日/工作时段 ping 让首个用户打开看板时 DB 已经热
+#   - 非工作时段允许休眠，节省 RU
+#   - 合并到一个 workflow 简化维护
+
+name: TiDB Keep-Alive & Maintenance
+
+on:
+  schedule:
+    # Keep-alive：北京 9:00-20:00 每 15 分钟（UTC 01:00-12:00）
+    - cron: '*/15 1-12 * * *'
+    # 每周日 02:00 UTC（北京周日 10:00）执行数据清理
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      job_type:
+        description: '任务类型'
+        required: true
+        type: choice
+        options:
+          - ping
+          - prune
+          - health
+        default: 'ping'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tidb-keepalive-${{ github.event.schedule }}
+  cancel-in-progress: false
+
+jobs:
+  # ========== 轻量 ping（频繁）==========
+  ping:
+    if: github.event.schedule == '*/15 1-12 * * *' || github.event.inputs.job_type == 'ping'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping TiDB
+        env:
+          TIDB_HOST: ${{ secrets.TIDB_HOST }}
+          TIDB_PORT: ${{ secrets.TIDB_PORT }}
+          TIDB_USER: ${{ secrets.TIDB_USER }}
+          TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
+          TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+        run: |
+          pip install mysql-connector-python --quiet
+          python << 'PYEOF'
+          import os, time, sys
+          import mysql.connector
+          t0 = time.time()
+          try:
+              conn = mysql.connector.connect(
+                  host=os.environ["TIDB_HOST"],
+                  port=int(os.environ.get("TIDB_PORT", 4000)),
+                  user=os.environ["TIDB_USER"],
+                  password=os.environ["TIDB_PASSWORD"],
+                  database=os.environ["TIDB_DATABASE"],
+                  ssl_disabled=False, ssl_verify_cert=False,
+                  connection_timeout=30,
+              )
+              cur = conn.cursor()
+              cur.execute("SELECT 1"); cur.fetchall()
+              cur.execute("SELECT COUNT(*) FROM mart_day_group"); cur.fetchall()
+              cur.close(); conn.close()
+              print(f"✓ TiDB ping OK in {(time.time()-t0)*1000:.0f}ms")
+          except Exception as e:
+              print(f"::warning::TiDB ping failed after {(time.time()-t0)*1000:.0f}ms: {e}")
+          sys.exit(0)
+          PYEOF
+
+  # ========== 每周数据清理 ==========
+  prune:
+    if: github.event.schedule == '0 2 * * 0' || github.event.inputs.job_type == 'prune'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Write config
+        env:
+          TIDB_HOST: ${{ secrets.TIDB_HOST }}
+          TIDB_PORT: ${{ secrets.TIDB_PORT }}
+          TIDB_USER: ${{ secrets.TIDB_USER }}
+          TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
+          TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+        run: |
+          mkdir -p config
+          python << 'PYEOF'
+          import json, os
+          config = {
+              "tidb": {
+                  "host": os.environ["TIDB_HOST"],
+                  "port": int(os.environ.get("TIDB_PORT", 4000)),
+                  "user": os.environ["TIDB_USER"],
+                  "password": os.environ["TIDB_PASSWORD"],
+                  "database": os.environ["TIDB_DATABASE"],
+              }
+          }
+          with open("config/settings.json", "w", encoding="utf-8") as f:
+              json.dump(config, f, ensure_ascii=False, indent=2)
+          PYEOF
+      - name: Run prune
+        run: python jobs/auto_maintenance.py --prune
+
+  # ========== 每日健康检查（可选启用，当前仅手动）==========
+  health:
+    if: github.event.inputs.job_type == 'health'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Write config
+        env:
+          TIDB_HOST: ${{ secrets.TIDB_HOST }}
+          TIDB_PORT: ${{ secrets.TIDB_PORT }}
+          TIDB_USER: ${{ secrets.TIDB_USER }}
+          TIDB_PASSWORD: ${{ secrets.TIDB_PASSWORD }}
+          TIDB_DATABASE: ${{ secrets.TIDB_DATABASE }}
+          WECOM_WEBHOOK: ${{ secrets.WECOM_WEBHOOK_URL }}
+        run: |
+          mkdir -p config
+          python << 'PYEOF'
+          import json, os
+          config = {
+              "wecom_webhook_url": os.environ.get("WECOM_WEBHOOK", ""),
+              "tidb": {
+                  "host": os.environ["TIDB_HOST"],
+                  "port": int(os.environ.get("TIDB_PORT", 4000)),
+                  "user": os.environ["TIDB_USER"],
+                  "password": os.environ["TIDB_PASSWORD"],
+                  "database": os.environ["TIDB_DATABASE"],
+              }
+          }
+          with open("config/settings.json", "w", encoding="utf-8") as f:
+              json.dump(config, f, ensure_ascii=False, indent=2)
+          PYEOF
+      - name: Run health check
+        run: python jobs/auto_maintenance.py --health --push

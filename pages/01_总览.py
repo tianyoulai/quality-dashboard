@@ -143,10 +143,17 @@ st.markdown("---")
 # ==================== 加载数据 ====================
 # 💡 首屏轻量加载：只查 group_df + alerts_df（2次DB查询，原来7次）
 try:
-    payload = load_dashboard_lite(grain, selected_date)
+    # 首次访问 TiDB Serverless 可能需要 10-25 秒唤醒，用 spinner 告知用户
+    with st.spinner("正在加载看板数据…（首次访问若较慢，通常是数据库从休眠中唤醒，请稍候）"):
+        payload = load_dashboard_lite(grain, selected_date)
 except Exception as e:
     st.error(f"⚠️ 数据加载失败：{e}")
-    st.info("请检查数据库连接是否正常，或尝试刷新缓存。")
+    st.info(
+        "可能原因：\n"
+        "- 数据库连接异常，请稍后重试\n"
+        "- TiDB Serverless 正在唤醒中（点击侧边栏「刷新缓存」按钮重试）\n"
+        "- 配额耗尽，请联系管理员"
+    )
     st.stop()
     
 group_df: pd.DataFrame = payload["group_df"]
