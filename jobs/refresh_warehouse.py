@@ -425,6 +425,10 @@ def main() -> None:
         month_delete_filter = f">= '{mo_begin}'"
         print(f"📅 增量刷新最近 {args.recent_days} 天（{recent_start} ~ 今天）")
 
+    # 所有 mart 聚合统一排除"新人试标"（newcomer_trial，如 10816 队列），
+    # 这些是练手/试标数据，不纳入正式业务统计
+    where_clause = f"({where_clause}) AND COALESCE(workforce_type,'formal') <> 'newcomer_trial'"
+
     # 3. 逐表刷新 mart
     print("\n📊 刷新 mart 聚合表...")
     results = {}

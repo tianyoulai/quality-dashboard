@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS fact_qa_event (
     qa_note TEXT,
 
     inspect_type VARCHAR(16) DEFAULT 'external' COMMENT '外检/内检: external, internal',
-    workforce_type VARCHAR(16) DEFAULT 'formal' COMMENT '正式/新人: formal, newcomer',
+    workforce_type VARCHAR(16) DEFAULT 'formal' COMMENT '人力类型: formal(正式) / newcomer(正式新人) / newcomer_trial(新人试标，不纳入新人考核)',
 
     batch_id VARCHAR(64),
     source_file_name VARCHAR(256),
@@ -631,7 +631,8 @@ SELECT
     q.event_id
 FROM fact_qa_event q
 LEFT JOIN vw_appeal_latest a
-  ON q.join_key = a.join_key;
+  ON q.join_key = a.join_key
+WHERE COALESCE(q.workforce_type, 'formal') <> 'newcomer_trial';
 
 -- vw_join_quality_detail
 DROP VIEW IF EXISTS vw_join_quality_detail;
@@ -671,7 +672,8 @@ SELECT
     END AS matched_with_result
 FROM fact_qa_event q
 LEFT JOIN vw_appeal_latest a
-  ON q.join_key = a.join_key;
+  ON q.join_key = a.join_key
+WHERE COALESCE(q.workforce_type, 'formal') <> 'newcomer_trial';
 
 -- vw_join_quality_daily
 DROP VIEW IF EXISTS vw_join_quality_daily;

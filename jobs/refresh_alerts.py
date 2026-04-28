@@ -171,6 +171,11 @@ def insert_group_appeal_reverse_alerts(repo: DashboardRepository, cutoff_date) -
 
 
 def insert_system_join_match_alerts(conn: TiDBManager, cutoff_date) -> None:
+    # 守卫：若申诉表完全为空（业务未上传），所有样本必然 0% match，
+    # 此时触发告警无意义（且是 P2 固定噪声），直接跳过
+    appeal_cnt = conn.fetch_one("SELECT COUNT(*) AS cnt FROM fact_appeal_event")
+    if not appeal_cnt or (appeal_cnt.get("cnt") or 0) == 0:
+        return
     conn.execute(
         """
         REPLACE INTO fact_alert_event (

@@ -22,6 +22,8 @@ from storage.repository import DashboardRepository
 
 # ==========================================================
 # 业务线映射规则（按文件名关键词匹配）
+# 说明：只匹配业务关心的三条主线。非主线场景（如"迁移人力图片"等图片队列）
+#       保持"未识别"，不纳入主看板统计。
 # ==========================================================
 BUSINESS_LINE_RULES = [
     {
@@ -57,10 +59,14 @@ INTERNAL_INSPECT_KEYWORDS = [
 EXTERNAL_INSPECT_KEYWORDS = [
     "外检", "外部质检", "外部质量", "外部抽检",
 ]
-# 新人相关关键词
+# 新人正式队列关键词（会纳入新人追踪看板/毕业率考核）
 NEWCOMER_KEYWORDS = [
     "新人", "新员工", "实习生", "培训期", "试用期",
-    "18365",  # 新人内检队列号
+    "18365",  # 新人内检队列号（正式考核）
+]
+# 新人试标队列关键词（练手/试标数据，不纳入新人正式考核）
+NEWCOMER_TRIAL_KEYWORDS = [
+    "10816",  # A组（长沙云雀）新人试标外检队列号
 ]
 
 
@@ -83,16 +89,20 @@ def detect_inspect_type(filename: str) -> str:
 
 
 def detect_workforce_type(filename: str) -> str:
-    """根据文件名自动检测人力类型（正式/新人）。
+    """根据文件名自动检测人力类型。
 
-    规则：
-    1. 文件名含新人关键词 → newcomer
-    2. 默认 → formal（现有数据均为正式人力）
+    Returns:
+        - "newcomer_trial": 新人试标（10816 等练手外检队列，不纳入新人正式考核）
+        - "newcomer": 正式新人（纳入新人追踪/毕业率考核）
+        - "formal": 正式人力
 
-    注意：更精确的判定需要与 dim_newcomer_batch 交叉匹配，
-    此函数仅做文件名层面的快速推断。
+    优先级：newcomer_trial > newcomer > formal
+    （试标文件名也会同时含"新人"字样，必须先判 trial 避免被一般规则吸走）
     """
     normalized = re.sub(r"\s+", "", filename).lower()
+    for keyword in NEWCOMER_TRIAL_KEYWORDS:
+        if keyword.lower() in normalized:
+            return "newcomer_trial"
     for keyword in NEWCOMER_KEYWORDS:
         if keyword.lower() in normalized:
             return "newcomer"
