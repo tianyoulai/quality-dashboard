@@ -46,6 +46,27 @@ BUSINESS_LINE_RULES = [
     },
 ]
 
+# ==========================================================
+# 文件名黑名单：命中则直接拒绝入库（不属于看板考核范围的队列）
+# ==========================================================
+FILENAME_BLACKLIST_KEYWORDS = [
+    "15210",  # 迁移人力图片质检，非目标业务线
+    "17125",  # 迁移人力17125质检，非目标业务线
+]
+
+
+def is_blacklisted_filename(filename: str) -> tuple[bool, str]:
+    """判断文件名是否在黑名单中。
+
+    Returns:
+        tuple[bool, str]: (是否黑名单, 命中的关键词)
+    """
+    normalized = re.sub(r"\s+", "", filename).lower()
+    for keyword in FILENAME_BLACKLIST_KEYWORDS:
+        if keyword.lower() in normalized:
+            return True, keyword
+    return False, ""
+
 
 # ==========================================================
 # 内检/外检、正式/新人 自动检测规则
@@ -879,6 +900,25 @@ def import_dataset(
     inspect_type: str | None = None,
     workforce_type: str | None = None,
 ) -> ImportSummary:
+    # 黑名单拦截：命中的文件名直接拒绝入库（不属于看板考核范围）
+    is_blacklist, hit_keyword = is_blacklisted_filename(source_name)
+    if is_blacklist:
+        file_size = file_path.stat().st_size if file_path.exists() else 0
+        write_upload_log(
+            conn,
+            upload_id=upload_id,
+            file_name=source_name,
+            file_type=dataset,
+            file_size_bytes=file_size,
+            source_rows=0,
+            inserted_rows=0,
+            dedup_rows=0,
+            business_line="黑名单",
+            upload_status="skipped",
+            error_message=f"文件名命中黑名单关键词「{hit_keyword}」，非看板考核范围，已跳过入库",
+        )
+        return ImportSummary(dataset, str(file_path), 0, 0, 0, 0)
+
     raw_df = read_table_file(file_path)
     file_size = file_path.stat().st_size if file_path.exists() else 0
     file_hash = compute_file_hash(file_path) if skip_dedup is False else ""
